@@ -69,6 +69,9 @@ uv run pytest
 
 ### Ручной прогон на синтетике
 
+> С ИИ-агентом — только в одноразовой папке данных и отдельной базе
+> (`DOCREADER_DATA_DIR=/tmp/docreader-demo-data`, `docreader_demo`), не в рабочих.
+
 ```
 uv run python -m tests.synthetic.make_pdfs /tmp/docreader-demo   # генерирует набор файлов
 uv run docreader add /tmp/docreader-demo
