@@ -3,3 +3,17 @@
 !tests/fixtures/**/*.pdf
 .env
 data/
+
+# Python and editor/OS artifacts
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+*.egg-info/
+.pytest_cache/
+.DS_Store
+*.tmp
+*.swp
+.vscode/
+.idea/
