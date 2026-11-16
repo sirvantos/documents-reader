@@ -188,7 +188,10 @@ description: "Task list for feature 001: document intake and registry"
 - [X] T048 [P] Add a «Commands» section to `CLAUDE.md`: `uv sync`, `uv run pytest`, required `DOCREADER_TEST_DATABASE_URL`, `uv run docreader --help`
 - [X] T049 Run the full suite `uv run pytest` and fix failures; confirm no test needs the network or a real model
 - [X] T050 Validate quickstart.md part A on the development server with a throwaway setup: `DOCREADER_DATA_DIR=<session scratchpad>/demo-data` and a separate database `docreader_demo` (`createdb docreader_demo`, `dropdb docreader_demo` afterwards). Never use `~/docreader-data` or the `docreader` database. Run two `add`, `list`, `show`, `remove`, `verify`; correct quickstart.md where the actual output differs. Part B is T051
-- [ ] T051 Analyst (Mac, without the agent): run quickstart.md part B; report to the main session only pass/fail per SC-001…SC-006 and the two numbers (SC-004 accuracy, SC-005 time), without file names or document content; keep the figures in the data folder until feature 02 creates the results table
+- [X] T051 Analyst (Mac, without the agent): run quickstart.md part B; report to the main session only pass/fail per SC-001…SC-006 and the two numbers (SC-004 accuracy, SC-005 time), without file names or document content; keep the figures in the data folder until feature 02 creates the results table
+  - Result 2026-11-16: SC-001…SC-006 pass, offline intake (FR-013) pass; default page-kind thresholds kept. The reference set has no `scan_with_text` pages, so that kind is covered only by synthetic auto-tests
+- [X] T052 `add` never walks the program's own service folders (found in T051): when a walked folder contains `$DOCREADER_DATA_DIR/originals` or `reports`, skip that folder and list it under «Не добавлено» with reason «служебная папка программы не обходится» (`reason_code` `service_dir`); a path given to `add` that lies inside one of them is a user error (exit 1). Code in `src/docreader/intake.py`, tests in `tests/integration/test_add.py`, contract in `contracts/cli.md`
+- [X] T053 Re-adding a registered document restores a missing or damaged copy (found in T051): for `existing` files check `originals/<sha256>.pdf`; if it is absent or its SHA-256 differs, copy the source again (same temp-file, fsync, re-hash, rename steps) and add warning `copy_restored`; if the source changed while copying, add warning `copy_not_restored`. Warnings of `existing` entries are printed in the text report. Code in `src/docreader/intake.py`, `src/docreader/render.py`, tests in `tests/integration/test_duplicates.py` and `tests/unit/test_render_intake.py`, contract in `contracts/cli.md`
 
 ---
 
@@ -269,3 +272,9 @@ Task: "Write interrupted-add test in tests/integration/test_interrupted_add.py" 
 - Commit after each task or logical group (the main session commits, not the implementer)
 - Tests never touch real data or real models; no `real_model` tests in this feature
 - Stop at any checkpoint to validate the story independently
+
+---
+
+## Phase 9: Convergence
+
+- [X] T054 Reject a repeated (document_id, page_number) row in the labels CSV of `page-kinds-check` as a user error naming both line numbers (exit 1), so a page is never counted twice in the accuracy; code in `src/docreader/registry.py`, test in `tests/integration/test_verify_reclassify.py`, rule in `contracts/cli.md` per SC-004 (partial)

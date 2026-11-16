@@ -251,6 +251,26 @@ def test_page_kinds_check_bad_kind_names_line(cli, tmp_path, three_pages):
     assert "foo" in result.stderr
 
 
+def test_page_kinds_check_repeated_row_names_both_lines(cli, tmp_path, three_pages):
+    labels = write_labels(tmp_path, ["D-0001,1,text", "D-0001,2,text", "D-0001,1,text"])
+
+    result = cli("page-kinds-check", labels)
+
+    assert result.exit_code == 1
+    assert "строка 4" in result.stderr  # the repeat
+    assert "строке 2" in result.stderr  # the first occurrence
+
+
+def test_page_kinds_check_repeated_row_with_other_id_spelling(cli, tmp_path, three_pages):
+    labels = write_labels(tmp_path, ["D-0001,1,text", "d-1,1,scan"])
+
+    result = cli("page-kinds-check", labels)
+
+    assert result.exit_code == 1
+    assert "строка 3" in result.stderr
+    assert "строке 2" in result.stderr
+
+
 # --- verify (US4) ---------------------------------------------------------------------
 
 

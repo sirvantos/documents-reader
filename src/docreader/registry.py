@@ -310,6 +310,7 @@ def _read_labels(csv_path: Path) -> list[tuple[int, int, int, str]]:
             "Неверный заголовок файла разметки — ожидается: " + ",".join(_LABELS_HEADER)
         )
     rows = []
+    first_seen: dict[tuple[int, int], int] = {}
     for row in reader:
         line = reader.line_num
         if not row or all(not cell.strip() for cell in row):
@@ -330,7 +331,14 @@ def _read_labels(csv_path: Path) -> list[tuple[int, int, int, str]]:
                 f"Файл разметки, строка {line}: неизвестный вид «{raw_kind}» — "
                 f"допустимо: {', '.join(KINDS)}"
             )
-        rows.append((line, seq, int(raw_page), raw_kind))
+        page = int(raw_page)
+        if (seq, page) in first_seen:
+            raise UserError(
+                f"Файл разметки, строка {line}: страница {page} документа "
+                f"{format_document_id(seq)} уже размечена в строке {first_seen[(seq, page)]}"
+            )
+        first_seen[(seq, page)] = line
+        rows.append((line, seq, page, raw_kind))
     return rows
 
 

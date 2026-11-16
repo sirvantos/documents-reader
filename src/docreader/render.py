@@ -108,9 +108,12 @@ def _added_lines(entries: list[dict]) -> list[str]:
 
 def _existing_lines(entries: list[dict]) -> list[str]:
     width = _name_width(entries)
-    return [
-        f"  {_name(entry).ljust(width)} → {entry['document_id']}" for entry in entries
-    ]
+    lines: list[str] = []
+    for entry in entries:
+        lines.append(f"  {_name(entry).ljust(width)} → {entry['document_id']}")
+        for warning in entry.get("warnings", []):
+            lines.append(f"          ! {warning['message']}")
+    return lines
 
 
 def _rejected_lines(entries: list[dict]) -> list[str]:

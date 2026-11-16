@@ -304,3 +304,44 @@ def test_without_note_the_note_is_empty(cli, db, tmp_path):
     mk.make_digital(folder / "a.pdf", text_seed="no-note")
     add_json(cli, folder)
     assert db.execute("SELECT note FROM document").fetchone() == (None,)
+
+
+# --- service folders of the data folder (T052) -------------------------------------------
+
+
+def test_data_folder_service_dirs_are_skipped(cli, db, data_dir):
+    """Contracts kept inside the data folder: adding the whole folder twice must not
+    pick up the program's own copies or reports."""
+    contracts = data_dir / "contracts"
+    contracts.mkdir()
+    mk.make_digital(contracts / "a.pdf", pages=1, text_seed="svc-a")
+    mk.make_digital(contracts / "b.pdf", pages=1, text_seed="svc-b")
+
+    first = add_json(cli, data_dir)
+    assert first["totals"]["added"] == 2
+
+    second = add_json(cli, data_dir)
+
+    assert second["totals"]["added"] == 0
+    assert second["totals"]["existing"] == 2
+    skipped = {Path(f["path"]).name: f for f in second["files"] if f["status"] == "rejected"}
+    assert set(skipped) == {"originals", "reports"}
+    for entry in skipped.values():
+        assert entry["reason_code"] == "service_dir"
+        assert entry["reason"] == "служебная папка программы не обходится"
+    assert db.execute("SELECT count(*) FROM document").fetchone()[0] == 2
+
+
+@pytest.mark.parametrize("inside", ["originals", "reports"])
+def test_path_inside_service_dir_is_a_user_error(cli, db, data_dir, tmp_path, inside):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    mk.make_digital(folder / "a.pdf", pages=1, text_seed="svc-c")
+    add_json(cli, folder)  # creates originals/ and reports/
+    runs_before = db.execute("SELECT count(*) FROM run").fetchone()[0]
+
+    result = cli("add", data_dir / inside, "--json")
+
+    assert result.exit_code == 1
+    assert "служебная папка программы" in result.stderr
+    assert db.execute("SELECT count(*) FROM run").fetchone()[0] == runs_before

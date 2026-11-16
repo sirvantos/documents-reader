@@ -148,3 +148,72 @@ def test_text_output_of_second_run_lists_existing(cli, db, tmp_path):
     assert result.exit_code == 0, result.stderr
     assert "Уже есть: 3" in result.stdout
     assert "→ D-0001" in result.stdout
+
+
+# --- restoring a lost copy on re-add (T053) ----------------------------------------------
+
+
+def _only_copy(data_dir: Path) -> Path:
+    copies = [p for p in (data_dir / "originals").iterdir() if p.is_file()]
+    assert len(copies) == 1
+    return copies[0]
+
+
+def test_missing_copy_is_restored_on_re_add(cli, db, data_dir, tmp_path):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    source = mk.make_digital(folder / "a.pdf", pages=2, text_seed="restore-a")
+    add_json(cli, folder)
+    copy = _only_copy(data_dir)
+    copy.unlink()
+    assert cli("verify").exit_code == 1
+
+    report = add_json(cli, folder)
+
+    entry = by_path(report)[str(source.resolve())]
+    assert entry["status"] == "existing"
+    assert [w["code"] for w in entry["warnings"]] == ["copy_restored"]
+    assert copy.read_bytes() == source.read_bytes()
+    assert cli("verify").exit_code == 0
+    assert count_documents(db) == 1
+
+
+def test_damaged_copy_is_restored_on_re_add(cli, db, data_dir, tmp_path):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    source = mk.make_digital(folder / "a.pdf", pages=2, text_seed="restore-b")
+    add_json(cli, folder)
+    copy = _only_copy(data_dir)
+    copy.chmod(0o644)
+    copy.write_bytes(b"%PDF-1.7 damaged")
+
+    report = add_json(cli, folder)
+
+    entry = by_path(report)[str(source.resolve())]
+    assert [w["code"] for w in entry["warnings"]] == ["copy_restored"]
+    assert copy.read_bytes() == source.read_bytes()
+    assert cli("verify").exit_code == 0
+
+
+def test_intact_copy_gives_no_warning(cli, db, data_dir, tmp_path):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    source = mk.make_digital(folder / "a.pdf", pages=1, text_seed="restore-c")
+    add_json(cli, folder)
+
+    report = add_json(cli, folder)
+
+    assert by_path(report)[str(source.resolve())]["warnings"] == []
+
+
+def test_restored_copy_is_shown_in_text_report(cli, db, data_dir, tmp_path):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    mk.make_digital(folder / "a.pdf", pages=1, text_seed="restore-d")
+    add_json(cli, folder)
+    _only_copy(data_dir).unlink()
+
+    result = cli("add", folder)
+
+    assert result.exit_code == 0
+    assert "! копия отсутствовала или была повреждена — восстановлена из этого файла" in result.stdout

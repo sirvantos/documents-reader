@@ -38,6 +38,7 @@ CHUNK = 1024 * 1024
 REASON_CHANGED = "файл изменился во время добавления"
 REASON_SYMLINK_DIR = "символическая ссылка на папку не обходится"
 REASON_HIDDEN_DIR = "скрытая или служебная папка не обходится"
+REASON_SERVICE_DIR = "служебная папка программы не обходится"
 REASON_UNREADABLE = "файл не читается"
 
 
@@ -69,26 +70,44 @@ class _Context:
 # --- walking the input ----------------------------------------------------------------
 
 
-def collect_inputs(paths: Sequence[str | os.PathLike]) -> list[_Input]:
-    """Expand files and folders (recursively, sorted by path) into input entries."""
+def service_dirs(settings: Settings) -> tuple[Path, ...]:
+    """Folders the program writes itself; `add` never takes files from them."""
+    return (settings.originals_dir.resolve(), settings.reports_dir.resolve())
+
+
+def collect_inputs(
+    paths: Sequence[str | os.PathLike], skip_dirs: Sequence[Path] = ()
+) -> list[_Input]:
+    """Expand files and folders (recursively, sorted by path) into input entries.
+
+    `skip_dirs` (resolved paths) are never walked: a folder equal to one of them is
+    reported as rejected, and an input path inside one of them is a user error.
+    """
     resolved = []
     for raw in paths:
         p = Path(raw).expanduser()
         if not p.exists():
             raise UserError(f"Путь не найден: {raw} — проверьте путь к файлу или папке")
+        real = p.resolve()
+        for skip in skip_dirs:
+            if real == skip or real.is_relative_to(skip):
+                raise UserError(
+                    f"Путь {raw} — служебная папка программы ({skip}) — "
+                    "укажите папку с договорами"
+                )
         resolved.append(p.absolute())
 
     seen: set[Path] = set()
     entries: list[_Input] = []
     for p in resolved:
-        for entry in _walk(p) if p.is_dir() else [_Input(p.resolve())]:
+        for entry in _walk(p, skip_dirs) if p.is_dir() else [_Input(p.resolve())]:
             if entry.path not in seen:
                 seen.add(entry.path)
                 entries.append(entry)
     return entries
 
 
-def _walk(root: Path) -> list[_Input]:
+def _walk(root: Path, skip_dirs: Sequence[Path] = ()) -> list[_Input]:
     found: list[_Input] = []
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         base = Path(dirpath)
@@ -96,6 +115,9 @@ def _walk(root: Path) -> list[_Input]:
             sub = base / name
             if sub.is_symlink():
                 found.append(_Input(sub.absolute(), "unsupported", REASON_SYMLINK_DIR))
+                dirnames.remove(name)
+            elif sub.resolve() in skip_dirs:
+                found.append(_Input(sub.resolve(), "service_dir", REASON_SERVICE_DIR))
                 dirnames.remove(name)
             elif name.startswith("."):
                 found.append(_Input(sub.resolve(), "hidden", REASON_HIDDEN_DIR))
@@ -129,12 +151,8 @@ def _place_copy(source: Path, sha256: str, originals: Path) -> Path | None:
     """
     originals.mkdir(parents=True, exist_ok=True)
     final = originals / f"{sha256}.pdf"
-    if final.exists():
-        try:
-            if _sha256_of(final)[0] == sha256:
-                return final  # left by an earlier interrupted or removed run
-        except OSError:
-            pass  # unreadable leftover: overwrite it below
+    if _copy_is_intact(final, sha256):
+        return final  # left by an earlier interrupted or removed run
 
     fd, tmp_name = tempfile.mkstemp(dir=originals, prefix=".tmp-", suffix=".pdf")
     tmp = Path(tmp_name)
@@ -154,6 +172,32 @@ def _place_copy(source: Path, sha256: str, originals: Path) -> Path | None:
         return final
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def _copy_is_intact(copy: Path, sha256: str) -> bool:
+    """True when `copy` exists and holds exactly the bytes with this fingerprint."""
+    if not copy.is_file():
+        return False
+    try:
+        return _sha256_of(copy)[0] == sha256
+    except OSError:
+        return False  # unreadable copy counts as damaged
+
+
+def _restore_warning(source: Path, sha256: str, originals: Path) -> dict | None:
+    """For an already registered file: re-create a missing or damaged copy."""
+    if _copy_is_intact(originals / f"{sha256}.pdf", sha256):
+        return None
+    if _place_copy(source, sha256, originals) is None:
+        return {
+            "code": "copy_not_restored",
+            "message": "копия отсутствует или повреждена; восстановить не удалось: "
+                       f"{REASON_CHANGED}",
+        }
+    return {
+        "code": "copy_restored",
+        "message": "копия отсутствовала или была повреждена — восстановлена из этого файла",
+    }
 
 
 def _fsync_dir(path: Path) -> None:
@@ -284,8 +328,9 @@ def _process_file(ctx: _Context, item: _Input) -> dict:
     sha256, size = _sha256_of(path)
     existing = _find_existing(ctx.conn, sha256)
     if existing:
+        warning = _restore_warning(path, sha256, ctx.settings.originals_dir)
         return {"path": str(path), "status": "existing", "document_id": existing,
-                "warnings": []}
+                "warnings": [warning] if warning else []}
 
     try:
         metrics = analyse_pdf(path)
@@ -351,7 +396,8 @@ def run_intake(
     note: str | None = None,
     label: str | None = None,
 ) -> IntakeOutcome:
-    inputs = collect_inputs(paths)  # a missing path fails before a run is created
+    # A missing path or a path inside a service folder fails before a run is created.
+    inputs = collect_inputs(paths, service_dirs(settings))
 
     # Each file commits on its own; reads between files must not hold a transaction.
     conn.autocommit = True

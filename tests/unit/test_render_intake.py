@@ -166,3 +166,26 @@ def test_json_round_trip_preserves_cyrillic():
     assert "документ Word" in rendered
     assert "\\u" not in rendered
     assert json.loads(rendered) == report
+
+
+def test_existing_entry_prints_its_warnings():
+    report = {
+        "run_id": 2,
+        "started_at": "2026-11-16T10:00:00+00:00",
+        "finished_at": "2026-11-16T10:00:01+00:00",
+        "code_version": "v",
+        "interrupted": False,
+        "files": [
+            {
+                "path": "/in/a.pdf",
+                "status": "existing",
+                "document_id": "D-0001",
+                "warnings": [{"code": "copy_restored", "message": "копия восстановлена"}],
+            }
+        ],
+        "totals": {"files": 1, "added": 0, "existing": 1, "rejected": 0},
+    }
+    lines = render_intake_text(report, REPORT_PATH).splitlines()
+    at = lines.index("Уже есть: 1")
+    assert lines[at + 1].split() == ["a.pdf", "→", "D-0001"]
+    assert lines[at + 2] == "          ! копия восстановлена"
