@@ -1,6 +1,7 @@
 """Command line interface `docreader` (see specs/001-document-intake/contracts/cli.md)."""
 
 import argparse
+import json
 import sys
 from collections.abc import Callable
 
@@ -10,7 +11,17 @@ from docreader import db
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
 from docreader.intake import run_intake
-from docreader.render import render_intake_json, render_intake_text
+from docreader import registry
+from docreader.ids import format_document_id, parse_document_id
+from docreader.render import (
+    render_intake_json,
+    render_intake_text,
+    render_list_text,
+    render_page_kinds_text,
+    render_reclassify_text,
+    render_show_text,
+    render_verify_text,
+)
 
 
 class _Parser(argparse.ArgumentParser):
@@ -61,10 +72,6 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _not_implemented(name: str) -> UserError:
-    return UserError(f"Команда «{name}» ещё не реализована")
-
-
 def _cmd_migrate(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
     versions = db.apply_migrations(conn)
     if not versions:
@@ -88,31 +95,79 @@ def _cmd_add(args: argparse.Namespace, settings: Settings, conn: psycopg.Connect
 
 
 def _cmd_list(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
-    raise _not_implemented("list")
+    docs = registry.list_documents(conn)
+    if args.json:
+        print(json.dumps(docs, ensure_ascii=False, indent=2))
+    else:
+        print(render_list_text(docs))
+    return 0
 
 
 def _cmd_show(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
-    raise _not_implemented("show")
+    seq = parse_document_id(args.id)
+    doc = registry.show_document(conn, settings, seq)
+    if args.json:
+        print(json.dumps(doc, ensure_ascii=False, indent=2))
+    else:
+        print(render_show_text(doc))
+    return 0
 
 
 def _cmd_remove(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
-    raise _not_implemented("remove")
+    seq = parse_document_id(args.id)
+    row = registry.find_document(conn, seq)
+    if row is None:
+        raise UserError(
+            f"Документ {format_document_id(seq)} не найден — список документов: docreader list"
+        )
+    conn.commit()
+    print("Будет удалено:")
+    print(f"  {row['id']}  {row['original_name']}  {row['page_count']} стр.")
+    print(f"  копия: {settings.data_dir / row['copy_path']}")
+    if not args.yes:
+        if not sys.stdin.isatty():
+            raise UserError("Нет подтверждения: stdin не терминал — добавьте --yes")
+        print("Для подтверждения введите идентификатор документа: ", end="", flush=True)
+        try:
+            confirmed = parse_document_id(sys.stdin.readline()) == seq
+        except UserError:
+            confirmed = False
+        if not confirmed:
+            raise UserError("Удаление отменено")
+    result = registry.remove(conn, settings, seq)
+    print(f"Удалён {result['document_id']}")
+    if result["warning"]:
+        print(f"! {result['warning']}", file=sys.stderr)
+    return 0
 
 
 def _cmd_verify(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
-    raise _not_implemented("verify")
+    seqs = [parse_document_id(i) for i in args.ids] or None
+    result = registry.verify(conn, settings, seqs)
+    print(render_verify_text(result))
+    return 1 if result["problems"] else 0
 
 
 def _cmd_reclassify(
     args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
 ) -> int:
-    raise _not_implemented("reclassify")
+    seqs = [parse_document_id(i) for i in args.ids]
+    result = registry.reclassify(conn, settings, seqs or None, label=args.label)
+    print(render_reclassify_text(result), end="")
+    return 0
 
 
 def _cmd_page_kinds_check(
     args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
 ) -> int:
-    raise _not_implemented("page-kinds-check")
+    result = registry.page_kinds_check(conn, args.labels)
+    print(render_page_kinds_text(result), end="")
+    if result["accuracy"] < 0.95:
+        raise UserError(
+            "Точность ниже 95% — подберите пороги в settings.toml и выполните "
+            "docreader reclassify"
+        )
+    return 0
 
 
 _Handler = Callable[[argparse.Namespace, Settings, psycopg.Connection], int]

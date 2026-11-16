@@ -116,3 +116,185 @@ def _existing_lines(entries: list[dict]) -> list[str]:
 def _rejected_lines(entries: list[dict]) -> list[str]:
     width = _name_width(entries)
     return [f"  {_name(entry).ljust(width)} {entry['reason']}" for entry in entries]
+
+
+# --- reclassify, page-kinds-check ----------------------------------------------------------
+
+_KIND_NAMES = {
+    "text": "готовый текст",
+    "scan": "скан",
+    "scan_with_text": "скан со встроенным текстом",
+}
+_KIND_CODES = ("text", "scan", "scan_with_text")
+
+
+def _percent(share: float) -> str:
+    return f"{share * 100:.1f}".replace(".", ",") + "%"
+
+
+def render_reclassify_text(result: dict) -> str:
+    lines = [
+        f"Запуск {result['run_id']}: проверено документов {result['documents_checked']}, "
+        f"страниц {result['pages_checked']}; изменили вид: {result['pages_changed']} стр."
+    ]
+    for doc in result["documents"]:
+        changes = ", ".join(
+            f"стр. {p['page_number']}: {_KIND_NAMES[p['old_kind']]} → {_KIND_NAMES[p['new_kind']]}"
+            for p in doc["pages"]
+        )
+        lines.append(f"  {doc['document_id']}: {changes}")
+    return "\n".join(lines) + "\n"
+
+
+def render_page_kinds_text(result: dict) -> str:
+    lines = [
+        f"Страниц: {result['total']}, верно: {result['correct']}, "
+        f"точность: {_percent(result['accuracy'])}",
+        "",
+        "Матрица ошибок (строки — разметка, столбцы — система):",
+    ]
+    width = max(len(code) for code in _KIND_CODES)
+    lines.append(" " * width + "  " + "  ".join(code.rjust(width) for code in _KIND_CODES))
+    for labelled in _KIND_CODES:
+        cells = "  ".join(str(result["matrix"][labelled][s]).rjust(width) for s in _KIND_CODES)
+        lines.append(f"{labelled.ljust(width)}  {cells}")
+    if result["mismatches"]:
+        lines += ["", "Несовпадения:"]
+        for m in result["mismatches"]:
+            invisible = m["invisible_text_share"]
+            lines.append(
+                f"  {m['document_id']} стр. {m['page_number']}: разметка {m['labelled']}, "
+                f"система {m['stored']}; символов {m['char_count']}, "
+                f"доля картинок {m['image_coverage']:.2f}, "
+                f"доля невидимого текста {'—' if invisible is None else f'{invisible:.2f}'}"
+            )
+    return "\n".join(lines) + "\n"
+
+
+# --- list, show, verify --------------------------------------------------------------
+
+STATE_LABELS = {
+    "pending": "ожидает",
+    "done": "готово",
+    "needs_review": "требует просмотра",
+    "failed": "ошибка",
+}
+KIND_LABELS = {
+    "text": "готовый текст",
+    "scan": "скан",
+    "scan_with_text": "скан со встроенным текстом",
+}
+_STAGE_ORDER = ("reading", "structure", "extraction", "checks", "indexing")
+_STAGE_NAMES = {
+    "reading": "Чтение",
+    "structure": "Структура",
+    "extraction": "Извлечение",
+    "checks": "Проверки",
+    "indexing": "Индексация",
+}
+_LIST_HEADER = [
+    "ID", "Имя", "Стр.", "Текст", "Скан", "Скан+т",
+    "Чтение", "Структура", "Извлеч.", "Проверки", "Индекс.",
+]
+_LIST_NUMERIC_COLUMNS = {2, 3, 4, 5}
+_LIST_NAME_LIMIT = 40
+_PROBLEM_TEXT = {
+    "missing": "копия отсутствует",
+    "mismatch": "копия изменена (SHA-256 не совпадает)",
+}
+
+
+def _truncate_name(name: str) -> str:
+    if len(name) > _LIST_NAME_LIMIT:
+        return name[: _LIST_NAME_LIMIT - 1] + "…"
+    return name
+
+
+def _state_label(stages: dict, stage: str) -> str:
+    info = stages.get(stage)
+    if info is None:
+        return "—"
+    return STATE_LABELS.get(info["state"], info["state"])
+
+
+def render_list_text(docs: list[dict]) -> str:
+    if not docs:
+        return "Реестр пуст"
+    rows = [_LIST_HEADER]
+    for doc in docs:
+        kinds = doc["page_kinds"]
+        row = [
+            doc["id"],
+            _truncate_name(doc["original_name"]),
+            str(doc["page_count"]),
+            str(kinds.get("text", 0)),
+            str(kinds.get("scan", 0)),
+            str(kinds.get("scan_with_text", 0)),
+        ]
+        row += [_state_label(doc["stages"], stage) for stage in _STAGE_ORDER]
+        rows.append(row)
+    widths = [max(len(row[col]) for row in rows) for col in range(len(_LIST_HEADER))]
+    lines = []
+    for row in rows:
+        cells = [
+            cell.rjust(width) if col in _LIST_NUMERIC_COLUMNS else cell.ljust(width)
+            for col, (cell, width) in enumerate(zip(row, widths))
+        ]
+        lines.append("  ".join(cells).rstrip())
+    return "\n".join(lines)
+
+
+def _minute_text(iso: str) -> str:
+    return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M")
+
+
+def _share_text(share: float | None) -> str:
+    return "—" if share is None else f"{share * 100:.0f}%"
+
+
+def render_show_text(doc: dict) -> str:
+    kinds = doc["page_kinds"]
+    lines = [
+        f"{doc['id']}  {doc['original_name']}",
+        f"SHA-256: {doc['sha256']}",
+        f"Копия: {doc['copy_path']}",
+        f"Источник: {doc['source_path']}",
+        f"Размер: {doc['size_bytes']} байт",
+        f"Добавлен: {_minute_text(doc['added_at'])}",
+        f"Заметка: {doc['note'] or '—'}",
+        f"Запуск добавления: {doc['intake_run_id']}",
+        "Виды страниц: "
+        + ", ".join(f"{label} {kinds.get(kind, 0)}" for kind, label in KIND_LABELS.items()),
+        "",
+        "Этапы:",
+    ]
+    for stage in _STAGE_ORDER:
+        info = doc["stages"].get(stage)
+        if info is None:
+            lines.append(f"  {_STAGE_NAMES[stage]}: —")
+            continue
+        line = f"  {_STAGE_NAMES[stage]}: {STATE_LABELS.get(info['state'], info['state'])}"
+        if info["reason"]:
+            line += f" — {info['reason']}"
+        lines.append(line)
+    lines += ["", "Страницы:"]
+    for page in doc["pages"]:
+        lines.append(
+            f"  {page['page_number']}  {KIND_LABELS[page['kind']]}"
+            f"  символов {page['char_count']}"
+            f"  изображения {page['image_coverage'] * 100:.0f}%"
+            f"  невидимый текст {_share_text(page['invisible_text_share'])}"
+        )
+    return "\n".join(lines)
+
+
+def render_verify_text(result: dict) -> str:
+    problems = result["problems"]
+    if not problems:
+        return f"Копии в порядке: {result['checked']}"
+    lines = [
+        f"{p['document_id']}  {p['copy_path']}  — {_PROBLEM_TEXT[p['problem']]}"
+        for p in problems
+    ]
+    lines.append(f"Проверено: {result['checked']}, с ошибками: {len(problems)}")
+    return "\n".join(lines)

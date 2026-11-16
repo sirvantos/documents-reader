@@ -106,12 +106,12 @@ description: "Task list for feature 001: document intake and registry"
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T027 [P] [US2] Write integration tests in `tests/integration/test_duplicates.py` (US2 acceptance 1–3, FR-005, SC-002): adding the same folder twice → document count unchanged, every file `existing` with its original ID; same content under another name → `existing` pointing to the existing ID; same name with different content → `added` with a `name_collision` warning naming the other ID; two identical files inside one `add` call → first `added`, second `existing`
+- [X] T027 [P] [US2] Write integration tests in `tests/integration/test_duplicates.py` (US2 acceptance 1–3, FR-005, SC-002): adding the same folder twice → document count unchanged, every file `existing` with its original ID; same content under another name → `existing` pointing to the existing ID; same name with different content → `added` with a `name_collision` warning naming the other ID; two identical files inside one `add` call → first `added`, second `existing`
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Extend `src/docreader/intake.py`: after hashing, look up `document.sha256` and the hashes already registered in the current run → `existing` with `document_id` (no copy, no transaction); before inserting, query `lower(original_name)` matches with a different hash → `name_collision` warning
-- [ ] T029 [US2] Extend `src/docreader/render.py`: «Уже есть: N» group (`<name>  → D-XXXX`) and the `name_collision` warning text «имя совпадает с D-XXXX (другое содержимое)»; JSON `existing` entries per contracts/cli.md
+- [X] T028 [US2] Extend `src/docreader/intake.py`: after hashing, look up `document.sha256` and the hashes already registered in the current run → `existing` with `document_id` (no copy, no transaction); before inserting, query `lower(original_name)` matches with a different hash → `name_collision` warning
+- [X] T029 [US2] Extend `src/docreader/render.py`: «Уже есть: N» group (`<name>  → D-XXXX`) and the `name_collision` warning text «имя совпадает с D-XXXX (другое содержимое)»; JSON `existing` entries per contracts/cli.md
 
 **Checkpoint**: US1 + US2 — повторные запуски безопасны
 
@@ -125,17 +125,17 @@ description: "Task list for feature 001: document intake and registry"
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T030 [P] [US3] Write unit tests in `tests/unit/test_page_kind_rule.py` for the full rule (research R-2) with default thresholds 20 / 0.85: `char_count` 19 → `scan` regardless of coverage; `char_count` 20 and coverage 0.84 → `text`; `char_count` 20 and coverage 0.85 → `scan_with_text`; custom thresholds respected
-- [ ] T031 [P] [US3] Write integration tests in `tests/integration/test_page_kinds.py` (US3 acceptance 1–4, FR-007): `digital` → all `text`; `image_only` → all `scan`; `mixed` → text pages `text`, image page `scan`; `image_with_invisible_text` → `scan_with_text`; `image_strips` → `scan`; `image_in_form` → `scan`; `logo_and_text` → `text`; `blank_page` → `scan`; report warnings `scan_pages` with page numbers, `scan_with_text_pages`, and `large_file` when `page_count > intake.large_file_pages` (set the threshold low in `settings.toml` for the test); `page_kinds` counts in the JSON report
-- [ ] T032 [P] [US3] Write integration tests in `tests/integration/test_verify_reclassify.py` for `reclassify` and `page-kinds-check`: changing `full_image_coverage` in `settings.toml` and running `reclassify` changes `page.kind` without reopening files (delete the copy first to prove it), sets `kind_run_id` to a new run with `settings.command = 'reclassify'`, resets all `stage_status` of changed documents to `pending` (set one to `done` first) and leaves unchanged documents untouched; `reclassify D-0001` limits to one document; `page-kinds-check` on a labels CSV prints accuracy and a 3×3 confusion matrix, exits 0 at ≥ 95% and 1 below; unknown document/page or bad `kind` in the CSV → exit 1 with the line number
+- [X] T030 [P] [US3] Write unit tests in `tests/unit/test_page_kind_rule.py` for the full rule (research R-2) with default thresholds 20 / 0.85: `char_count` 19 → `scan` regardless of coverage; `char_count` 20 and coverage 0.84 → `text`; `char_count` 20 and coverage 0.85 → `scan_with_text`; custom thresholds respected
+- [X] T031 [P] [US3] Write integration tests in `tests/integration/test_page_kinds.py` (US3 acceptance 1–4, FR-007): `digital` → all `text`; `image_only` → all `scan`; `mixed` → text pages `text`, image page `scan`; `image_with_invisible_text` → `scan_with_text`; `image_strips` → `scan`; `image_in_form` → `scan`; `logo_and_text` → `text`; `blank_page` → `scan`; report warnings `scan_pages` with page numbers, `scan_with_text_pages`, and `large_file` when `page_count > intake.large_file_pages` (set the threshold low in `settings.toml` for the test); `page_kinds` counts in the JSON report
+- [X] T032 [P] [US3] Write integration tests in `tests/integration/test_verify_reclassify.py` for `reclassify` and `page-kinds-check`: changing `full_image_coverage` in `settings.toml` and running `reclassify` changes `page.kind` without reopening files (delete the copy first to prove it), sets `kind_run_id` to a new run with `settings.command = 'reclassify'`, resets all `stage_status` of changed documents to `pending` (set one to `done` first) and leaves unchanged documents untouched; `reclassify D-0001` limits to one document; `page-kinds-check` on a labels CSV prints accuracy and a 3×3 confusion matrix, exits 0 at ≥ 95% and 1 below; unknown document/page or bad `kind` in the CSV → exit 1 with the line number
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] Replace the simplified `classify` in `src/docreader/pdfpages.py` with the full rule from research R-2 (`not has_text` → `scan`; `has_text and full_image` → `scan_with_text`; otherwise `text`); make `tests/unit/test_page_kind_rule.py` pass
-- [ ] T034 [US3] Add warnings in `src/docreader/intake.py` and their texts in `src/docreader/render.py`: `scan_pages` («страницы-сканы на первом этапе не читаются: стр. …»), `scan_with_text_pages` («текст стр. … получен распознаванием и может содержать ошибки», ranges collapsed like `1–9`), `large_file` («N страниц — больше M»)
-- [ ] T035 [US3] Implement `reclassify(conn, settings, ids=None, label=None)` in `src/docreader/registry.py`: new run (`stage = 'intake'`, `settings.command = 'reclassify'`), recompute `kind` from stored metrics, update changed pages with the new `kind_run_id`, reset all `stage_status` of documents with changes to `pending` (reason NULL, `run_id` NULL, `updated_at = now()`), return per-document change counts
-- [ ] T036 [US3] Implement `page_kinds_check(conn, csv_path)` in `src/docreader/registry.py` (contracts/cli.md): parse UTF-8 CSV with header `document_id,page_number,kind`, validate each row, compare with stored kinds, return total, accuracy, 3×3 confusion matrix and mismatches with their metrics
-- [ ] T037 [US3] Wire `reclassify [<ID>...] [--label]` and `page-kinds-check <labels.csv>` in `src/docreader/cli.py` and their output in `src/docreader/render.py`; accuracy below 0.95 → `UserError` (exit 1)
+- [X] T033 [US3] Replace the simplified `classify` in `src/docreader/pdfpages.py` with the full rule from research R-2 (`not has_text` → `scan`; `has_text and full_image` → `scan_with_text`; otherwise `text`); make `tests/unit/test_page_kind_rule.py` pass
+- [X] T034 [US3] Add warnings in `src/docreader/intake.py` and their texts in `src/docreader/render.py`: `scan_pages` («страницы-сканы на первом этапе не читаются: стр. …»), `scan_with_text_pages` («текст стр. … получен распознаванием и может содержать ошибки», ranges collapsed like `1–9`), `large_file` («N страниц — больше M»)
+- [X] T035 [US3] Implement `reclassify(conn, settings, ids=None, label=None)` in `src/docreader/registry.py`: new run (`stage = 'intake'`, `settings.command = 'reclassify'`), recompute `kind` from stored metrics, update changed pages with the new `kind_run_id`, reset all `stage_status` of documents with changes to `pending` (reason NULL, `run_id` NULL, `updated_at = now()`), return per-document change counts
+- [X] T036 [US3] Implement `page_kinds_check(conn, csv_path)` in `src/docreader/registry.py` (contracts/cli.md): parse UTF-8 CSV with header `document_id,page_number,kind`, validate each row, compare with stored kinds, return total, accuracy, 3×3 confusion matrix and mismatches with their metrics
+- [X] T037 [US3] Wire `reclassify [<ID>...] [--label]` and `page-kinds-check <labels.csv>` in `src/docreader/cli.py` and their output in `src/docreader/render.py`; accuracy below 0.95 → `UserError` (exit 1)
 
 **Checkpoint**: US1–US3 — полный приём и виды страниц
 
@@ -149,15 +149,15 @@ description: "Task list for feature 001: document intake and registry"
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T038 [P] [US4] Write integration tests in `tests/integration/test_list_show.py` (US4 acceptance 1–3, FR-008, FR-010, SC-006): `list` on an empty registry prints «Реестр пуст», exit 0; after adding, `list` shows ID, name, pages, counts per kind and all five stages as «ожидает»; names longer than 40 characters truncated with «…» in text, full in `--json`; `show d-1` equals `show D-0001`; `show` prints SHA-256, absolute copy path that exists, source path, size, added date, intake run and per-page kind with metrics; unknown ID → exit 1; a `stage_status` row set to `needs_review` with a reason shows «требует просмотра» and the reason
-- [ ] T039 [US4] Add `verify` tests to `tests/integration/test_verify_reclassify.py`: all copies intact → «Копии в порядке: N», exit 0; a copy modified (chmod + write) or deleted → listed, exit 1; `verify D-0002` checks only that document; no run row is created
+- [X] T038 [P] [US4] Write integration tests in `tests/integration/test_list_show.py` (US4 acceptance 1–3, FR-008, FR-010, SC-006): `list` on an empty registry prints «Реестр пуст», exit 0; after adding, `list` shows ID, name, pages, counts per kind and all five stages as «ожидает»; names longer than 40 characters truncated with «…» in text, full in `--json`; `show d-1` equals `show D-0001`; `show` prints SHA-256, absolute copy path that exists, source path, size, added date, intake run and per-page kind with metrics; unknown ID → exit 1; a `stage_status` row set to `needs_review` with a reason shows «требует просмотра» and the reason
+- [X] T039 [US4] Add `verify` tests to `tests/integration/test_verify_reclassify.py`: all copies intact → «Копии в порядке: N», exit 0; a copy modified (chmod + write) or deleted → listed, exit 1; `verify D-0002` checks only that document; no run row is created
 
 ### Implementation for User Story 4
 
-- [ ] T040 [US4] Implement `list_documents(conn)` and `show_document(conn, seq)` in `src/docreader/registry.py` returning plain dicts with the fields from contracts/cli.md (`page_kinds`, `stages{stage: {state, reason}}`, pages with metrics)
-- [ ] T041 [US4] Implement `verify(conn, settings, ids=None)` in `src/docreader/registry.py`: re-hash each copy, report missing and mismatched
-- [ ] T042 [US4] Implement list/show/verify rendering in `src/docreader/render.py`: table columns «ID, Имя, Стр., Текст, Скан, Скан+т, Чтение, Структура, Извлеч., Проверки, Индекс.», state names «ожидает / готово / требует просмотра / ошибка», JSON forms per contracts/cli.md
-- [ ] T043 [US4] Wire `list [--json]`, `show <ID> [--json]`, `verify [<ID>...]` in `src/docreader/cli.py`
+- [X] T040 [US4] Implement `list_documents(conn)` and `show_document(conn, seq)` in `src/docreader/registry.py` returning plain dicts with the fields from contracts/cli.md (`page_kinds`, `stages{stage: {state, reason}}`, pages with metrics)
+- [X] T041 [US4] Implement `verify(conn, settings, ids=None)` in `src/docreader/registry.py`: re-hash each copy, report missing and mismatched
+- [X] T042 [US4] Implement list/show/verify rendering in `src/docreader/render.py`: table columns «ID, Имя, Стр., Текст, Скан, Скан+т, Чтение, Структура, Извлеч., Проверки, Индекс.», state names «ожидает / готово / требует просмотра / ошибка», JSON forms per contracts/cli.md
+- [X] T043 [US4] Wire `list [--json]`, `show <ID> [--json]`, `verify [<ID>...]` in `src/docreader/cli.py`
 
 **Checkpoint**: US1–US4 — реестр виден целиком
 
@@ -171,12 +171,12 @@ description: "Task list for feature 001: document intake and registry"
 
 ### Tests for User Story 5 ⚠️
 
-- [ ] T044 [P] [US5] Write integration tests in `tests/integration/test_remove.py` (US5 acceptance 1–3, FR-011, FR-003): `remove D-0001 --yes` → no `document`, `page`, `stage_status` rows for it, copy file gone, `run` rows unchanged, one `deletion_log` row with ID, original name, SHA-256; confirmation by typing the ID via `input=` works; wrong or empty input → «Удаление отменено», exit 1, nothing changed; non-TTY stdin without `--yes` → exit 1, nothing changed; re-adding the same file after removal → new document with the next ID (removing the last document and adding a new one never reuses its number); copy-file deletion failure (make the folder read-only) → warning, exit 0, rows deleted
+- [X] T044 [P] [US5] Write integration tests in `tests/integration/test_remove.py` (US5 acceptance 1–3, FR-011, FR-003): `remove D-0001 --yes` → no `document`, `page`, `stage_status` rows for it, copy file gone, `run` rows unchanged, one `deletion_log` row with ID, original name, SHA-256; confirmation by typing the ID via `input=` works; wrong or empty input → «Удаление отменено», exit 1, nothing changed; non-TTY stdin without `--yes` → exit 1, nothing changed; re-adding the same file after removal → new document with the next ID (removing the last document and adding a new one never reuses its number); copy-file deletion failure (make the folder read-only) → warning, exit 0, rows deleted
 
 ### Implementation for User Story 5
 
-- [ ] T045 [US5] Implement `remove(conn, settings, seq)` in `src/docreader/registry.py`: one transaction inserting into `deletion_log` and `DELETE FROM document WHERE id = …` (cascade), commit, then unlink the copy; unlink failure returned as a warning
-- [ ] T046 [US5] Wire `remove <ID> [--yes]` in `src/docreader/cli.py`: print ID, name, pages, copy path; require typing the ID unless `--yes`; refuse when stdin is not a TTY and `--yes` is absent
+- [X] T045 [US5] Implement `remove(conn, settings, seq)` in `src/docreader/registry.py`: one transaction inserting into `deletion_log` and `DELETE FROM document WHERE id = …` (cascade), commit, then unlink the copy; unlink failure returned as a warning
+- [X] T046 [US5] Wire `remove <ID> [--yes]` in `src/docreader/cli.py`: print ID, name, pages, copy path; require typing the ID unless `--yes`; refuse when stdin is not a TTY and `--yes` is absent
 
 **Checkpoint**: все истории реализованы
 
@@ -184,10 +184,10 @@ description: "Task list for feature 001: document intake and registry"
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T047 Add `--note ТЕКСТ` to `add` (FR-006) in `src/docreader/cli.py` and `src/docreader/intake.py` (stored in `document.note`, shown by `show`), with a test in `tests/integration/test_add.py`
-- [ ] T048 [P] Add a «Commands» section to `CLAUDE.md`: `uv sync`, `uv run pytest`, required `DOCREADER_TEST_DATABASE_URL`, `uv run docreader --help`
-- [ ] T049 Run the full suite `uv run pytest` and fix failures; confirm no test needs the network or a real model
-- [ ] T050 Validate quickstart.md part A on the development server with a throwaway setup: `DOCREADER_DATA_DIR=<session scratchpad>/demo-data` and a separate database `docreader_demo` (`createdb docreader_demo`, `dropdb docreader_demo` afterwards). Never use `~/docreader-data` or the `docreader` database. Run two `add`, `list`, `show`, `remove`, `verify`; correct quickstart.md where the actual output differs. Part B is T051
+- [X] T047 Add `--note ТЕКСТ` to `add` (FR-006) in `src/docreader/cli.py` and `src/docreader/intake.py` (stored in `document.note`, shown by `show`), with a test in `tests/integration/test_add.py`
+- [X] T048 [P] Add a «Commands» section to `CLAUDE.md`: `uv sync`, `uv run pytest`, required `DOCREADER_TEST_DATABASE_URL`, `uv run docreader --help`
+- [X] T049 Run the full suite `uv run pytest` and fix failures; confirm no test needs the network or a real model
+- [X] T050 Validate quickstart.md part A on the development server with a throwaway setup: `DOCREADER_DATA_DIR=<session scratchpad>/demo-data` and a separate database `docreader_demo` (`createdb docreader_demo`, `dropdb docreader_demo` afterwards). Never use `~/docreader-data` or the `docreader` database. Run two `add`, `list`, `show`, `remove`, `verify`; correct quickstart.md where the actual output differs. Part B is T051
 - [ ] T051 Analyst (Mac, without the agent): run quickstart.md part B; report to the main session only pass/fail per SC-001…SC-006 and the two numbers (SC-004 accuracy, SC-005 time), without file names or document content; keep the figures in the data folder until feature 02 creates the results table
 
 ---

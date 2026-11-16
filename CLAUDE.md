@@ -64,3 +64,17 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 - Never send document content to any external service. All models run locally.
 - Code, identifiers, commit messages and code comments are in English.
   Specs and project docs are in Russian.
+
+## Commands
+
+- `uv sync` — install dependencies (including the dev group).
+- `DOCREADER_TEST_DATABASE_URL=postgresql:///postgres uv run pytest` — full test suite.
+  Integration tests need this variable: a local PostgreSQL role with CREATEDB. Each run
+  creates and drops a throwaway `docreader_test_*` database. Without the variable the
+  integration tests fail. `real_model` tests are excluded by default.
+- `uv run pytest tests/unit` — unit tests only; no database needed.
+- `uv run docreader --help` — the CLI. It needs `DOCREADER_DATA_DIR` (outside the
+  repository) and optionally `DOCREADER_DATABASE_URL` (default `postgresql:///docreader`,
+  local only).
+- On this dev server, manual CLI runs use a throwaway data dir and database
+  (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).

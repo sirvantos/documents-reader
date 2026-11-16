@@ -213,7 +213,11 @@ def analyse_pdf(path: str | Path) -> list[PageMetrics]:
 
 
 def classify(metrics: PageMetrics, thresholds: Thresholds) -> str:
-    """Minimal version of the rule: «есть текст» → text, otherwise scan."""
-    if metrics.char_count < thresholds.text_min_chars:
+    """no text → scan; text over a full-page image → scan_with_text; otherwise text."""
+    has_text = metrics.char_count >= thresholds.text_min_chars
+    full_image = metrics.image_coverage >= thresholds.full_image_coverage
+    if not has_text:
         return KIND_SCAN
+    if full_image:
+        return KIND_SCAN_WITH_TEXT
     return KIND_TEXT

@@ -284,3 +284,23 @@ def test_text_output_lists_added_and_rejected(cli, db, tmp_path):
     assert "D-0001" in result.stdout
     assert "D-0002" in result.stdout
     assert "Не добавлено: 1" in result.stdout
+
+
+def test_note_is_stored_for_every_added_document(cli, db, tmp_path):
+    """T047, FR-006: `--note` is written to each document added by that call."""
+    folder = tmp_path / "in"
+    folder.mkdir()
+    mk.make_digital(folder / "a.pdf", text_seed="note-a")
+    mk.make_digital(folder / "b.pdf", text_seed="note-b")
+    add_json(cli, folder, extra=("--note", "пакет от юристов"))
+
+    notes = db.execute("SELECT id, note FROM document ORDER BY seq").fetchall()
+    assert notes == [("D-0001", "пакет от юристов"), ("D-0002", "пакет от юристов")]
+
+
+def test_without_note_the_note_is_empty(cli, db, tmp_path):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    mk.make_digital(folder / "a.pdf", text_seed="no-note")
+    add_json(cli, folder)
+    assert db.execute("SELECT note FROM document").fetchone() == (None,)
