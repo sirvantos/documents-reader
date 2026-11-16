@@ -49,3 +49,18 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
     transaction ordering), classification and other decision rules, anything touching
     the privacy guards, and any task whose first delegated attempt failed review.
 - Independent tasks marked `[P]` may be delegated in parallel.
+
+## Project rules
+
+- Binding documents: `.specify/memory/constitution.md` (principles and limits),
+  `docs/tech-context.md` (stack and technical decisions),
+  `docs/field-catalog.md` (fields to extract). Read them before planning.
+- `docs/research/` is background material, not decisions. If it conflicts with
+  the documents above, they win.
+- Never read, open, print or copy real contracts, gold data or run results.
+  They live outside the repository in the data folder. Do not ask the user
+  to paste them.
+- Debug and test only on synthetic files in `tests/fixtures/`.
+- Never send document content to any external service. All models run locally.
+- Code, identifiers, commit messages and code comments are in English.
+  Specs and project docs are in Russian.
