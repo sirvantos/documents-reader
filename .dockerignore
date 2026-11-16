@@ -1,0 +1,13 @@
+# The test image needs only pyproject.toml, uv.lock, .python-version and src/.
+.git
+.venv
+.claude
+.specify
+.pytest_cache
+**/__pycache__
+docs
+specs
+tests
+data
+*.pdf
+.env

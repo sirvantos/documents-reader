@@ -72,6 +72,10 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   Integration tests need this variable: a local PostgreSQL role with CREATEDB. Each run
   creates and drops a throwaway `docreader_test_*` database. Without the variable the
   integration tests fail. `real_model` tests are excluded by default.
+- `docker compose run --rm tests` — full test suite in containers (throwaway PostgreSQL 17
+  in memory, no internet access, repo mounted read-only); extra pytest arguments go at the
+  end (`docker compose run --rm tests -k note -x`); `docker compose down` stops the database.
+  After changing dependencies, rebuild with `docker compose build tests`.
 - `uv run pytest tests/unit` — unit tests only; no database needed.
 - `uv run docreader --help` — the CLI. It needs `DOCREADER_DATA_DIR` (outside the
   repository) and optionally `DOCREADER_DATABASE_URL` (default `postgresql:///docreader`,
