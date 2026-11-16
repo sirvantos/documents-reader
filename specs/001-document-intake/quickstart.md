@@ -10,12 +10,19 @@
 
 ## Предварительные условия
 
-- macOS на Apple Silicon, `uv`, Python 3.11+ (ставится через `uv`).
-- PostgreSQL 17 из Homebrew, запущен локально:
-  ```
-  brew install postgresql@17 && brew services start postgresql@17
-  createdb docreader
-  ```
+Часть А выполняется на сервере разработки (Ubuntu 24.04) или на ноутбуке; часть Б —
+только на ноутбуке аналитика.
+
+- `uv`, Python 3.11+ (ставится через `uv`).
+- PostgreSQL 17, запущен локально:
+  - ноутбук (macOS):
+    ```
+    brew install postgresql@17 && brew services start postgresql@17
+    createdb docreader
+    ```
+  - сервер разработки (Ubuntu): PostgreSQL 17 из репозитория PGDG
+    (`apt.postgresql.org`), затем роль с правом создавать базы для текущего
+    пользователя и `createdb docreader`.
 - Папка данных вне репозитория, например `~/docreader-data`.
 
 ## Установка

@@ -5,6 +5,25 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 `docs/tech-context.md`, `docs/field-catalog.md`. Features are developed with Spec Kit
 (`/speckit.*` commands, artifacts in `specs/<NNN-feature>/`).
 
+## Machines
+
+- **This machine is the development server**: a weak VPS (Ubuntu 24.04, x86_64,
+  2 cores, ~4 GB RAM). Code is written and auto-tests run here.
+- No real models run here: never download model weights, start a model server, or
+  add tests that need one. Auto-tests use fake models: hand-written stubs and answers
+  recorded from the real model on synthetic contracts (test levels and rules:
+  "Модели в автотестах" in `docs/tech-context.md`).
+- A test that needs a real model belongs only in the `real_model` pytest group,
+  which is excluded by default and run by the analyst on the Mac.
+- Never hand-edit or fabricate recordings in `tests/recordings/` to make a test pass.
+  If a recording is missing or stale, stop and ask the analyst to re-record it on the Mac.
+- Output of runs on synthetic data that the analyst pastes in may be used for
+  debugging; never ask for output of runs on real contracts.
+- Real-model runs, quality/speed measurements and anything on real contracts happen
+  only on the analyst's Mac (Apple M3 Pro, 36 GB). Commands for that are written here
+  but run there by the analyst.
+- Code must work on both macOS (Apple Silicon) and Linux x86_64.
+
 ## Data privacy (constitution, principle I)
 
 - Never read, print, list or copy anything from the data directory

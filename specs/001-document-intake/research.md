@@ -162,8 +162,10 @@ SQL-файлы в пакете (`migrations/0001_intake.sql`), применяю�
 **Alternatives considered**: SQLAlchemy + Alembic (лишний слой); автоприменение миграций
 при каждом запуске (неявное изменение базы).
 
-**Установка PostgreSQL** (в tech-context не указано, как запускать): Homebrew
-`postgresql@17` + `pgvector`, подключение через Unix-сокет или `localhost`. Расширение
+**Установка PostgreSQL** (в tech-context не указано, как запускать): PostgreSQL 17 +
+`pgvector` на обеих машинах — на ноутбуке Homebrew `postgresql@17`, на сервере
+разработки (Ubuntu 24.04, где штатно идёт 16) — пакеты PGDG, чтобы версии совпадали;
+подключение через Unix-сокет или `localhost`. Расширение
 `vector` в этой фиче не создаётся — его создаст миграция фичи 07. **[проверить]** установку
 pgvector на ноутбуке до фичи 07.
 
