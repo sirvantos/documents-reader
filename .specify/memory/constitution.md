@@ -1,44 +1,55 @@
 <!--
 Sync Impact Report
 ==================
-Version change: (template, unversioned) → 1.1.0
-  Rationale: first filled-in constitution; version 1.1.0 taken verbatim from the source text
-  (docs/source/constitution-input.md), which fixes it explicitly.
+Version change: 1.1.0 → 2.0.0 (MAJOR)
+  Rationale: the first-stage limit «Две стороны договора» is redefined (генеральный подрядчик
+  и субподрядчик → «Заказчик» и «Подрядчик»); the language limit is redefined to cover
+  Russian contracts with Russian party identifiers. Redefinition of a limit is MAJOR under
+  the versioning policy below. Source: docs/source/constitution-input.md (text after ---).
 
-Principles (template placeholders → defined):
-  [PRINCIPLE_1_NAME] → I. Данные не покидают машину (НЕ ОБСУЖДАЕТСЯ)
-  [PRINCIPLE_2_NAME] → II. Исходный файл — источник истины
-  [PRINCIPLE_3_NAME] → III. Нет значения без цитаты (НЕ ОБСУЖДАЕТСЯ)
-  [PRINCIPLE_4_NAME] → IV. «Не найдено» — допустимый результат
-  [PRINCIPLE_5_NAME] → V. Сначала замер, потом усложнение
-  Added beyond template: VI. Этапы независимы и перезапускаемы, VII. Сомнительное — человеку,
-  VIII. Простота
+Modified principles:
+  I. Данные не покидают машину — rule unchanged; only the «Почему» rationale replaced
+     (personal data, bank details and commercial terms; legal basis still unconfirmed).
+  II–VIII — unchanged. Principles I and III are unchanged in substance.
 
-Added sections:
-  - О проекте
-  - Ограничения первого этапа          ([SECTION_2_NAME], verbatim from source)
-  - Что считается готовым PoC
-  - Порядок работы                     ([SECTION_3_NAME])
-  - Технический контекст               (verbatim from source)
-  - Разработка с ИИ-агентом            (verbatim from source)
-  - Изменение конституции              (Governance; source text + versioning policy and
-                                        compliance review added per Spec Kit requirements)
+Modified sections:
+  - О проекте: scope narrowed to договоры подряда ОАО «РЖД» (СМР и ПИР).
+  - Ограничения первого этапа:
+      «Только русский язык» → «Российские договоры на русском языке» (ИНН, КПП, ОГРН; рубли;
+        non-Russian letters, e.g. Kazakh, are flagged for manual review);
+      «Две стороны договора» → «Заказчик» и «Подрядчик»;
+      «Договоры не связаны между собой» + data moved to supplementary agreements
+        (e.g. календарный график работ) is treated as absent.
+  - Что считается готовым PoC: «37 основных полей» → «поля первой очереди каталога полей».
+  - Изменение конституции: Spec Kit additions kept (priority, versioning, compliance review).
 
+Added sections: none
 Removed sections: none
 
-Templates: not modified (scope of this command is the constitution only; plan/spec/tasks
-templates read the constitution at runtime).
+Templates: not modified (scope of this command is the constitution only).
 
-Referenced files verified present: docs/tech-context.md, docs/field-catalog.md
+Files that still reference генподрядчик / субподрядчик / БИН / Казахстан (out of date):
+  ⚠ docs/tech-context.md:247 — «две стороны: генеральный подрядчик и субподрядчик»
+  ⚠ docs/features/05-field-extraction.md:196 — same assumption
+  ⚠ docs/features/06-rule-checks-and-statuses.md:22,45,106-108,185,189,200 — БИН checks
+      (12 digits, check digit) → need ИНН/КПП/ОГРН rules
+  ⚠ docs/features/10-table-answers.md:45,62-63,110,195 — субподрядчик, БИН, ТОО
+  ⚠ docs/features/11-routing.md:25 — субподрядчик
+  ⚠ docs/features/02-evaluation-set-and-results.md:128,305 — БИН (308: ТОО)
+  ✅ .specify/ — no hits outside this constitution (which mentions Kazakh letters only as
+      an example of non-Russian alphabet)
+  (docs/research/04-stage-4-answering.md:165 mentions ТОО — background only, not binding)
+  Not re-checked here: docs/field-catalog.md (no hits), specs/ (outside requested scope).
 
-Deferred TODOs: none
+Deferred TODOs: update the files above to the new parties and Russian identifiers.
 -->
 
 # Конституция проекта: извлечение данных и поиск по договорам (PoC)
 
 ## О проекте
 
-Локальная система, которая читает русскоязычные договоры, извлекает из них ключевые факты
+Локальная система, которая читает русскоязычные договоры подряда ОАО «РЖД»
+(строительно-монтажные и проектно-изыскательские работы), извлекает из них ключевые факты
 в таблицу, делает текст договоров доступным для поиска и отвечает на вопросы со ссылкой
 на конкретный пункт договора.
 
@@ -63,8 +74,10 @@ Deferred TODOs: none
 - Реальные данные договоров, эталонные ответы и результаты прогонов не попадают
   в удалённый репозиторий. В репозитории хранится только код и синтетические примеры.
 
-**Почему:** действуют требования локализации данных; юридическое подтверждение на вынос
-данных не получено.
+**Почему:** договоры содержат персональные данные подписантов, банковские реквизиты
+и коммерческие условия заказчика. Какие требования к локализации и защите данных
+применимы, юридически не подтверждено, как и разрешение на передачу данных вовне.
+До такого подтверждения данные обрабатываются только локально.
 
 ### II. Исходный файл — источник истины
 
@@ -135,16 +148,16 @@ Deferred TODOs: none
 | Ограничение | Следствие |
 |---|---|
 | Только PDF с извлекаемым текстом | Распознавание сканов не выполняется; страница-скан помечается и не обрабатывается |
-| Только русский язык | Страница с казахскими буквами (Ә, Ғ, Қ, Ң, Ө, Ұ, Ү, Һ, І) помечается и уходит на ручной просмотр |
-| Две стороны договора | Генеральный подрядчик и субподрядчик; договор с иным составом сторон помечается |
-| Договоры не связаны между собой | Дополнительные соглашения не обрабатываются как изменения; если такой файл попадёт в систему, он будет обработан как самостоятельный договор |
+| Российские договоры на русском языке | Реквизиты сторон — ИНН, КПП, ОГРН; валюта — рубли. Страница с буквами не русского алфавита (например, казахскими: Ә, Ғ, Қ, Ң, Ө, Ұ, Ү, Һ, І) помечается и уходит на ручной просмотр |
+| Две стороны договора | «Заказчик» и «Подрядчик»; договор с иным составом сторон помечается |
+| Договоры не связаны между собой | Дополнительные соглашения не обрабатываются как изменения; если такой файл попадёт в систему, он будет обработан как самостоятельный договор. Сведения, которые договор переносит в дополнительные соглашения (например, календарный график работ), считаются отсутствующими |
 | Один пользователь | Права доступа и учётные записи не реализуются; веб-экран не открывается по сети |
 | 50 договоров | Скорость важна только в пределах «прогон набора за разумное время на ноутбуке» |
 | Система сообщает, что написано в договоре | Юридические оценки («рискован ли пункт», «законно ли условие») не даются |
 
 ## Что считается готовым PoC
 
-- На 50 договорах заполняется таблица по каталогу полей (37 основных полей).
+- На 50 договорах заполняется таблица по полям первой очереди каталога полей.
 - Система отвечает на 50–100 эталонных вопросов с цитатой и ссылкой на пункт.
 - По каждому из четырёх этапов есть измеренные цифры в таблице результатов.
 - Для каждой ошибки можно определить, на каком этапе она возникла.
@@ -202,4 +215,4 @@ Deferred TODOs: none
   проектирования и после него; найденные отступления оформляются по правилу из раздела
   «Порядок работы».
 
-**Версия:** 1.1.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-15
+**Версия:** 2.0.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-17
