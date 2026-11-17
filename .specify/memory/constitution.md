@@ -28,20 +28,18 @@ Removed sections: none
 
 Templates: not modified (scope of this command is the constitution only).
 
-Files that still reference генподрядчик / субподрядчик / БИН / Казахстан (out of date):
-  ⚠ docs/tech-context.md:247 — «две стороны: генеральный подрядчик и субподрядчик»
-  ⚠ docs/features/05-field-extraction.md:196 — same assumption
-  ⚠ docs/features/06-rule-checks-and-statuses.md:22,45,106-108,185,189,200 — БИН checks
-      (12 digits, check digit) → need ИНН/КПП/ОГРН rules
-  ⚠ docs/features/10-table-answers.md:45,62-63,110,195 — субподрядчик, БИН, ТОО
-  ⚠ docs/features/11-routing.md:25 — субподрядчик
-  ⚠ docs/features/02-evaluation-set-and-results.md:128,305 — БИН (308: ТОО)
-  ✅ .specify/ — no hits outside this constitution (which mentions Kazakh letters only as
-      an example of non-Russian alphabet)
-  (docs/research/04-stage-4-answering.md:165 mentions ТОО — background only, not binding)
-  Not re-checked here: docs/field-catalog.md (no hits), specs/ (outside requested scope).
+Files that referenced генподрядчик / субподрядчик / БИН / Казахстан — updated in the
+follow-up commit to «Заказчик»/«Подрядчик», ИНН/КПП/ОГРН, ООО/АО:
+  ✅ docs/tech-context.md (assumptions table)
+  ✅ docs/features/05-field-extraction.md (assumptions)
+  ✅ docs/features/06-rule-checks-and-statuses.md (БИН rules → ИНН/КПП/ОГРН, defers to
+      «Правила проверки» in docs/field-catalog.md)
+  ✅ docs/features/10-table-answers.md, 11-routing.md, 02-evaluation-set-and-results.md
+  ✅ docs/field-catalog.md — already aligned
+  ✅ .specify/ — no other hits
+  (docs/research/ — background only, not binding; left as is)
 
-Deferred TODOs: update the files above to the new parties and Russian identifiers.
+Deferred TODOs: none
 -->
 
 # Конституция проекта: извлечение данных и поиск по договорам (PoC)
