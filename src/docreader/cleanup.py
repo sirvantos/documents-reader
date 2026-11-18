@@ -68,9 +68,10 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
         for line in page.lines:
             if line.role != "body" or not line.text.strip():
                 continue
-            if line.bbox[3] >= page.height * (1 - settings.header_band):
+            box = line.display_bbox or line.bbox
+            if box[3] >= page.height * (1 - settings.header_band):
                 band = "header"
-            elif line.bbox[1] <= page.height * settings.header_band:
+            elif box[1] <= page.height * settings.header_band:
                 band = "footer"
             else:
                 continue
@@ -78,7 +79,7 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
                 line.role = "page_number"
                 continue
             groups[(band, _furniture_key(line.text))].append(
-                (page.page_number, line.bbox[0], line.bbox[3], line)
+                (page.page_number, box[0], box[3], line)
             )
     total = len(pages)
     for (band, _key), entries in groups.items():

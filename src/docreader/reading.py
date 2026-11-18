@@ -23,7 +23,7 @@ from docreader.cleanup import DocumentText, PageLines, build_document_text, mark
 from docreader.config import Settings
 from docreader.errors import UserError
 from docreader.ids import format_document_id
-from docreader.pagetext import Line, build_lines, read_page_chars
+from docreader.pagetext import Line, layout_page, read_page_chars, read_page_rules
 from docreader.pdfpages import PdfOpenError, open_pdf
 from docreader.quality import (
     FLAG_ORDER,
@@ -32,6 +32,7 @@ from docreader.quality import (
     content_flags,
     count_map_errors,
     document_state,
+    layout_flag,
     skip_flag,
 )
 
@@ -58,6 +59,8 @@ class PageResult:
     lines: list[Line] = field(default_factory=list)
     flags: list[Flag] = field(default_factory=list)
     has_table: bool = False
+    display_height: float | None = None  # page height after /Rotate; None: same as `height`
+    ends_in_columns: bool = False
 
 
 WordCheck = Callable[[str], bool]
@@ -114,7 +117,12 @@ def _page_infos(conn: psycopg.Connection, doc_id: str) -> list[PageInfo]:
     return [PageInfo(*row) for row in rows]
 
 
-def _read_page(page: pdfium.PdfPage, info: PageInfo, settings: Settings) -> PageResult:
+def _read_page(
+    page: pdfium.PdfPage,
+    info: PageInfo,
+    settings: Settings,
+    continues_columns: bool = False,
+) -> PageResult:
     left, bottom, right, top = page.get_cropbox()
     result = PageResult(
         number=info.page_number,
@@ -122,12 +130,24 @@ def _read_page(page: pdfium.PdfPage, info: PageInfo, settings: Settings) -> Page
         width=right - left,
         height=top - bottom,
     )
+    result.display_height = result.width if result.rotation in (90, 270) else result.height
     flag = skip_flag(info)
     if flag is not None:
         result.flags.append(flag)
         return result
     chars = read_page_chars(page)
-    result.lines = build_lines(chars)
+    layout = layout_page(
+        chars,
+        rotation=result.rotation,
+        width=result.width,
+        height=result.height,
+        rules=read_page_rules(page),
+        settings=settings.reading,
+        continues_columns=continues_columns,
+    )
+    result.lines = layout.lines
+    result.has_table = layout.has_table
+    result.ends_in_columns = layout.ends_in_columns
     text = "\n".join(line.text for line in result.lines)
     result.flags = content_flags(
         info,
@@ -136,6 +156,11 @@ def _read_page(page: pdfium.PdfPage, info: PageInfo, settings: Settings) -> Page
         settings.text_min_chars,
         map_errors=count_map_errors(chars),
     )
+    flag = layout_flag(
+        rotated_lines=layout.rotated_lines, unresolved_lines=layout.unresolved_lines
+    )
+    if flag is not None:
+        result.flags.append(flag)
     return result
 
 
@@ -155,13 +180,17 @@ def read_copy(
                 f"в копии {len(pdf)} стр., в реестре {len(infos)} — "
                 f"проверьте docreader verify {doc_id}"
             )
-        results = []
+        results: list[PageResult] = []
+        continues = False
         for info in infos:
             page = pdf[info.page_number - 1]
             try:
-                results.append(_read_page(page, info, settings))
+                result = _read_page(page, info, settings, continues)
             finally:
                 page.close()
+            results.append(result)
+            if skip_flag(info) is None:  # skipped pages are not read and keep the state
+                continues = result.ends_in_columns
         return results
     finally:
         pdf.close()
@@ -284,7 +313,14 @@ def clean_document_text(
 ) -> DocumentText:
     """Mark headers, footers and page numbers, then build the clean text (R-4, R-6)."""
     mark_page_furniture(
-        [PageLines(p.number, p.height, p.lines) for p in pages], settings.reading
+        [
+            PageLines(
+                p.number,
+                p.height if p.display_height is None else p.display_height,
+                p.lines,
+            )
+            for p in pages
+        ], settings.reading
     )
     return build_document_text([(p.number, p.lines) for p in pages], is_known)
 
