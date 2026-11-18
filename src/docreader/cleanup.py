@@ -130,15 +130,18 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
     `header_min_pages` consecutive pages whose printed numbers grow with the PDF page
     (one offset) at the same distance from the band edge: annexes may move the number
     or restart the numbering. A lone number near the page edge stays in the text.
-    Table cells are never furniture: they are contract data (amounts, totals).
+    Table cells are contract data (amounts, totals) and never make furniture on their
+    own. A cell line only joins furniture already found outside tables at the same
+    place: a page frame joined to a table grid puts the footer of that page in a cell.
     """
     if len(pages) < settings.header_min_pages:
         return
     groups: dict[tuple[str, str], list[_Entry]] = defaultdict(list)
     numbered: dict[tuple[str, int], list[_Entry]] = defaultdict(list)
+    cells: list[tuple[tuple[str, str], _Entry]] = []
     for page in pages:
         for line in page.lines:
-            if line.role != "body" or line.table is not None or not line.text.strip():
+            if line.role != "body" or not line.text.strip():
                 continue
             box = line.display_bbox or line.bbox
             band = _band(box, page.height, settings.header_band)
@@ -147,19 +150,33 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
             entry = _Entry(page.page_number, _place(box, page, band), line)
             # page numbers form one group whatever their form («- 3 -» / «Стр. 4»)
             text = line.text.strip()
-            if _PAGE_NUMBER.match(text):
-                groups[(band, _PAGE_NUMBER_KEY)].append(entry)
+            is_number = _PAGE_NUMBER.match(text) is not None
+            key = (band, _PAGE_NUMBER_KEY if is_number else _furniture_key(text))
+            if line.table is not None:
+                cells.append((key, entry))
+                continue
+            groups[key].append(entry)
+            if is_number:
                 offset = _page_number_offset(text, page.page_number)
                 if offset is not None:
                     numbered[(band, offset)].append(entry)
-            else:
-                groups[(band, _furniture_key(text))].append(entry)
     total = len(pages)
     for (band, _key), entries in groups.items():
         for entry in entries:
             near_pages = {e.page for e in entries if _same_place(entry.place, e.place)}
             if len(near_pages) / total > settings.header_min_share:
                 entry.line.role = "page_number" if _key == _PAGE_NUMBER_KEY else band
+    for key, cell in cells:
+        found = next(
+            (
+                e.line.role
+                for e in groups.get(key, ())
+                if e.line.role != "body" and _same_place(cell.place, e.place)
+            ),
+            None,
+        )
+        if found is not None:
+            cell.line.role = found
     for entries in numbered.values():
         for entry in entries:
             level_pages = {

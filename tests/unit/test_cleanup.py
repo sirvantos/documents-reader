@@ -428,3 +428,23 @@ def test_short_run_of_numbers_stays_body():
     assert roles(pages[10]) == ["body", "body"]
     assert roles(pages[11]) == ["body", "body"]
     assert roles(pages[4]) == ["body", "page_number"]  # same place as the main numbers
+
+
+def test_footer_in_a_cell_joins_the_footer_found_outside_tables():
+    # a page frame joined to a table grid puts that page's footer and number in a cell
+    pages = make_pages(5, bottom="ООО «Ромашка»", number="Стр. {n}")
+    cell = {"t": 0, "row": 2, "cell": 3}
+    for line in pages[2].lines[1:]:
+        line.table = cell
+    mark_page_furniture(pages, ReadingSettings())
+    assert roles(pages[2]) == ["body", "footer", "page_number"]
+
+
+def test_cell_at_another_place_stays_body():
+    pages = make_pages(5, bottom="ООО «Ромашка»")
+    pages[2].lines.append(
+        Line(index=7, text="ООО «Ромашка»", bbox=(50.0, 50.0, 300.0, 65.0),
+             table={"t": 0, "row": 5, "cell": 0})
+    )
+    mark_page_furniture(pages, ReadingSettings())
+    assert roles(pages[2]) == ["body", "footer", "body"]
