@@ -9,9 +9,6 @@ import psycopg
 from docreader.config import Settings
 from docreader.errors import EnvironmentProblem
 
-# Document processing stages (FR-008). Must match the CHECK on stage_status.stage.
-STAGES = ("reading", "structure", "extraction", "checks", "indexing")
-
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 _CREATE_SCHEMA_MIGRATIONS = """

@@ -13,11 +13,10 @@ from psycopg.rows import dict_row
 
 from docreader import runs
 from docreader.config import Settings
-from docreader.db import STAGES
 from docreader.errors import UserError
 from docreader.ids import format_document_id, parse_document_id
-from docreader.intake import INTAKE_STAGE
 from docreader.pdfpages import KINDS, PageMetrics, classify
+from docreader.stages import STAGES, RunStage, reset_all
 
 
 def _not_found(seq: int) -> UserError:
@@ -59,7 +58,7 @@ def reclassify(
     doc_ids = _require_documents(conn, seqs) if seqs else None
 
     run_settings = {"command": "reclassify", **settings.settings_for_run()}
-    run_id = runs.start_run(conn, INTAKE_STAGE, run_settings, label)
+    run_id = runs.start_run(conn, RunStage.INTAKE, run_settings, label)
 
     changed: dict[str, list[tuple[int, str, str]]] = defaultdict(list)
     with conn.transaction():
@@ -91,11 +90,7 @@ def reclassify(
                 ],
             )
         if changed:
-            conn.execute(
-                "UPDATE stage_status SET state = 'pending', reason = NULL, run_id = NULL,"
-                " updated_at = now() WHERE document_id = ANY(%s)",
-                (list(changed),),
-            )
+            reset_all(conn, list(changed))
     runs.finish_run(conn, run_id)
 
     checked = sorted({r[0] for r in rows}, key=lambda i: int(i[2:]))

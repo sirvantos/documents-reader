@@ -10,6 +10,7 @@ from docreader.errors import UserError
 from docreader.ids import format_document_id
 from docreader.quality import FLAG_ORDER
 from docreader.registry import _not_found, find_document
+from docreader.stages import Stage, State
 from docreader.textnorm import normalize_chars
 
 
@@ -225,14 +226,15 @@ def reading_report(conn: psycopg.Connection) -> dict:
         f"SELECT d.id, d.original_name, d.page_count, s.state,"
         f" coalesce(pt.read, 0), coalesce(pt.tables, 0), {flag_selects}"
         " FROM document d"
-        " JOIN stage_status s ON s.document_id = d.id AND s.stage = 'reading'"
+        " JOIN stage_status s ON s.document_id = d.id AND s.stage = %(stage)s"
         " LEFT JOIN (SELECT document_id,"
         "   count(*) FILTER (WHERE jsonb_array_length(lines) > 0) AS read,"
         "   count(*) FILTER (WHERE has_table) AS tables"
         "   FROM page_text GROUP BY document_id) pt ON pt.document_id = d.id"
         f" LEFT JOIN (SELECT document_id, {flag_columns}"
         "   FROM page_flag GROUP BY document_id) pf ON pf.document_id = d.id"
-        " WHERE s.state <> 'pending' ORDER BY d.seq"
+        " WHERE s.state <> %(pending)s ORDER BY d.seq",
+        {"stage": Stage.READING, "pending": State.PENDING},
     ).fetchall()
     documents = [
         {

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from docreader.config import ReadingSettings
 from docreader.pagetext import Char
 from docreader.pdfpages import KIND_SCAN, KIND_SCAN_WITH_TEXT
+from docreader.stages import State
 
 # FR-006 order; it is also the order of the parts of the state reason.
 FLAG_NAMES: dict[str, str] = {
@@ -29,8 +30,6 @@ NEUTRAL_FLAGS = frozenset({"empty"})
 
 NO_TEXT_REASON = "нет прочитанного текста"
 
-STATE_DONE = "done"
-STATE_NEEDS_REVIEW = "needs_review"
 
 
 @dataclass(frozen=True)
@@ -244,7 +243,7 @@ def flags_reason(page_flags: Mapping[int, Sequence[Flag]]) -> str | None:
 
 def document_state(
     page_flags: Mapping[int, Sequence[Flag]], read_pages: int
-) -> tuple[str, str | None]:
+) -> tuple[State, str | None]:
     """State of the reading stage for a document and its reason (FR-008).
 
     `page_flags` maps every page number to its flags; `read_pages` is the number of
@@ -252,7 +251,7 @@ def document_state(
     """
     listed = flags_reason(page_flags)
     if read_pages == 0:
-        return STATE_NEEDS_REVIEW, f"{NO_TEXT_REASON}; {listed}" if listed else NO_TEXT_REASON
+        return State.NEEDS_REVIEW, f"{NO_TEXT_REASON}; {listed}" if listed else NO_TEXT_REASON
     if listed:
-        return STATE_NEEDS_REVIEW, listed
-    return STATE_DONE, None
+        return State.NEEDS_REVIEW, listed
+    return State.DONE, None

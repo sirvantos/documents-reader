@@ -18,7 +18,7 @@ import pypdfium2 as pdfium
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from docreader import runs
+from docreader import runs, stages
 from docreader.cleanup import DocumentText, PageLines, build_document_text, mark_page_furniture
 from docreader.config import Settings
 from docreader.errors import UserError
@@ -35,14 +35,10 @@ from docreader.quality import (
     layout_flag,
     skip_flag,
 )
+from docreader.stages import Stage, State
 
-READING_STAGE = "reading"
-# Stages that work on the read text; reset when the text changes (FR-012, task T029).
-LATER_STAGES = ("structure", "extraction", "checks", "indexing")
+# Later stages work on the read text; reset when the text changes (FR-012, task T029).
 TEXT_CHANGED_REASON = "текст изменён"
-
-STATE_FAILED = "failed"
-_STATES = ("done", "needs_review", STATE_FAILED)
 _MAX_ERROR_LEN = 500
 
 
@@ -100,8 +96,8 @@ def _select_documents(
             return cur.execute(base + " ORDER BY d.seq").fetchall()
         return cur.execute(
             base + " JOIN stage_status s ON s.document_id = d.id AND s.stage = %s"
-            " WHERE s.state IN ('pending', 'failed') ORDER BY d.seq",
-            (READING_STAGE,),
+            " WHERE s.state = ANY(%s) ORDER BY d.seq",
+            (Stage.READING, [State.PENDING, State.FAILED]),
         ).fetchall()
 
 
@@ -205,16 +201,13 @@ def _write_result(
     doc_id: str,
     pages: Sequence[PageResult],
     text: DocumentText,
-    state: str,
+    state: State,
     reason: str | None,
 ) -> bool:
     """Replace the reading result of one document in one transaction; True if text changed."""
     with conn.transaction():
         # (1) lock the stage row (serialises concurrent reads) and get the old fingerprint
-        conn.execute(
-            "SELECT 1 FROM stage_status WHERE document_id = %s AND stage = %s FOR UPDATE",
-            (doc_id, READING_STAGE),
-        )
+        stages.lock(conn, doc_id, Stage.READING)
         previous = conn.execute(
             "SELECT text_sha256 FROM document_text WHERE document_id = %s FOR UPDATE",
             (doc_id,),
@@ -265,29 +258,16 @@ def _write_result(
         # they are kept until the stage is rerun. The first read changes nothing.
         text_changed = previous is not None and previous[0] != text.sha256
         if text_changed:
-            conn.execute(
-                "UPDATE stage_status SET state = 'pending', reason = %s, run_id = %s,"
-                " updated_at = now()"
-                " WHERE document_id = %s AND stage = ANY(%s) AND state <> 'pending'",
-                (TEXT_CHANGED_REASON, run_id, doc_id, list(LATER_STAGES)),
-            )
+            stages.reset_later(conn, doc_id, Stage.READING, TEXT_CHANGED_REASON, run_id)
 
         # (5) the reading stage
-        conn.execute(
-            "UPDATE stage_status SET state = %s, reason = %s, run_id = %s, updated_at = now()"
-            " WHERE document_id = %s AND stage = %s",
-            (state, reason, run_id, doc_id, READING_STAGE),
-        )
+        stages.set_state(conn, doc_id, Stage.READING, state, reason, run_id)
     return text_changed
 
 
 def _mark_failed(conn: psycopg.Connection, run_id: int, doc_id: str, reason: str) -> None:
     with conn.transaction():
-        conn.execute(
-            "UPDATE stage_status SET state = %s, reason = %s, run_id = %s, updated_at = now()"
-            " WHERE document_id = %s AND stage = %s",
-            (STATE_FAILED, reason, run_id, doc_id, READING_STAGE),
-        )
+        stages.set_state(conn, doc_id, Stage.READING, State.FAILED, reason, run_id)
 
 
 def _error_reason(exc: Exception) -> str:
@@ -334,7 +314,7 @@ def _read_document(
     entry = {
         "id": doc_id,
         "pages": doc["page_count"],
-        "state": STATE_FAILED,
+        "state": State.FAILED,
         "reason": None,
         "text_changed": False,
         "flags": {},
@@ -380,7 +360,7 @@ def read_documents(
     result: dict = {
         "run_id": None,
         "documents": [],
-        "totals": dict.fromkeys(_STATES, 0),
+        "totals": dict.fromkeys(stages.RESULT_STATES, 0),
         "interrupted": False,
     }
     if not docs:
@@ -389,7 +369,7 @@ def read_documents(
     is_known, dictionary_version = load_dictionary()
     run_settings = settings.settings_for_run()
     run_settings["reading"]["dictionary"] = dictionary_version
-    run_id = runs.start_run(conn, READING_STAGE, run_settings, label)
+    run_id = runs.start_run(conn, stages.RunStage.READING, run_settings, label)
     result["run_id"] = run_id
     try:
         for doc in docs:

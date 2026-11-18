@@ -24,7 +24,7 @@ from pathlib import Path
 
 import psycopg
 
-from docreader import db, runs
+from docreader import db, runs, stages
 from docreader.config import Settings
 from docreader.errors import EnvironmentProblem, UserError
 from docreader.ids import format_document_id
@@ -39,7 +39,6 @@ from docreader.pdfpages import (
 )
 from docreader.sniff import sniff
 
-INTAKE_STAGE = "intake"
 CHUNK = 1024 * 1024
 
 REASON_CHANGED = "файл изменился во время добавления"
@@ -269,10 +268,7 @@ def _register_document(
                     for m, kind in pages
                 ],
             )
-            cur.executemany(
-                "INSERT INTO stage_status (document_id, stage) VALUES (%s, %s)",
-                [(doc_id, stage) for stage in db.STAGES],
-            )
+        stages.create_pending(conn, doc_id)
     return doc_id
 
 
@@ -425,7 +421,7 @@ def run_intake(
     inputs = collect_inputs(paths, service_dirs(settings))
 
     run_settings = {"command": "add", **settings.settings_for_run()}
-    run_id = runs.start_run(conn, INTAKE_STAGE, run_settings, label)
+    run_id = runs.start_run(conn, stages.RunStage.INTAKE, run_settings, label)
     ctx = _Context(conn=conn, settings=settings, run_id=run_id, note=note)
     started_at = _now_iso()
     started = time.monotonic()

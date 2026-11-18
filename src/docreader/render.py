@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import PurePath
 
 from docreader.quality import FLAG_NAMES, FLAG_ORDER
+from docreader.stages import STAGES, Stage, State
 
 _KIND_LABELS = (
     ("text", "текст"),
@@ -181,23 +182,22 @@ def render_page_kinds_text(result: dict) -> str:
 # --- list, show, verify --------------------------------------------------------------
 
 STATE_LABELS = {
-    "pending": "ожидает",
-    "done": "готово",
-    "needs_review": "требует просмотра",
-    "failed": "ошибка",
+    State.PENDING: "ожидает",
+    State.DONE: "готово",
+    State.NEEDS_REVIEW: "требует просмотра",
+    State.FAILED: "ошибка",
 }
 KIND_LABELS = {
     "text": "готовый текст",
     "scan": "скан",
     "scan_with_text": "скан со встроенным текстом",
 }
-_STAGE_ORDER = ("reading", "structure", "extraction", "checks", "indexing")
 _STAGE_NAMES = {
-    "reading": "Чтение",
-    "structure": "Структура",
-    "extraction": "Извлечение",
-    "checks": "Проверки",
-    "indexing": "Индексация",
+    Stage.READING: "Чтение",
+    Stage.STRUCTURE: "Структура",
+    Stage.EXTRACTION: "Извлечение",
+    Stage.CHECKS: "Проверки",
+    Stage.INDEXING: "Индексация",
 }
 _LIST_HEADER = [
     "ID", "Имя", "Стр.", "Текст", "Скан", "Скан+т",
@@ -238,7 +238,7 @@ def render_list_text(docs: list[dict]) -> str:
             str(kinds.get("scan", 0)),
             str(kinds.get("scan_with_text", 0)),
         ]
-        row += [_state_label(doc["stages"], stage) for stage in _STAGE_ORDER]
+        row += [_state_label(doc["stages"], stage) for stage in STAGES]
         rows.append(row)
     widths = [max(len(row[col]) for row in rows) for col in range(len(_LIST_HEADER))]
     lines = []
@@ -275,7 +275,7 @@ def render_show_text(doc: dict) -> str:
         "",
         "Этапы:",
     ]
-    for stage in _STAGE_ORDER:
+    for stage in STAGES:
         info = doc["stages"].get(stage)
         if info is None:
             lines.append(f"  {_STAGE_NAMES[stage]}: —")
@@ -310,9 +310,9 @@ def render_verify_text(result: dict) -> str:
 # --- read, text, text --page ---------------------------------------------------------
 
 _READ_STATE_WORDS = {
-    "done": "готово",
-    "needs_review": "требует просмотра",
-    "failed": "ошибка",
+    State.DONE: "готово",
+    State.NEEDS_REVIEW: "требует просмотра",
+    State.FAILED: "ошибка",
 }
 
 
@@ -341,8 +341,8 @@ def render_read_text(result: dict) -> str:
         lines.append("Текст изменился, следующие этапы сброшены: " + ", ".join(changed))
     totals = result["totals"]
     lines.append(
-        f"Итого: готово {totals['done']}, требует просмотра {totals['needs_review']}, "
-        f"ошибка {totals['failed']}"
+        f"Итого: готово {totals[State.DONE]}, требует просмотра {totals[State.NEEDS_REVIEW]}, "
+        f"ошибка {totals[State.FAILED]}"
     )
     return "\n".join(lines)
 
