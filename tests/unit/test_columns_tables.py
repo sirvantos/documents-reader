@@ -321,3 +321,52 @@ def test_columns_with_word_spaces_inside_are_still_columns() -> None:
     assert texts(result) == ["ИНН 770", "ИНН 771", "ИНН 772", "КПП 500", "КПП 501", "КПП 502"]
     assert [line.column for line in result.lines] == [1, 1, 1, 2, 2, 2]
     assert result.unresolved_lines == 0
+
+
+# --- signature blocks: a column with a line more than the other -------------------------
+
+
+def test_left_only_line_below_the_columns_stays_in_the_left_column() -> None:
+    # «От Заказчика» has four lines, «От Подрядчика» three; then a full-width line
+    chars = two_cols(650, ["L1", "L2", "L3"], ["R1", "R2", "R3"])
+    chars += row(650 - 3 * 16, ("L4", 72))
+    chars += row(650 - 4 * 16 - 20, ("Signature line across the page", 72))
+    result = layout(chars)
+    assert texts(result) == ["L1", "L2", "L3", "L4", "R1", "R2", "R3",
+                             "Signature line across the page"]
+    assert [line.column for line in result.lines] == [1, 1, 1, 1, 2, 2, 2, None]
+    assert result.unresolved_lines == 0
+
+
+def test_right_only_line_stays_in_the_right_column() -> None:
+    chars = two_cols(650, ["L1", "L2", "L3"], ["R1", "R2", "R3"])
+    chars += row(650 - 3 * 16, ("R4", 320))
+    result = layout(chars)
+    assert texts(result) == ["L1", "L2", "L3", "R1", "R2", "R3", "R4"]
+    assert [line.column for line in result.lines] == [1, 1, 1, 2, 2, 2, 2]
+
+
+def test_one_column_lines_do_not_make_an_area_on_their_own() -> None:
+    # two two-part lines and two left-only lines: below column_min_lines = 3
+    chars = two_cols(650, ["L1", "L2"], ["R1", "R2"])
+    chars += row(650 - 2 * 16, ("L3", 72)) + row(650 - 3 * 16, ("L4", 72))
+    result = layout(chars)
+    assert [line.column for line in result.lines] == [None, None, None, None]
+
+
+def test_line_after_a_space_is_not_in_the_column() -> None:
+    # a left-aligned short line one blank line below the area starts new text
+    chars = two_cols(650, ["L1", "L2", "L3"], ["R1", "R2", "R3"])
+    chars += row(650 - 2 * 16 - 32, ("Next", 72))
+    result = layout(chars)
+    assert texts(result)[-1] == "Next"
+    assert result.lines[-1].column is None
+
+
+def test_full_width_line_ends_the_area() -> None:
+    chars = two_cols(650, ["L1", "L2", "L3"], ["R1", "R2", "R3"])
+    long_line = "A long paragraph line that runs over the gap between the columns"
+    chars += row(650 - 3 * 16, (long_line, 72))
+    result = layout(chars)
+    assert result.lines[-1].column is None
+    assert texts(result)[-1] == long_line

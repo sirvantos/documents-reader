@@ -4,6 +4,7 @@ Run by the analyst on the Mac, on real contracts:
 
     uv run python tools/segment_gaps.py D-0054 D-0055 D-0056
     uv run python tools/segment_gaps.py --pages D-0056      # one row per page
+    uv run python tools/segment_gaps.py --lines D-0054 71   # segments of one page
 
 Prints numbers only — counts and gap sizes, never text of the contract — so the output
 may be shared with the coding agent (CLAUDE.md, principle I).
@@ -160,7 +161,58 @@ def main(ids: list[str], per_page: bool = False) -> None:
     show("длина правой части, знаков", right_len)
 
 
+def show_lines(raw_id: str, number: int) -> None:
+    """Every line of one page: its box and its segments with the gaps between them.
+
+    Numbers only: positions in pt, char counts, gaps in pt and in line heights.
+    `частей` and `разрез` are what the column rule sees (`_parts`, `_gap_position`).
+    """
+    settings = load_settings()
+    conn = db.connect(settings)
+    seq = parse_document_id(raw_id)
+    row = conn.execute("SELECT id, copy_path FROM document WHERE seq = %s", (seq,)).fetchone()
+    if row is None:
+        sys.exit(f"{raw_id}: нет в реестре")
+    pdf = open_pdf(settings.data_dir / row[1])
+    try:
+        page = pdf[number - 1]
+        try:
+            lines = build_lines(read_page_chars(page))
+        finally:
+            page.close()
+    finally:
+        pdf.close()
+    print(f"{raw_id} стр. {number}: строк {len(lines)} (сверху вниз, до раскладки)")
+    print(
+        "строка: [x0, y0, x1, y1] высота | частей, разрез x | "
+        "отрезки x0–x1 (знаков) +разрыв pt/высот"
+    )
+    for i, line in enumerate(lines):
+        x0, y0, x1, y1 = line.bbox
+        height = max(y1 - y0, 0.1)
+        parts = _parts(line, settings.reading)
+        cut = f"{parts[1][0].bbox[0]:.1f}" if len(parts) == 2 else "-"
+        pieces = []
+        previous = None
+        for seg in line.segments:
+            piece = f"{seg.bbox[0]:.1f}–{seg.bbox[2]:.1f} ({len(seg.text.strip())})"
+            if previous is not None:
+                gap = seg.bbox[0] - previous.bbox[2]
+                piece = f"+{gap:.1f}/{gap / height:.1f} " + piece
+            pieces.append(piece)
+            previous = seg
+        print(
+            f"{i:3}: [{x0:.1f}, {y0:.1f}, {x1:.1f}, {y1:.1f}] {height:.1f} | "
+            f"{len(parts)}, {cut} | " + "  ".join(pieces)
+        )
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--lines"]:
+        if len(sys.argv) != 4:
+            sys.exit("Укажите документ и страницу: segment_gaps.py --lines D-0054 71")
+        show_lines(sys.argv[2], int(sys.argv[3]))
+        sys.exit(0)
     args = [a for a in sys.argv[1:] if a != "--pages"]
     if not args:
         sys.exit("Укажите идентификаторы: uv run python tools/segment_gaps.py [--pages] D-0054 …")

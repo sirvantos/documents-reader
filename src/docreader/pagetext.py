@@ -544,8 +544,8 @@ def layout_page(
         table_of.append(next((k for k, t in enumerate(tables) if t.contains(cx, cy)), None))
 
     areas = _column_areas(lines, table_of, disp_h, settings, continues_columns)
-    area_at = {start: end for start, end in areas}
-    in_area = {i for start, end in areas for i in range(start, end)}
+    area_at = {start: (end, anchor) for start, end, anchor in areas}
+    in_area = {i for start, end, _anchor in areas for i in range(start, end)}
 
     ordered: list[Line] = []
     emitted_tables: set[int] = set()
@@ -553,10 +553,10 @@ def layout_page(
     while i < len(lines):
         k = table_of[i]
         if i in area_at:
-            end = area_at[i]
+            end, anchor = area_at[i]
             for side in (0, 1):
                 for line in lines[i:end]:
-                    part = _column_part(line, side, settings, to_pdf)
+                    part = _column_part(line, side, anchor, settings, to_pdf)
                     if part is not None:
                         ordered.append(part)
             i = end
@@ -595,14 +595,37 @@ def layout_page(
     )
 
 
+def _one_side(
+    line: Line, previous: Line, anchor: float, left_edge: float, settings: ReadingSettings
+) -> bool:
+    """A line of one column only, right below the previous line of the area.
+
+    In a signature block a column often has a line more than the other one: its row
+    holds a single part, flush with the left column or starting at the right one.
+    """
+    if len(_parts(line, settings)) != 1:
+        return False
+    box, above = line.display_bbox, previous.display_bbox
+    if above[1] - box[3] > _height(box):  # more than a line of space: not the same block
+        return False
+    tolerance = settings.column_gap_tolerance
+    if abs(box[0] - anchor) <= tolerance:
+        return True
+    return abs(box[0] - left_edge) <= tolerance and box[2] <= anchor - settings.column_min_gap
+
+
 def _column_areas(
     lines: Sequence[Line],
     table_of: Sequence[int | None],
     disp_h: float,
     settings: ReadingSettings,
     continues: bool,
-) -> list[tuple[int, int]]:
-    """Index ranges `[start, end)` of two-column areas (R-3 p. 4-5)."""
+) -> list[tuple[int, int, float]]:
+    """`[start, end)` and the left edge of the right column of two-column areas (R-3 p. 4-5).
+
+    An area is a run of lines with two parts and the cut at one x; lines of one column
+    only (`_one_side`) continue the run but do not count toward `column_min_lines`.
+    """
     n = len(lines)
     positions = [
         None if table_of[i] is not None else _gap_position(lines[i], settings)
@@ -610,15 +633,24 @@ def _column_areas(
     ]
 
     def run_end(start: int, anchor: float) -> int:
+        left_edge = lines[start].display_bbox[0]
         end = start + 1
         while end < n:
             position = positions[end]
-            if position is None or abs(position - anchor) > settings.column_gap_tolerance:
+            if position is None:
+                if table_of[end] is not None or not _one_side(
+                    lines[end], lines[end - 1], anchor, left_edge, settings
+                ):
+                    break
+            elif abs(position - anchor) > settings.column_gap_tolerance:
                 break
             end += 1
         return end
 
-    areas: list[tuple[int, int]] = []
+    def two_part(start: int, end: int) -> int:
+        return sum(1 for j in range(start, end) if positions[j] is not None)
+
+    areas: list[tuple[int, int, float]] = []
     i = 0
     if continues:
         # the area starts at the first line, past single lines of the running header band
@@ -626,7 +658,7 @@ def _column_areas(
         for first in range(n):
             first_position = positions[first]
             if first_position is not None:
-                areas.append((first, run_end(first, first_position)))
+                areas.append((first, run_end(first, first_position), first_position))
                 i = areas[0][1]
                 break
             if lines[first].display_bbox[3] < top_limit:
@@ -637,16 +669,25 @@ def _column_areas(
             i += 1
             continue
         end = run_end(i, position)
-        if end - i >= settings.column_min_lines:
-            areas.append((i, end))
+        if two_part(i, end) >= settings.column_min_lines:
+            areas.append((i, end, position))
             i = end
         else:
             i += 1
     return areas
 
 
-def _column_part(line: Line, side: int, settings: ReadingSettings, to_pdf) -> Line | None:
-    part = _parts(line, settings)[side]
+def _column_part(
+    line: Line, side: int, anchor: float, settings: ReadingSettings, to_pdf
+) -> Line | None:
+    parts = _parts(line, settings)
+    if len(parts) == 1:  # a line of one column only (`_one_side`)
+        line_side = 1 if parts[0][0].bbox[0] >= anchor - settings.column_gap_tolerance else 0
+        if line_side != side:
+            return None
+        part = parts[0]
+    else:
+        part = parts[side]
     text = _line_text(" ".join(s.text for s in part))
     if not text:
         return None
