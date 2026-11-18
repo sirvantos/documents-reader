@@ -19,6 +19,7 @@ DEFAULT_READING = {
     "column_min_lines": 3,
     "column_min_gap": 20.0,
     "column_gap_tolerance": 15.0,
+    "wide_gap_factor": 2.5,
     "rotated_min_angle": 5.0,
 }
 
@@ -74,6 +75,7 @@ def test_reading_overrides_applied(data_dir: Path) -> None:
         "column_min_lines = 4\n"
         "column_min_gap = 30.5\n"
         "column_gap_tolerance = 10\n"
+        "wide_gap_factor = 3\n"
         "rotated_min_angle = 7.5\n",
     )
     settings = load_settings(env_for(data_dir))
@@ -88,6 +90,7 @@ def test_reading_overrides_applied(data_dir: Path) -> None:
         "column_min_lines": 4,
         "column_min_gap": 30.5,
         "column_gap_tolerance": 10.0,
+        "wide_gap_factor": 3.0,
         "rotated_min_angle": 7.5,
     }
 

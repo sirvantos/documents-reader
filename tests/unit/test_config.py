@@ -222,6 +222,7 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "column_min_lines": 3,
             "column_min_gap": 20.0,
             "column_gap_tolerance": 15.0,
+            "wide_gap_factor": 2.5,
             "rotated_min_angle": 5.0,
         },
     }

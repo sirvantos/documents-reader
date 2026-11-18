@@ -24,7 +24,7 @@ from itertools import pairwise
 from docreader import db
 from docreader.config import load_settings
 from docreader.ids import parse_document_id
-from docreader.pagetext import build_lines, read_page_chars
+from docreader.pagetext import _parts, build_lines, read_page_chars
 from docreader.pdfpages import open_pdf
 
 _CLAUSE_NUMBER = re.compile(r"^(\d+(\.\d+)*\.?|\d+\)|[а-яa-z]\))$", re.IGNORECASE)
@@ -47,7 +47,8 @@ def _length_bucket(n: int) -> str:
 def main(ids: list[str]) -> None:
     settings = load_settings()
     conn = db.connect(settings)
-    lines_total = multi_lines = pages_read = 0
+    lines_total = multi_lines = multi_part_lines = pages_read = 0
+    flagged_pages = 0
     gaps_rel: Counter[str] = Counter()
     gaps_pt: Counter[str] = Counter()
     left_len: Counter[str] = Counter()
@@ -79,6 +80,9 @@ def main(ids: list[str]) -> None:
                 finally:
                     page.close()
                 pages_read += 1
+                wide = sum(1 for line in lines if len(_parts(line, settings.reading)) >= 2)
+                multi_part_lines += wide
+                flagged_pages += wide >= 3  # the flag rule before columns and tables
                 for line in lines:
                     lines_total += 1
                     if len(line.segments) < 2:
@@ -106,7 +110,12 @@ def main(ids: list[str]) -> None:
         for key, count in sorted(counter.items(), key=lambda kv: str(kv[0])):
             print(f"  {key:>14}: {count}")
 
-    print(f"страниц: {pages_read}, строк: {lines_total}, строк из нескольких частей: {multi_lines}")
+    print(f"страниц: {pages_read}, строк: {lines_total}, из нескольких отрезков: {multi_lines}")
+    print(
+        f"по правилу частей (wide_gap_factor = {settings.reading.wide_gap_factor}): "
+        f"строк из нескольких частей {multi_part_lines}, "
+        f"страниц с 3 и более такими строками {flagged_pages} (до учёта колонок и таблиц)"
+    )
     show("частей в строке", parts_per_line)
     show("вид разрыва", kinds)
     show("разрыв / высота строки", gaps_rel)

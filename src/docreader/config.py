@@ -49,6 +49,7 @@ class ReadingSettings:
     column_min_lines: int = 3
     column_min_gap: float = 20.0
     column_gap_tolerance: float = 15.0
+    wide_gap_factor: float = 2.5
     rotated_min_angle: float = 5.0
 
 
@@ -201,6 +202,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, type, Callable[[Any], bool], str]]] = {
         "column_min_lines": ("column_min_lines", int, lambda v: v >= 2, "целое ≥ 2"),
         "column_min_gap": ("column_min_gap", float, lambda v: v >= 0, "число ≥ 0"),
         "column_gap_tolerance": ("column_gap_tolerance", float, lambda v: v >= 0, "число ≥ 0"),
+        "wide_gap_factor": ("wide_gap_factor", float, lambda v: v > 0, "число > 0"),
         "rotated_min_angle": (
             "rotated_min_angle",
             float,

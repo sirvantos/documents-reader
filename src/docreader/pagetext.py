@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ctypes
 import math
+import re
 import unicodedata
 from bisect import bisect_right
 from collections.abc import Sequence
@@ -448,14 +449,48 @@ def _find_tables(rules: Sequence[Rule], rotation: int, width: float, height: flo
     return tables
 
 
-def _gap_position(line: Line, min_gap: float) -> float | None:
-    """Left edge of the right segment when the line has exactly two segments far apart."""
-    if len(line.segments) != 2:
+# A clause or list number at the start of a line: «5.2.», «3)», «а)».
+_CLAUSE_NUMBER = re.compile(r"^(\d+(\.\d+)*\.?|\d+\)|[а-яё]\))$")
+
+
+def _wide_gap(line: Line, settings: ReadingSettings) -> float:
+    """The narrowest gap that separates parts of a line.
+
+    Narrower gaps are word spaces: justified text stretches them to one or two line
+    heights, far beyond the char-height gap that splits segments (real contracts,
+    2026-11-18). The line height stands for the font size.
+    """
+    return max(settings.column_min_gap, settings.wide_gap_factor * _height(line.display_bbox))
+
+
+def _parts(line: Line, settings: ReadingSettings) -> list[tuple[Segment, ...]]:
+    """The line's segments grouped into parts separated by wide gaps, left to right.
+
+    A leading clause number stays with the text after it («5.2.» + tab + text is one
+    part): numbered clauses with a tab at the same position are not two columns.
+    """
+    if not line.segments:
+        return []
+    min_gap = _wide_gap(line, settings)
+    parts: list[list[Segment]] = [[line.segments[0]]]
+    for seg in line.segments[1:]:
+        if seg.bbox[0] - parts[-1][-1].bbox[2] >= min_gap:
+            parts.append([seg])
+        else:
+            parts[-1].append(seg)
+    first = parts[0]
+    if len(parts) >= 2 and len(first) == 1 and _CLAUSE_NUMBER.match(first[0].text.strip()):
+        parts[1] = first + parts[1]
+        del parts[0]
+    return [tuple(part) for part in parts]
+
+
+def _gap_position(line: Line, settings: ReadingSettings) -> float | None:
+    """Left edge of the right part when the line has exactly two parts."""
+    parts = _parts(line, settings)
+    if len(parts) != 2:
         return None
-    left, right = line.segments
-    if right.bbox[0] - left.bbox[2] < min_gap:
-        return None
-    return right.bbox[0]
+    return parts[1][0].bbox[0]
 
 
 def layout_page(
@@ -521,7 +556,7 @@ def layout_page(
             end = area_at[i]
             for side in (0, 1):
                 for line in lines[i:end]:
-                    part = _column_part(line, side, to_pdf)
+                    part = _column_part(line, side, settings, to_pdf)
                     if part is not None:
                         ordered.append(part)
             i = end
@@ -539,7 +574,7 @@ def layout_page(
     unresolved = sum(
         1
         for i, line in enumerate(lines)
-        if len(line.segments) >= 2 and i not in in_area and table_of[i] is None
+        if len(_parts(line, settings)) >= 2 and i not in in_area and table_of[i] is None
     )
     band = disp_h * settings.header_band
     # the last body line: single lines of the footer band after the area do not count
@@ -570,7 +605,7 @@ def _column_areas(
     """Index ranges `[start, end)` of two-column areas (R-3 p. 4-5)."""
     n = len(lines)
     positions = [
-        None if table_of[i] is not None else _gap_position(lines[i], settings.column_min_gap)
+        None if table_of[i] is not None else _gap_position(lines[i], settings)
         for i in range(n)
     ]
 
@@ -610,18 +645,21 @@ def _column_areas(
     return areas
 
 
-def _column_part(line: Line, side: int, to_pdf) -> Line | None:
-    segment = line.segments[side]
-    text = _line_text(segment.text)
+def _column_part(line: Line, side: int, settings: ReadingSettings, to_pdf) -> Line | None:
+    part = _parts(line, settings)[side]
+    text = _line_text(" ".join(s.text for s in part))
     if not text:
         return None
+    box = part[0].bbox
+    for s in part[1:]:
+        box = _union(box, s.bbox)
     return Line(
         index=0,
         text=text,
-        bbox=to_pdf(segment.bbox),
+        bbox=to_pdf(box),
         column=side + 1,
-        segments=(segment,),
-        display_bbox=segment.bbox,
+        segments=part,
+        display_bbox=box,
     )
 
 

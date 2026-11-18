@@ -150,9 +150,12 @@ def test_fewer_than_min_lines_is_not_a_column_area() -> None:
 
 
 def test_small_gap_or_drifting_gap_is_not_a_column_area() -> None:
-    # gap of 18 pt: two segments, but below column_min_gap (20)
+    # gap of 18 pt at a 10 pt line: below the wide gap max(20, 2.5 * 10): a word space,
+    # so one part per line — not columns and not unresolved
     narrow = two_cols(650, ["L1", "L2", "L3"], ["R1", "R2", "R3"], rx=72 + 2 * W + 18)
-    assert layout(narrow).unresolved_lines == 3
+    narrow_result = layout(narrow)
+    assert all(line.column is None for line in narrow_result.lines)
+    assert narrow_result.unresolved_lines == 0
     # right segments drift by 20 pt per line, beyond the 15 pt tolerance
     drift: list[Char] = []
     for k in range(3):
@@ -259,3 +262,62 @@ def test_lines_with_many_segments_outside_columns_and_tables_are_unresolved() ->
     result = layout(chars)
     assert result.unresolved_lines == 3
     assert not result.has_table
+
+
+# --- word spaces of justified text and clause numbers (real contracts, 2026-11-18) ---------
+
+
+def justified(y: float, words: list[str], gap: float, left: float = 72.0) -> list[Char]:
+    """One line of words separated by `gap` pt: each word is its own segment."""
+    parts: list[tuple[str, float]] = []
+    x = left
+    for w in words:
+        parts.append((w, x))
+        x += len(w) * W + gap
+    return row(y, *parts)
+
+
+def test_wide_word_spaces_of_justified_text_are_not_unresolved() -> None:
+    # gaps of 16–22 pt at a 10 pt line split segments (over 1.5 char heights) but are word
+    # spaces: below max(20, 2.5 * 10)
+    chars: list[Char] = []
+    for k, gap in enumerate((16.0, 18.0, 22.0, 20.0)):
+        chars += justified(700 - k * 16, ["Подрядчик", "обязуется", "выполнить", "работы"], gap)
+    result = layout(chars)
+    assert all(len(line.segments) == 4 for line in result.lines)
+    assert result.unresolved_lines == 0
+    assert all(line.column is None for line in result.lines)
+    assert texts(result)[0] == "Подрядчик обязуется выполнить работы"
+
+
+def test_a_really_wide_gap_still_makes_a_line_unresolved() -> None:
+    # 40 pt at a 10 pt line: beyond max(20, 25) — a spaced table or a form line
+    chars: list[Char] = []
+    for k, xs in enumerate(((72, 200), (72, 230), (72, 190))):
+        chars += row(650 - k * 24, ("Итого", xs[0]), ("1500", xs[1]))
+    assert layout(chars).unresolved_lines == 3
+
+
+def test_clause_number_with_a_tab_stays_with_its_text() -> None:
+    # «5.1.» + tab at the same x on three lines: not a two-column area, number then text
+    chars: list[Char] = []
+    for k, number in enumerate(("5.1.", "5.2.", "5.3.")):
+        chars += row(700 - k * 16, (number, 72), ("Текст", 72 + 4 * W + 40))
+    result = layout(chars)
+    assert texts(result) == ["5.1. Текст", "5.2. Текст", "5.3. Текст"]
+    assert all(line.column is None for line in result.lines)
+    assert result.unresolved_lines == 0
+
+
+def test_columns_with_word_spaces_inside_are_still_columns() -> None:
+    # requisites in two columns, each column line has a word space wider than 1.5 char
+    # heights: the line is two parts, read left column then right column
+    chars: list[Char] = []
+    for k in range(3):
+        y = 650 - k * 16
+        chars += justified(y, ["ИНН", f"77{k}"], 17.0, left=72)
+        chars += justified(y, ["КПП", f"50{k}"], 17.0, left=320)
+    result = layout(chars)
+    assert texts(result) == ["ИНН 770", "ИНН 771", "ИНН 772", "КПП 500", "КПП 501", "КПП 502"]
+    assert [line.column for line in result.lines] == [1, 1, 1, 2, 2, 2]
+    assert result.unresolved_lines == 0
