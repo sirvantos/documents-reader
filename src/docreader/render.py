@@ -9,6 +9,8 @@ import json
 from datetime import datetime
 from pathlib import PurePath
 
+from docreader.quality import FLAG_NAMES
+
 _KIND_LABELS = (
     ("text", "текст"),
     ("scan", "скан"),
@@ -301,3 +303,92 @@ def render_verify_text(result: dict) -> str:
     ]
     lines.append(f"Проверено: {result['checked']}, с ошибками: {len(problems)}")
     return "\n".join(lines)
+
+
+# --- read, text, text --page ---------------------------------------------------------
+
+_READ_STATE_WORDS = {
+    "done": "готово",
+    "needs_review": "требует просмотра",
+    "failed": "ошибка",
+}
+
+
+def _documents_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "документ"
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return "документа"
+    return "документов"
+
+
+def render_read_text(result: dict) -> str:
+    documents = result["documents"]
+    count = len(documents)
+    lines = [f"Чтение, запуск {result['run_id']}: {count} {_documents_word(count)}"]
+    for doc in documents:
+        line = (
+            f"{doc['id']}  {doc['pages']:>2} стр.  "
+            f"{_READ_STATE_WORDS.get(doc['state'], doc['state'])}"
+        )
+        if doc["reason"]:
+            line += f": {doc['reason']}"
+        lines.append(line)
+    changed = [doc["id"] for doc in documents if doc["text_changed"]]
+    if changed:
+        lines.append("Текст изменился, следующие этапы сброшены: " + ", ".join(changed))
+    totals = result["totals"]
+    lines.append(
+        f"Итого: готово {totals['done']}, требует просмотра {totals['needs_review']}, "
+        f"ошибка {totals['failed']}"
+    )
+    return "\n".join(lines)
+
+
+def _flag_lines(flags: list[dict]) -> list[str]:
+    return [
+        f"! {FLAG_NAMES.get(flag['code'], flag['code'])}: {flag['reason']}"
+        for flag in flags
+    ]
+
+
+def render_document_text(view: dict) -> str:
+    lines: list[str] = []
+    for page in view["pages"]:
+        lines.append(f"── стр. {page['page']} ──")
+        lines.extend(_flag_lines(page["flags"]))
+        text = page["text"]
+        lines.append(text if text.strip() else "(нет текста)")
+    return "\n".join(lines)
+
+
+def _line_marker(line: dict) -> str:
+    table = line["table"]
+    if table is not None:
+        return f"табл. {table['t']} стр. {table['row']} яч. {table['cell']}"
+    if line["column"] is not None:
+        return f"кол. {line['column']}"
+    return ""
+
+
+def _page_line_text(line: dict) -> str:
+    cells = [f"{line['i']:>3}", line["role"]]
+    marker = _line_marker(line)
+    if marker:
+        cells.append(marker)
+    cells.append(line["text"])
+    return "  ".join(cells)
+
+
+def render_page_text(view: dict) -> str:
+    blocks: list[str] = []
+    for page in view["pages"]:
+        lines = [f"{view['id']}, стр. {page['page']}"]
+        lines.extend(_flag_lines(page["flags"]) or ["Флаги: нет"])
+        if page["has_table"]:
+            lines.append("Таблица: есть")
+        if not page["lines"]:
+            lines.append("(строк нет)")
+        lines.extend(_page_line_text(line) for line in page["lines"])
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)

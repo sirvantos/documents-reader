@@ -8,16 +8,20 @@ from collections.abc import Callable
 import psycopg
 
 from docreader import db
+from docreader import reading, textview
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
 from docreader.intake import run_intake
 from docreader import registry
 from docreader.ids import format_document_id, parse_document_id
 from docreader.render import (
+    render_document_text,
     render_intake_json,
     render_intake_text,
     render_list_text,
     render_page_kinds_text,
+    render_page_text,
+    render_read_text,
     render_reclassify_text,
     render_show_text,
     render_verify_text,
@@ -68,6 +72,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("page-kinds-check", help="сверить виды страниц с ручной разметкой")
     p.add_argument("labels", metavar="labels.csv", help="CSV-файл с разметкой")
+
+    p = sub.add_parser("read", help="прочитать текст документов")
+    p.add_argument("ids", nargs="*", metavar="ID", help="идентификаторы (по умолчанию — непрочитанные)")
+    p.add_argument("--all", action="store_true", help="перечитать все документы реестра")
+    p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("text", help="показать прочитанный текст документа")
+    p.add_argument("id", metavar="ID", help="идентификатор документа, например D-0001")
+    p.add_argument("--page", type=int, metavar="N", help="строки одной страницы")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     return parser
 
@@ -170,6 +185,41 @@ def _cmd_page_kinds_check(
     return 0
 
 
+def _cmd_read(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.all and args.ids:
+        raise UserError("Нельзя указать --all вместе с идентификаторами")
+    seqs = [parse_document_id(i) for i in args.ids] or None
+    result = reading.read_documents(
+        conn, settings, seqs, all_documents=args.all, label=args.label
+    )
+    if result["run_id"] is None and not result["documents"]:
+        print("Нечего читать: все документы прочитаны (перечитать: docreader read --all)")
+        return 0
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(render_read_text(result))
+    if result["interrupted"]:
+        print("Прервано", file=sys.stderr)
+        return 130
+    return 0
+
+
+def _cmd_text(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    seq = parse_document_id(args.id)
+    if args.page is None:
+        view = textview.load_document_text(conn, seq)
+        text = render_document_text(view)
+    else:
+        view = textview.load_page(conn, seq, args.page)
+        text = render_page_text(view)
+    if args.json:
+        print(json.dumps(view, ensure_ascii=False, indent=2))
+    else:
+        print(text)
+    return 0
+
+
 _Handler = Callable[[argparse.Namespace, Settings, psycopg.Connection], int]
 
 _HANDLERS: dict[str, _Handler] = {
@@ -181,6 +231,8 @@ _HANDLERS: dict[str, _Handler] = {
     "verify": _cmd_verify,
     "reclassify": _cmd_reclassify,
     "page-kinds-check": _cmd_page_kinds_check,
+    "read": _cmd_read,
+    "text": _cmd_text,
 }
 
 
