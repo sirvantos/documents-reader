@@ -122,3 +122,130 @@ def test_no_read_text_needs_review() -> None:
 
 def test_only_blank_pages_has_no_read_text() -> None:
     assert document_state({1: [flag("empty")]}, read_pages=0) == ("needs_review", NO_TEXT_REASON)
+
+
+# --- flags of read pages (step 2, task T023) -------------------------------------------
+
+from docreader.config import ReadingSettings  # noqa: E402
+from docreader.pagetext import Char  # noqa: E402
+from docreader.quality import content_flags, count_map_errors  # noqa: E402
+
+RS = ReadingSettings()
+MIN_CHARS = 20
+RUSSIAN = (
+    "1.1. Подрядчик обязуется выполнить работы по договору в срок, "
+    "установленный графиком; Заказчик обязуется принять и оплатить их."
+)
+
+
+def codes(text: str, kind: str = "text", settings: ReadingSettings = RS, map_errors: int = 0) -> list[str]:
+    flags = content_flags(info(kind=kind), text, settings, MIN_CHARS, map_errors=map_errors)
+    for f in flags:
+        assert f.reason.strip()
+    return [f.code for f in flags]
+
+
+def reason_of(text: str, code: str, **kw) -> str:
+    flags = content_flags(info(**kw), text, RS, MIN_CHARS)
+    return next(f.reason for f in flags if f.code == code)
+
+
+def test_plain_russian_text_has_no_flags() -> None:
+    assert codes(RUSSIAN) == []
+
+
+def test_ocr_text_for_scan_with_text_page() -> None:
+    assert codes(RUSSIAN, kind="scan_with_text") == ["ocr_text"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "«___» __________ 2024 г.",
+        "Договор подряда № 123/45-У от «___» __________ 2024 г.\n1.1. 1.2. 1.3. 2.1.",
+        "ИНН 7701234567 КПП 770101001 ОГРН 1027700000000 БИК 044525000",
+        "Подписи сторон:",
+    ],
+)
+def test_ordinary_contract_lines_are_readable(text: str) -> None:
+    assert "unreadable" not in codes(text)
+
+
+def test_short_garbage_is_never_unreadable() -> None:
+    assert codes("� бвгд") == []  # fewer than text_min_chars
+
+
+def test_low_letter_share_is_unreadable() -> None:
+    text = "!!! ### $$$ %%% ^^^ &&& *** ((( ))) +++ === ~~~ абв"
+    assert codes(text) == ["unreadable"]
+    assert "букв и цифр" in reason_of(text, "unreadable")
+
+
+def test_bad_chars_are_unreadable() -> None:
+    text = RUSSIAN + " ��\U000f0000"
+    assert codes(text) == ["unreadable"]
+    assert "ошибкой кодировки" in reason_of(text, "unreadable")
+
+
+def test_map_errors_count_as_bad_chars() -> None:
+    assert codes(RUSSIAN, map_errors=12) == ["unreadable"]
+    assert codes(RUSSIAN, map_errors=1) == []
+
+
+def test_count_map_errors_does_not_double_count_replacement_chars() -> None:
+    box = (0.0, 0.0, 1.0, 1.0)
+    chars = [
+        Char("а", box, map_error=True),
+        Char("�", box, map_error=True),  # already counted from the text
+        Char("", box, map_error=True),
+        Char("б", box),
+    ]
+    assert count_map_errors(chars) == 1
+
+
+def test_vowelless_words_are_unreadable() -> None:
+    text = "бвгд жзкл мнпр стфх цчшщ бвгд жзкл мнпр и работы"
+    assert codes(text) == ["unreadable"]
+    assert "без гласных" in reason_of(text, "unreadable")
+
+
+def test_thresholds_come_from_settings() -> None:
+    text = "бвгд жзкл мнпр работы договор оплата"  # half of the words without vowels
+    assert "unreadable" in codes(text)
+    lenient = ReadingSettings(unreadable_max_vowelless_share=0.9)
+    assert "unreadable" not in codes(text, settings=lenient)
+
+
+def test_three_kazakh_letters_flag_not_russian() -> None:
+    text = RUSSIAN + " Место исполнения: г. Қарағанды, ул. Әуезова."
+    assert codes(text) == ["maybe_not_russian"]
+    assert reason_of(text, "maybe_not_russian") == "3 буквы не русского алфавита: Қ, ғ, Ә"
+
+
+def test_reason_lists_each_letter_once() -> None:
+    text = RUSSIAN + " Қ Қ Ә Ұ І"
+    assert reason_of(text, "maybe_not_russian") == "5 букв не русского алфавита: Қ, Ә, Ұ, І"
+
+
+def test_one_kazakh_letter_in_a_surname_is_not_flagged() -> None:
+    assert codes(RUSSIAN + " Представитель: Әлиев А.Б.") == []
+
+
+def test_latin_letters_are_never_counted() -> None:
+    text = RUSSIAN + " b55183f5-4c1e-4a7b CKAВ k-гo LLC e-mail: info@example.com"
+    assert codes(text) == []
+
+
+def test_ukrainian_letters_count_as_not_russian() -> None:
+    assert codes(RUSSIAN + " Київ, Ґанок, Їжак") == ["maybe_not_russian"]
+
+
+def test_not_russian_threshold_comes_from_settings() -> None:
+    text = RUSSIAN + " Қарағанды Әуезова"
+    strict = ReadingSettings(non_russian_min_letters=5)
+    assert codes(text, settings=strict) == []
+
+
+def test_flags_follow_fr006_order() -> None:
+    text = "бвгд жзкл мнпр стфх цчшщ Қ Ә Ұ бвгд жзкл"
+    assert codes(text, kind="scan_with_text") == ["ocr_text", "unreadable", "maybe_not_russian"]

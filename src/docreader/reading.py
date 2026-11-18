@@ -8,7 +8,8 @@ A failing document gets the state `failed` and the others go on.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import importlib.metadata
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,13 +19,21 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from docreader import runs
-from docreader.cleanup import DocumentText, build_document_text
+from docreader.cleanup import DocumentText, PageLines, build_document_text, mark_page_furniture
 from docreader.config import Settings
 from docreader.errors import UserError
 from docreader.ids import format_document_id
 from docreader.pagetext import Line, build_lines, read_page_chars
 from docreader.pdfpages import PdfOpenError, open_pdf
-from docreader.quality import FLAG_ORDER, Flag, PageInfo, document_state, skip_flag
+from docreader.quality import (
+    FLAG_ORDER,
+    Flag,
+    PageInfo,
+    content_flags,
+    count_map_errors,
+    document_state,
+    skip_flag,
+)
 
 READING_STAGE = "reading"
 # Stages that work on the read text; reset when the text changes (FR-012, task T029).
@@ -49,6 +58,18 @@ class PageResult:
     lines: list[Line] = field(default_factory=list)
     flags: list[Flag] = field(default_factory=list)
     has_table: bool = False
+
+
+WordCheck = Callable[[str], bool]
+DICTIONARY_PACKAGE = "pymorphy3-dicts-ru"
+
+
+def load_dictionary() -> tuple[WordCheck, str]:
+    """The pymorphy3 word check for hyphenation (R-6), loaded once per run, and its version."""
+    import pymorphy3  # loads the dictionary package from disk; no network
+
+    analyzer = pymorphy3.MorphAnalyzer()
+    return analyzer.word_is_known, importlib.metadata.version(DICTIONARY_PACKAGE)
 
 
 # --- selection -------------------------------------------------------------------------
@@ -93,7 +114,7 @@ def _page_infos(conn: psycopg.Connection, doc_id: str) -> list[PageInfo]:
     return [PageInfo(*row) for row in rows]
 
 
-def _read_page(page: pdfium.PdfPage, info: PageInfo) -> PageResult:
+def _read_page(page: pdfium.PdfPage, info: PageInfo, settings: Settings) -> PageResult:
     left, bottom, right, top = page.get_cropbox()
     result = PageResult(
         number=info.page_number,
@@ -105,11 +126,22 @@ def _read_page(page: pdfium.PdfPage, info: PageInfo) -> PageResult:
     if flag is not None:
         result.flags.append(flag)
         return result
-    result.lines = build_lines(read_page_chars(page))
+    chars = read_page_chars(page)
+    result.lines = build_lines(chars)
+    text = "\n".join(line.text for line in result.lines)
+    result.flags = content_flags(
+        info,
+        text,
+        settings.reading,
+        settings.text_min_chars,
+        map_errors=count_map_errors(chars),
+    )
     return result
 
 
-def read_copy(path: Path, infos: Sequence[PageInfo], doc_id: str) -> list[PageResult]:
+def read_copy(
+    path: Path, infos: Sequence[PageInfo], doc_id: str, settings: Settings
+) -> list[PageResult]:
     """Read every page of the copy; the file is only read, never written (FR-014)."""
     if not path.is_file():
         raise ReadingError(f"файл копии не найден — проверьте docreader verify {doc_id}")
@@ -127,7 +159,7 @@ def read_copy(path: Path, infos: Sequence[PageInfo], doc_id: str) -> list[PageRe
         for info in infos:
             page = pdf[info.page_number - 1]
             try:
-                results.append(_read_page(page, info))
+                results.append(_read_page(page, info, settings))
             finally:
                 page.close()
         return results
@@ -201,8 +233,16 @@ def _write_result(
                 [(doc_id, s.start, s.end, s.page_number, s.line_index) for s in text.spans],
             )
 
+        # (4) a changed text makes the results of later stages stale (FR-012, R-9);
+        # they are kept until the stage is rerun. The first read changes nothing.
         text_changed = previous is not None and previous[0] != text.sha256
-        # (4) reset of later stages when the text changed: task T029
+        if text_changed:
+            conn.execute(
+                "UPDATE stage_status SET state = 'pending', reason = %s, run_id = %s,"
+                " updated_at = now()"
+                " WHERE document_id = %s AND stage = ANY(%s) AND state <> 'pending'",
+                (TEXT_CHANGED_REASON, run_id, doc_id, list(LATER_STAGES)),
+            )
 
         # (5) the reading stage
         conn.execute(
@@ -239,8 +279,22 @@ def _flag_pages(pages: Sequence[PageResult]) -> dict[str, list[int]]:
     return {code: sorted(found[code]) for code in FLAG_ORDER if code in found}
 
 
+def clean_document_text(
+    pages: Sequence[PageResult], settings: Settings, is_known: WordCheck | None
+) -> DocumentText:
+    """Mark headers, footers and page numbers, then build the clean text (R-4, R-6)."""
+    mark_page_furniture(
+        [PageLines(p.number, p.height, p.lines) for p in pages], settings.reading
+    )
+    return build_document_text([(p.number, p.lines) for p in pages], is_known)
+
+
 def _read_document(
-    conn: psycopg.Connection, settings: Settings, run_id: int, doc: dict
+    conn: psycopg.Connection,
+    settings: Settings,
+    run_id: int,
+    doc: dict,
+    is_known: WordCheck | None,
 ) -> dict:
     doc_id = doc["id"]
     entry = {
@@ -254,8 +308,8 @@ def _read_document(
     try:
         infos = _page_infos(conn, doc_id)
         conn.commit()
-        pages = read_copy(settings.data_dir / doc["copy_path"], infos, doc_id)
-        text = build_document_text([(p.number, p.lines) for p in pages])
+        pages = read_copy(settings.data_dir / doc["copy_path"], infos, doc_id, settings)
+        text = clean_document_text(pages, settings, is_known)
         state, reason = document_state({p.number: p.flags for p in pages}, text.read_pages)
         entry["text_changed"] = _write_result(conn, run_id, doc_id, pages, text, state, reason)
         entry.update(state=state, reason=reason, flags=_flag_pages(pages))
@@ -300,11 +354,14 @@ def read_documents(
     if not docs:
         return result
 
-    run_id = runs.start_run(conn, READING_STAGE, settings.settings_for_run(), label)
+    is_known, dictionary_version = load_dictionary()
+    run_settings = settings.settings_for_run()
+    run_settings["reading"]["dictionary"] = dictionary_version
+    run_id = runs.start_run(conn, READING_STAGE, run_settings, label)
     result["run_id"] = run_id
     try:
         for doc in docs:
-            entry = _read_document(conn, settings, run_id, doc)
+            entry = _read_document(conn, settings, run_id, doc, is_known)
             result["documents"].append(entry)
             result["totals"][entry["state"]] += 1
     except KeyboardInterrupt:

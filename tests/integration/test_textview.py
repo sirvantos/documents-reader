@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 
 from docreader.errors import UserError
-from docreader.textview import load_document_text, load_page
+import json
+
+from docreader.textview import find_phrase, load_document_text, load_page
 
 SHA = "a" * 64
 TEXT = "Первая строка\nВторая строка\n\f"
@@ -155,3 +157,99 @@ def test_load_page_returns_stored_values(db) -> None:
             }
         ],
     }
+
+
+# --- find_phrase (T037) ---------------------------------------------------------------
+
+FIND_TEXT = "Договор аренды\nСрок 12 месяцев\nДоговор аренды"
+FIND_LINES = (
+    '[{"i": 0, "text": "Договор аренды", "role": "body", "bbox": [1, 2, 3, 4]},'
+    ' {"i": 1, "text": "Срок 12 месяцев", "role": "body", "bbox": [5, 6, 7, 8]},'
+    ' {"i": 2, "text": "Колонтитул Договор", "role": "header", "bbox": [9, 9, 9, 9]}]'
+)
+
+
+def _seed_find(db) -> None:
+    run_id = _seed(db)
+    _add_page_text(db, run_id, 1, FIND_LINES)
+    _add_page_text(db, run_id, 2, '[{"i": 0, "text": "Договор аренды", "role": "body",'
+                   ' "bbox": [0, 0, 1, 1]}]')
+    _add_text(db, run_id, FIND_TEXT)
+    _span(db, 0, 14, 1, 0)
+    _span(db, 15, 30, 1, 1)
+    _span(db, 31, 45, 2, 0)
+
+
+def test_find_clean_text_and_header(db) -> None:
+    _seed_find(db)
+
+    result = find_phrase(db, 1, "Договор")
+
+    assert result["id"] == "D-0001"
+    assert result["phrase"] == "Договор"
+    assert result["matches"] == [
+        {"start": 0, "end": 7, "page": 1, "line": 0, "bbox": [1, 2, 3, 4], "role": "body"},
+        {"start": 31, "end": 38, "page": 2, "line": 0, "bbox": [0, 0, 1, 1], "role": "body"},
+        {"start": 11, "end": 18, "page": 1, "line": 2, "bbox": [9, 9, 9, 9], "role": "header"},
+    ]
+
+
+def test_find_normalizes_phrase(db) -> None:
+    _seed_find(db)
+
+    result = find_phrase(db, 1, "Срок\u00a012\u2011")
+
+    assert result["phrase"] == "Срок 12-"
+    assert result["matches"] == []
+    result = find_phrase(db, 1, "  Срок\u00a012  ")
+    assert result["phrase"] == "Срок 12"
+    assert [(m["page"], m["line"]) for m in result["matches"]] == [(1, 1)]
+
+
+def test_find_skips_match_on_newline_join(db) -> None:
+    _seed_find(db)
+
+    assert find_phrase(db, 1, "\n")["matches"] == []
+
+
+def test_find_not_found_and_empty_phrase(db) -> None:
+    _seed_find(db)
+
+    assert find_phrase(db, 1, "нет такого")["matches"] == []
+    with pytest.raises(UserError, match="Пустая фраза для поиска"):
+        find_phrase(db, 1, " \u00a0 ")
+
+
+def test_find_errors_for_unknown_and_unread(db) -> None:
+    with pytest.raises(UserError):
+        find_phrase(db, 5, "x")
+    _seed(db)
+    with pytest.raises(UserError, match="ещё не прочитан"):
+        find_phrase(db, 1, "x")
+
+
+def test_cli_find_text_and_json(db, cli) -> None:
+    _seed_find(db)
+
+    text = cli("text", "D-0001", "--find", "Срок")
+    assert text.exit_code == 0
+    assert text.stdout.strip() == "стр. 1, строка 1, body: …Договор аренды Срок 12 месяцев Договор аренды…"
+
+    as_json = cli("text", "D-0001", "--find", "Колонтитул", "--json")
+    data = json.loads(as_json.stdout)
+    assert data["matches"] == [
+        {"start": 0, "end": 10, "page": 1, "line": 2, "bbox": [9, 9, 9, 9], "role": "header"}
+    ]
+
+    missing = cli("text", "D-0001", "--find", "нет такого")
+    assert missing.exit_code == 0
+    assert missing.stdout.strip() == "Не найдено"
+
+
+def test_cli_find_conflicts_with_page(db, cli) -> None:
+    _seed_find(db)
+
+    result = cli("text", "D-0001", "--find", "Срок", "--page", "1")
+
+    assert result.exit_code != 0
+    assert "Укажите либо --page, либо --find" in result.stderr

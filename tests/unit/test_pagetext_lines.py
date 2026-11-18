@@ -7,7 +7,12 @@ from pathlib import Path
 import pypdfium2 as pdfium
 
 from docreader.pagetext import Char, Line, build_lines, read_page_chars
-from tests.synthetic.make_pdfs import CONTRACT_RU_PAGES, make_contract_ru
+from tests.synthetic.make_pdfs import (
+    CONTRACT_RU_PAGES,
+    FAKE_BOLD_RU_LINES,
+    make_contract_ru,
+    make_fake_bold_ru,
+)
 
 H = 10.0  # char height
 W = 5.0  # char width
@@ -147,6 +152,15 @@ def test_unicode_hyphen_marker_is_kept_in_text() -> None:
     assert build_lines(chars)[0].text == "ab￾"
 
 
+def test_line_text_is_normalized_and_empty_lines_are_dropped() -> None:
+    top = word("a\u00a0b\u2011c", 0, bottom=200.0)
+    blank = word("\u00a0", 0, bottom=150.0)
+    last = word("end", 0, bottom=100.0)
+    lines = build_lines(top + blank + last)
+    assert [ln.text for ln in lines] == ["a b-c", "end"]
+    assert [ln.index for ln in lines] == [0, 1]
+
+
 def test_line_to_json_shape() -> None:
     line = build_lines(word("ab", 10.123, bottom=100.0))[0]
     data = line.to_json()
@@ -161,6 +175,79 @@ def test_line_to_json_shape() -> None:
 
 def test_line_type_is_exported() -> None:
     assert isinstance(build_lines(word("a", 0))[0], Line)
+
+
+# --- fake bold: duplicate chars (R-2) ----------------------------------------
+
+
+def shifted(chars: list[Char], dx: float = 0.0, dy: float = 0.0) -> list[Char]:
+    return [
+        Char(c.text, (c.box[0] + dx, c.box[1] + dy, c.box[2] + dx, c.box[3] + dy))
+        for c in chars
+    ]
+
+
+def test_fake_bold_line_drawn_twice_is_read_once() -> None:
+    base = word("Договор", 10)
+    lines = build_lines(base + shifted(base, dx=0.3))
+    assert [ln.text for ln in lines] == ["Договор"]
+
+
+def test_fake_bold_interleaved_duplicates_are_read_once() -> None:
+    base = word("Договор", 10)
+    dup = shifted(base, dx=0.3)
+    mixed = [ch for pair in zip(base, dup) for ch in pair]
+    assert [ln.text for ln in build_lines(mixed)] == ["Договор"]
+
+
+def test_fake_bold_with_small_y_shift_is_read_once() -> None:
+    base = word("Договор", 10)
+    lines = build_lines(base + shifted(base, dx=0.3, dy=0.2))
+    assert [ln.text for ln in lines] == ["Договор"]
+
+
+def test_fake_bold_duplicates_across_cell_border_are_removed() -> None:
+    base = word("а", 9.9)
+    assert [ln.text for ln in build_lines(base + shifted(base, dx=0.3))] == ["а"]
+
+
+def test_genuine_double_letters_are_kept() -> None:
+    assert [ln.text for ln in build_lines(word("касса", 10))] == ["касса"]
+    assert [ln.text for ln in build_lines(word("Ассоциация", 10))] == ["Ассоциация"]
+
+
+def test_same_letter_at_same_x_on_two_lines_is_kept() -> None:
+    chars = word("а", 10, bottom=100) + [gen("\n", 15)] + word("а", 10, bottom=100 - H - 2)
+    assert [ln.text for ln in build_lines(chars)] == ["а", "а"]
+
+
+def test_duplicate_offset_of_one_pt_or_more_is_kept() -> None:
+    base = word("а", 10)
+    for dx, dy in ((1.0, 0.0), (0.0, 1.0), (1.5, 0.0), (0.3, 1.0)):
+        chars = base + shifted(base, dx=dx, dy=dy)
+        text = "".join(ln.text for ln in build_lines(chars))
+        assert text.count("а") == 2, (dx, dy)
+
+
+def test_whitespace_chars_are_never_deduplicated() -> None:
+    chars = [
+        *word("а", 10),
+        Char(" ", (15.0, 100.0, 17.0, 110.0)),
+        Char(" ", (15.2, 100.0, 17.2, 110.0)),
+        *word("б", 30),
+    ]
+    # two spaces still collapse to one; the point is nothing breaks
+    assert [ln.text for ln in build_lines(chars)] == ["а б"]
+
+
+def test_fake_bold_page_of_many_chars_is_fast() -> None:
+    chars: list[Char] = []
+    for row in range(60):
+        chars += word("Договор" * 7, 10, bottom=800 - row * 12)
+    chars = chars + shifted(chars, dx=0.3)
+    lines = build_lines(chars)
+    assert len(lines) == 60
+    assert all(ln.text == "Договор" * 7 for ln in lines)
 
 
 # --- real PDF ---------------------------------------------------------------
@@ -186,3 +273,17 @@ def test_contract_ru_pdf_lines_match_source_text(tmp_path: Path) -> None:
                 assert 0 <= bottom < top <= height
     finally:
         pdf.close()
+
+
+def test_fake_bold_pdf_lines_have_no_doubled_text(tmp_path: Path) -> None:
+    path = make_fake_bold_ru(tmp_path / "bold.pdf")
+    pdf = pdfium.PdfDocument(str(path))
+    try:
+        page = pdf[0]
+        try:
+            lines = build_lines(read_page_chars(page))
+        finally:
+            page.close()
+    finally:
+        pdf.close()
+    assert [ln.text for ln in lines] == list(FAKE_BOLD_RU_LINES)

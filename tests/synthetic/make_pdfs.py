@@ -364,6 +364,356 @@ def make_contract_ru(path: str | Path, pages: int = 3) -> Path:
     return _write(path, _pdf(draw))
 
 
+# --- Cyrillic test pages for feature 03 (R-5, R-12) --------------------------
+
+_CONSONANTS = "бвгджзклмнпрстфхцчшщ"  # no vowels, no й, ъ, ь
+
+
+def _garbage_lines() -> tuple[str, ...]:
+    """Six lines of consonant-only Cyrillic words: eight 4-letter words per line.
+
+    Private-use chars and U+FFFD are not used: PDFium returns U+FFFD for every
+    private-use code point, so they do not survive text extraction (R-12 fallback).
+    """
+    lines = []
+    for n in range(6):
+        words = []
+        for i in range(8):
+            w = n * 8 + i
+            letters = (_CONSONANTS[(w + 7 * j) % len(_CONSONANTS)] for j in range(4))
+            words.append("".join(letters))
+        lines.append(" ".join(words))
+    return tuple(lines)
+
+
+UNREADABLE_RU_PAGES: tuple[tuple[str, ...], ...] = (_garbage_lines(),)
+
+
+def make_unreadable_ru(path: str | Path) -> Path:
+    """Russian page whose text layer is garbage: consonant-only Cyrillic words."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, UNREADABLE_RU_PAGES[0])
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Kazakh letters: Ә Ғ Қ Ң Ө Ұ Ү Һ І (and lower case). Tokens below carry them;
+# _KAZAKH_LETTER_COUNTS holds how many such letters each token has.
+_KAZAKH_TOKENS = ("Қарағанды", "Әлиев А.Б.", "Үсенова Г.М.", "Ұлыбаева Р.К.")
+_KAZAKH_LETTER_COUNTS = (2, 1, 1, 1)
+_KAZAKH_SLOTS = (
+    "Место выполнения работ: г. {}.",
+    "Директор {} действует на основании устава.",
+    "Ответственный исполнитель: {}.",
+    "Адрес для корреспонденции: ул. {}, д. 1.",
+)
+_KAZAKH_FALLBACKS = ("Москва", "Петров И.И.", "Сидоров П.С.", "Ленина")
+
+
+def kazakh_ru_lines(letters: int = 3) -> tuple[str, ...]:
+    """Lines of a Russian contract page with exactly `letters` Kazakh letters.
+
+    Tokens go into the slots in order while they fit the remaining count; the other
+    slots get plain Russian words. Works for 0 to sum(_KAZAKH_LETTER_COUNTS).
+    """
+    max_letters = sum(_KAZAKH_LETTER_COUNTS)
+    if not 0 <= letters <= max_letters:
+        raise ValueError(f"letters must be from 0 to {max_letters}, got {letters}")
+    remaining = letters
+    slots = []
+    for template, token, count, fallback in zip(
+        _KAZAKH_SLOTS, _KAZAKH_TOKENS, _KAZAKH_LETTER_COUNTS, _KAZAKH_FALLBACKS
+    ):
+        if count <= remaining:
+            slots.append(template.format(token))
+            remaining -= count
+        else:
+            slots.append(template.format(fallback))
+    return (
+        "Договор оказания услуг № 77/12-К",
+        slots[0],
+        "1. Предмет договора",
+        "1.1. Исполнитель обязуется оказать услуги, а заказчик — оплатить их.",
+        slots[1],
+        "2. Стоимость и порядок оплаты",
+        "2.1. Стоимость услуг составляет 500 000 рублей.",
+        slots[2],
+        slots[3],
+    )
+
+
+def make_kazakh_ru(path: str | Path, letters: int = 3) -> Path:
+    """One Russian contract page with `letters` Kazakh letters spread in words."""
+    lines = kazakh_ru_lines(letters)
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, lines)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+def make_kazakh_one_ru(path: str | Path) -> Path:
+    """One Russian page with a single Kazakh letter, in the surname «Әлиев А.Б.»."""
+    return make_kazakh_ru(path, letters=1)
+
+
+LATIN_RU_PAGES: tuple[tuple[str, ...], ...] = (
+    (
+        "Идентификатор: b55183f5-4c1e-4a7b-9d2e-0f6a1b2c3d4e",
+        "ООО «Ромашка» (LLC), e-mail: info@example.com, ИНН/KPP",
+        "Маркировка изделия: «CKAВ» (латиница и кириллица).",
+        "Обозначение «k-гo» указывается в каждом пункте.",
+    ),
+)
+
+
+def make_latin_ru(path: str | Path) -> Path:
+    """Russian page with Latin identifiers, abbreviations and look-alike letters."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, LATIN_RU_PAGES[0])
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Typography: NBSP, narrow NBSP, U+2011, U+2212, quotes, soft hyphen, double spaces.
+# Written with escapes so that the special characters are unambiguous in the source.
+TYPOGRAPHY_RU_RAW: tuple[tuple[str, ...], ...] = (
+    (
+        "Цена договора: 1 500 000 рублей.",
+        "Срок‑годности услуг составляет один год.",
+        "Температура хранения: −18 °C.",
+        "Заказчик „ООО «Ромашка»” передаёт документы.",
+        "‘Важно’: срок оплаты — 10 дней.",
+        "Строи­тельство объекта – по графику.",
+        "Пункт  1.2   договора   указан  верно.",
+        " Приложение  «Смета»  к договору  ",
+        "Ёлочки «ёж» и “всё ещё”.",
+    ),
+)
+
+# The same lines after the R-5 rules: spaces -> ' ', dashes and minus -> '-',
+# double quotes -> '"', single quotes -> "'", soft hyphen removed, space runs
+# collapsed, ends trimmed. Dashes «—» «–», «ёлочки» and «ё» stay.
+TYPOGRAPHY_RU_CLEAN: tuple[tuple[str, ...], ...] = (
+    (
+        "Цена договора: 1 500 000 рублей.",
+        "Срок-годности услуг составляет один год.",
+        "Температура хранения: -18 °C.",
+        'Заказчик "ООО «Ромашка»" передаёт документы.',
+        "'Важно': срок оплаты — 10 дней.",
+        "Строительство объекта – по графику.",
+        "Пункт 1.2 договора указан верно.",
+        "Приложение «Смета» к договору",
+        'Ёлочки «ёж» и "всё ещё".',
+    ),
+)
+
+
+def make_typography_ru(path: str | Path) -> Path:
+    """Russian page with typographic characters: some R-5 normalises, some stay."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, TYPOGRAPHY_RU_RAW[0])
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# --- running headers, hyphenation, page breaks, fake bold (feature 03, R-4, R-6) ---
+
+_HEADER_TEXT = "Договор подряда № 123/45-У"
+_HEADER_Y = PAGE_H - 40  # inside the top 10% of the page
+_FOOTER_Y = 30  # inside the bottom 10% of the page
+_BODY_TOP = PAGE_H - 100
+
+# Body lines of the running-header contract, pages 1..5; page N: clauses N.1 to N.3.
+HEADERS_RU_BODY_PAGES: tuple[tuple[str, ...], ...] = (
+    (
+        "1.1. Подрядчик выполняет работы на объекте заказчика.",
+        "1.2. Заказчик передаёт объект подрядчику по акту.",
+        "1.3. Сроки работ определяются графиком к договору.",
+    ),
+    (
+        "2.1. Стоимость работ определяется сметой к договору.",
+        "2.2. Оплата производится в течение 10 рабочих дней.",
+        "2.3. Авансирование настоящим договором не предусмотрено.",
+    ),
+    (
+        "3.1. Подрядчик несёт риск случайной гибели материалов.",
+        "3.2. Материалы поставляются силами подрядчика.",
+        "3.3. Замена материалов согласуется с заказчиком.",
+    ),
+    (
+        "4.1. Гарантийный срок на выполненные работы составляет 12 месяцев.",
+        "4.2. Претензии по качеству направляются в письменной форме.",
+        "4.3. Устранение недостатков производится за счёт подрядчика.",
+    ),
+    (
+        "5.1. Договор может быть расторгнут по соглашению сторон.",
+        "5.2. Расторжение оформляется дополнительным соглашением.",
+        "5.3. Споры разрешаются в арбитражном суде по месту работ.",
+    ),
+)
+
+
+def _page_number_text(page_no: int) -> str:
+    """Odd pages get «- N -», even pages get «Стр. N» (mixed on purpose)."""
+    return f"- {page_no} -" if page_no % 2 else f"Стр. {page_no}"
+
+
+def _draw_running_head(c: canvas.Canvas, page_no: int) -> None:
+    """Header at the top of the page and a centred page number at the bottom."""
+    _ru_page(c, (_HEADER_TEXT,), y_top=_HEADER_Y, size=9)
+    _register_cyrillic_font()
+    c.setFont(_CYRILLIC_FONT, 9)
+    c.drawCentredString(PAGE_W / 2, _FOOTER_Y, _page_number_text(page_no))
+
+
+def _check_pages(pages: int, limit: int) -> None:
+    if not 1 <= pages <= limit:
+        raise ValueError(f"pages must be from 1 to {limit}, got {pages}")
+
+
+def make_headers_ru(path: str | Path, pages: int = 5) -> Path:
+    """Russian contract with a header and a page number on every page (R-4).
+
+    pages=2 gives the 2-page variant. The header sits at the same x and y on every page.
+    """
+    _check_pages(pages, len(HEADERS_RU_BODY_PAGES))
+
+    def draw(c: canvas.Canvas) -> None:
+        for n, lines in enumerate(HEADERS_RU_BODY_PAGES[:pages], start=1):
+            _draw_running_head(c, n)
+            _ru_page(c, lines, y_top=_BODY_TOP)
+            c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+def headers_ru_expected(
+    pages: int = 5,
+) -> tuple[str, list[tuple[int, str]], list[tuple[int, str]]]:
+    """Expected result for make_headers_ru(pages).
+
+    Returns (body_text, header_lines, page_number_lines): body lines of all pages
+    joined with "\\n", (page, header text) pairs and (page, page number text) pairs.
+    """
+    _check_pages(pages, len(HEADERS_RU_BODY_PAGES))
+    body_text = "\n".join(
+        line for lines in HEADERS_RU_BODY_PAGES[:pages] for line in lines
+    )
+    header_lines = [(n, _HEADER_TEXT) for n in range(1, pages + 1)]
+    page_number_lines = [(n, _page_number_text(n)) for n in range(1, pages + 1)]
+    return body_text, header_lines, page_number_lines
+
+
+# Hyphen at the end of a drawn line: PDFium may report it as U+FFFE or 0x02 (R-6).
+# Lines 1-2 and 3-4 are joins («мон-»/«тажные», «строительно-»/«монтажные»); the rest
+# keep the line break (capital letter or digit after the hyphen).
+HYPHENS_RU_LINES: tuple[str, ...] = (
+    "1. Работы по договору включают мон-",
+    "тажные работы на объекте в полном объёме.",
+    "2. Стоимость работ по строительно-",
+    "монтажные работы составляет 1 500 000 рублей.",
+    "3. Номер договора № 123/45-У указан в шапке.",
+    "4. Порядок см. раздел-",
+    "Приложение 2 содержит смету.",
+    "5. Срок выполнения 10 дней, см. пункт-",
+    "2 настоящего договора.",
+)
+
+HYPHENS_RU_TEXT = "\n".join(
+    (
+        "1. Работы по договору включают монтажные работы на объекте в полном объёме.",
+        "2. Стоимость работ по строительно-монтажные работы "
+        "составляет 1 500 000 рублей.",
+        "3. Номер договора № 123/45-У указан в шапке.",
+        "4. Порядок см. раздел-\nПриложение 2 содержит смету.",
+        "5. Срок выполнения 10 дней, см. пункт-\n2 настоящего договора.",
+    )
+)
+
+
+def make_hyphens_ru(path: str | Path) -> Path:
+    """One page with line-end hyphens, drawn one line per drawString (no wrapping)."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, HYPHENS_RU_LINES)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Three pages with the same header and footer; a sentence starts at the bottom of
+# page 1 and continues at the top of page 2.
+PAGE_BREAK_SENTENCE_PAGES: tuple[tuple[str, ...], ...] = (
+    (
+        "1.1. Подрядчик выполняет работы по графику, согласованному сторонами.",
+        "1.2. Заказчик оплачивает работы в течение срока, указанного в",
+    ),
+    (
+        "в настоящем пункте договора, если иное не предусмотрено законом.",
+        "2.1. Приёмка работ оформляется актом по форме, приложенной к договору.",
+    ),
+    (
+        "3.1. Договор вступает в силу с даты его подписания сторонами.",
+        "3.2. Договор составлен в двух экземплярах, по одному для каждой стороны.",
+    ),
+)
+
+PAGE_BREAK_SENTENCE_TEXT = "\n".join(
+    line for lines in PAGE_BREAK_SENTENCE_PAGES for line in lines
+)
+
+
+def make_page_break_sentence_ru(path: str | Path) -> Path:
+    """3 pages with header and footer; a sentence is split across pages 1 and 2."""
+
+    def draw(c: canvas.Canvas) -> None:
+        for n, lines in enumerate(PAGE_BREAK_SENTENCE_PAGES, start=1):
+            _draw_running_head(c, n)
+            _ru_page(c, lines, y_top=_BODY_TOP)
+            c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Expected text lines; each one is drawn twice on the page (fake bold), see below.
+FAKE_BOLD_RU_LINES: tuple[str, ...] = (
+    "1. Предмет договора",
+    "1.1. Подрядчик обязуется выполнить работы по договору.",
+    "1.2. Ассоциация «Строители» и касса предприятия подтверждают оплату.",
+    "1.3. Работы выполняются в объёме, определённом сметой.",
+    "2. Сроки выполнения работ",
+    "2.1. Касса принимает оплату по безналичному расчёту.",
+)
+
+# Indexes of the lines that are drawn twice; the second copy is shifted 0.3 pt in x.
+_FAKE_BOLD_INDEXES = frozenset({0, 2, 4, 5})
+_FAKE_BOLD_SHIFT = 0.3
+
+
+def make_fake_bold_ru(path: str | Path) -> Path:
+    """One page; some lines drawn twice with a 0.3 pt shift, as Word exports bold."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _register_cyrillic_font()
+        c.setFont(_CYRILLIC_FONT, 11)
+        for i, line in enumerate(FAKE_BOLD_RU_LINES):
+            y = PAGE_H - 72 - i * 16
+            c.drawString(72, y, line)
+            if i in _FAKE_BOLD_INDEXES:
+                c.drawString(72 + _FAKE_BOLD_SHIFT, y, line)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
 # --- not PDF: formats recognised by signature (R-5) --------------------------
 
 

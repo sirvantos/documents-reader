@@ -392,3 +392,13 @@ def render_page_text(view: dict) -> str:
         lines.extend(_page_line_text(line) for line in page["lines"])
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
+
+
+def render_find_text(view: dict) -> str:
+    """Matches of `text --find`; each match carries a `context` string."""
+    if not view["matches"]:
+        return "Не найдено"
+    return "\n".join(
+        f"стр. {m['page']}, строка {m['line']}, {m['role']}: …{m['context']}…"
+        for m in view["matches"]
+    )

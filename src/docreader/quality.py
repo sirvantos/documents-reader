@@ -5,10 +5,13 @@ Pure functions: page facts in, flags and the document state out. No database, no
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import re
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from docreader.pdfpages import KIND_SCAN
+from docreader.config import ReadingSettings
+from docreader.pagetext import Char
+from docreader.pdfpages import KIND_SCAN, KIND_SCAN_WITH_TEXT
 
 # FR-006 order; it is also the order of the parts of the state reason.
 FLAG_NAMES: dict[str, str] = {
@@ -60,6 +63,130 @@ def skip_flag(page: PageInfo) -> Flag | None:
             f"изображение на {page.image_coverage:.0%} страницы, {detail}; распознавание не выполняется",
         )
     return None
+
+
+# --- flags of read pages (step 2) --------------------------------------------------------
+
+# Blanks of a form («___» __________ 2024 г.) are not text and not garbage (spec, edge
+# cases): they count neither for the length nor for the shares of the `unreadable` rule.
+_PLACEHOLDER_CHARS = frozenset("_")
+_RUSSIAN_VOWELS = frozenset("аеёиоуыэюяАЕЁИОУЫЭЮЯ")
+_CYRILLIC_WORD = re.compile("[Ѐ-ԯ]{3,}")
+
+
+def _is_cyrillic(ch: str) -> bool:
+    return "Ѐ" <= ch <= "ԯ"
+
+
+def _is_russian_letter(ch: str) -> bool:
+    return "А" <= ch <= "я" or ch in "Ёё"
+
+
+def _is_bad_char(ch: str) -> bool:
+    """Replacement char or private use area: the font has no usable mapping."""
+    code = ord(ch)
+    return (
+        ch == "�"
+        or 0xE000 <= code <= 0xF8FF
+        or 0xF0000 <= code <= 0xFFFFD
+        or 0x100000 <= code <= 0x10FFFD
+    )
+
+
+def _is_letter_or_digit(ch: str) -> bool:
+    return _is_cyrillic(ch) and ch.isalpha() or ch.isascii() and ch.isalnum()
+
+
+def count_map_errors(chars: Iterable[Char]) -> int:
+    """Chars PDFium marks as badly mapped that the text check does not see by itself."""
+    return sum(1 for ch in chars if ch.map_error and not _is_bad_char(ch.text))
+
+
+def _share(part: int, whole: int) -> str:
+    return f"{part / whole:.0%}"
+
+
+def _unreadable_reason(
+    text: str, settings: ReadingSettings, text_min_chars: int, map_errors: int
+) -> str | None:
+    chars = [ch for ch in text if not ch.isspace() and ch not in _PLACEHOLDER_CHARS]
+    total = len(chars)
+    if total < text_min_chars:
+        return None
+    problems = []
+
+    letters = sum(1 for ch in chars if _is_letter_or_digit(ch))
+    if letters / total < settings.unreadable_min_letter_share:
+        problems.append(
+            f"доля букв и цифр {_share(letters, total)} "
+            f"(порог {settings.unreadable_min_letter_share:.0%})"
+        )
+
+    bad = sum(1 for ch in chars if _is_bad_char(ch)) + map_errors
+    if bad / total > settings.unreadable_max_bad_share:
+        problems.append(
+            f"знаков с ошибкой кодировки {_share(bad, total)} "
+            f"(порог {settings.unreadable_max_bad_share:.0%})"
+        )
+
+    words = _CYRILLIC_WORD.findall(text)
+    if words:
+        vowelless = sum(1 for w in words if not _RUSSIAN_VOWELS.intersection(w))
+        if vowelless / len(words) > settings.unreadable_max_vowelless_share:
+            problems.append(
+                f"слов без гласных {_share(vowelless, len(words))} "
+                f"(порог {settings.unreadable_max_vowelless_share:.0%})"
+            )
+    return "; ".join(problems) or None
+
+
+def _letters_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "буква"
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return "буквы"
+    return "букв"
+
+
+def _not_russian_reason(text: str, settings: ReadingSettings) -> str | None:
+    found = [ch for ch in text if _is_cyrillic(ch) and ch.isalpha() and not _is_russian_letter(ch)]
+    if len(found) < settings.non_russian_min_letters:
+        return None
+    distinct = ", ".join(dict.fromkeys(found))
+    return f"{len(found)} {_letters_word(len(found))} не русского алфавита: {distinct}"
+
+
+def content_flags(
+    page: PageInfo,
+    text: str,
+    settings: ReadingSettings,
+    text_min_chars: int,
+    *,
+    map_errors: int = 0,
+) -> list[Flag]:
+    """Flags of a read page from its kind and its normalized text, in FR-006 order.
+
+    `map_errors` comes from `count_map_errors` over the page chars; Latin letters are
+    never counted as not Russian (spec, US2-6).
+    """
+    flags = []
+    if page.kind == KIND_SCAN_WITH_TEXT:
+        flags.append(
+            Flag(
+                "ocr_text",
+                f"текстовый слой поверх изображения на {page.image_coverage:.0%} страницы",
+            )
+        )
+    reason = _unreadable_reason(text, settings, text_min_chars, map_errors)
+    if reason:
+        flags.append(Flag("unreadable", reason))
+    reason = _not_russian_reason(text, settings)
+    if reason:
+        flags.append(Flag("maybe_not_russian", reason))
+    return flags
+
+
+# --- document state ----------------------------------------------------------------------
 
 
 def _pages_by_flag(page_flags: Mapping[int, Sequence[Flag]]) -> list[tuple[str, list[int]]]:

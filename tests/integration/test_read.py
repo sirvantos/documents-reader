@@ -491,3 +491,90 @@ def test_read_text_output_lists_documents_and_totals(cli, tmp_path):
     assert "D-0001" in result.stdout
     assert "требует просмотра" in result.stdout
     assert "Итого:" in result.stdout
+
+
+# --- US2: content flags (T025) -------------------------------------------------------
+
+
+def stored_lines(db, doc_id: str) -> list[list[str]]:
+    return [[ln["text"] for ln in row[4]] for row in page_rows(db, doc_id)]
+
+
+def flag_reasons(db, doc_id: str) -> dict[tuple[int, str], str]:
+    return {
+        (page, code): reason
+        for page, code, reason in db.execute(
+            "SELECT page_number, code, reason FROM page_flag WHERE document_id = %s", (doc_id,)
+        )
+    }
+
+
+def test_invisible_text_over_image_is_flagged_ocr_text_and_stored(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_image_with_invisible_text])
+
+    assert cli("read", doc).exit_code == 0
+
+    assert flags_of(db, doc) == {1: {"ocr_text"}, 2: {"ocr_text"}}
+    for lines in stored_lines(db, doc):
+        assert lines
+
+
+def test_garbage_page_is_flagged_unreadable(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_unreadable_ru])
+
+    assert cli("read", doc).exit_code == 0
+
+    flags = flags_of(db, doc)
+    assert flags
+    assert all("unreadable" in codes for codes in flags.values())
+
+
+def test_three_kazakh_letters_flag_maybe_not_russian(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [lambda p: mk.make_kazakh_ru(p, 3)])
+
+    assert cli("read", doc).exit_code == 0
+
+    assert flags_of(db, doc) == {1: {"maybe_not_russian"}}
+    reason = flag_reasons(db, doc)[(1, "maybe_not_russian")]
+    assert reason.startswith("3 буквы не русского алфавита")
+
+
+def test_single_kazakh_letter_gives_no_not_russian_flag(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_kazakh_one_ru])
+
+    assert cli("read", doc).exit_code == 0
+
+    assert all("maybe_not_russian" not in codes for codes in flags_of(db, doc).values())
+
+
+def test_latin_in_russian_text_gives_no_flags_and_is_stored_as_is(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_latin_ru])
+
+    assert cli("read", doc).exit_code == 0
+
+    assert flags_of(db, doc) == {}
+    assert stage(db, doc)[:2] == ("done", None)
+    assert any("CKAВ" in line for line in stored_lines(db, doc)[0])
+
+
+def test_flagged_pages_make_needs_review_with_page_list(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_image_with_invisible_text])
+
+    data = read_json(cli, doc)
+
+    state, reason, _ = stage(db, doc)
+    assert state == "needs_review"
+    assert "стр. 1, 2: " in reason
+    assert reason == data["documents"][0]["reason"]
+    assert data["documents"][0]["flags"] == {"ocr_text": [1, 2]}
+
+
+def test_typography_is_normalized_in_stored_lines(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_typography_ru])
+
+    assert cli("read", doc).exit_code == 0
+
+    assert stored_lines(db, doc) == [list(page) for page in mk.TYPOGRAPHY_RU_CLEAN]
+    joined = "\n".join(stored_lines(db, doc)[0])
+    for kept in ("—", "–", "«", "»", "ё"):
+        assert kept in joined

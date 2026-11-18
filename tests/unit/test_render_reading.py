@@ -1,4 +1,4 @@
-from docreader.render import render_document_text, render_page_text, render_read_text
+from docreader.render import render_document_text, render_find_text, render_page_text, render_read_text
 
 
 def _doc(seq: int, *, pages: int = 3, state: str = "done", reason: str | None = None,
@@ -253,3 +253,15 @@ def test_page_line_index_is_right_aligned_in_three_chars():
 def test_empty_page_shows_no_lines_placeholder():
     lines = render_page_text(_page_view()).splitlines()
     assert lines == ["D-0001, стр. 2", "Флаги: нет", "(строк нет)"]
+
+
+def test_render_find_text_matches_and_none() -> None:
+    view = {"id": "D-0001", "phrase": "x", "matches": [
+        {"page": 2, "line": 5, "role": "body", "context": "до x после"},
+        {"page": 1, "line": 0, "role": "header", "context": "x"},
+    ]}
+    assert render_find_text(view).splitlines() == [
+        "стр. 2, строка 5, body: …до x после…",
+        "стр. 1, строка 0, header: …x…",
+    ]
+    assert render_find_text({"id": "D-0001", "phrase": "x", "matches": []}) == "Не найдено"

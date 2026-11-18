@@ -16,6 +16,7 @@ from docreader import registry
 from docreader.ids import format_document_id, parse_document_id
 from docreader.render import (
     render_document_text,
+    render_find_text,
     render_intake_json,
     render_intake_text,
     render_list_text,
@@ -82,6 +83,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("text", help="показать прочитанный текст документа")
     p.add_argument("id", metavar="ID", help="идентификатор документа, например D-0001")
     p.add_argument("--page", type=int, metavar="N", help="строки одной страницы")
+    p.add_argument("--find", metavar="ФРАЗА", help="найти фразу в тексте")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     return parser
@@ -207,7 +209,12 @@ def _cmd_read(args: argparse.Namespace, settings: Settings, conn: psycopg.Connec
 
 def _cmd_text(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
     seq = parse_document_id(args.id)
-    if args.page is None:
+    if args.find is not None:
+        if args.page is not None:
+            raise UserError("Укажите либо --page, либо --find")
+        view = textview.find_phrase(conn, seq, args.find, with_context=not args.json)
+        text = "" if args.json else render_find_text(view)
+    elif args.page is None:
         view = textview.load_document_text(conn, seq)
         text = render_document_text(view)
     else:

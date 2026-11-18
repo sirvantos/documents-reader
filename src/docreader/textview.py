@@ -9,6 +9,7 @@ from docreader.errors import UserError
 from docreader.ids import format_document_id
 from docreader.quality import FLAG_ORDER
 from docreader.registry import _not_found, find_document
+from docreader.textnorm import normalize_chars
 
 
 def _require_read(conn: psycopg.Connection, seq: int) -> dict:
@@ -114,3 +115,94 @@ def load_page(conn: psycopg.Connection, seq: int, page: int) -> dict:
             }
         ],
     }
+
+
+_CONTEXT_CHARS = 30
+_REMOVED_ROLES = ("header", "footer", "page_number")
+
+
+def _occurrences(text: str, phrase: str) -> list[int]:
+    """Start offsets of non-overlapping, left-to-right, exact occurrences."""
+    found: list[int] = []
+    pos = text.find(phrase)
+    while pos != -1:
+        found.append(pos)
+        pos = text.find(phrase, pos + len(phrase))
+    return found
+
+
+def find_phrase(
+    conn: psycopg.Connection, seq: int, phrase: str, *, with_context: bool = False
+) -> dict:
+    """Search a phrase in the clean text and in removed page elements (task T037).
+
+    `{"id", "phrase" (normalized), "matches": [{"start", "end", "page", "line",
+    "bbox", "role"}]}`; clean-text matches first (by start), then matches in lines
+    with role header/footer/page_number (by page and line; offsets inside the line). With `with_context` every match also
+    gets a `context` string (up to 30 characters around it) for text rendering.
+    """
+    doc = _require_read(conn, seq)
+    doc_id = doc["id"]
+    needle = normalize_chars(phrase)
+    if not needle:
+        raise UserError("Пустая фраза для поиска")
+    text = conn.execute(
+        "SELECT text FROM document_text WHERE document_id = %s", (doc_id,)
+    ).fetchone()[0]
+    page_lines: dict[int, dict[int, dict]] = {}
+    for page, lines in conn.execute(
+        "SELECT page_number, lines FROM page_text WHERE document_id = %s ORDER BY page_number",
+        (doc_id,),
+    ):
+        page_lines[page] = {line["i"]: line for line in lines}
+
+    def context(source: str, start: int, end: int) -> dict:
+        if not with_context:
+            return {}
+        before = source[max(0, start - _CONTEXT_CHARS) : start]
+        after = source[end : end + _CONTEXT_CHARS]
+        return {"context": f"{before}{source[start:end]}{after}".replace("\n", " ")}
+
+    matches: list[dict] = []
+    for start in _occurrences(text, needle):
+        end = start + len(needle)
+        span = conn.execute(
+            "SELECT page_number, line_index FROM text_span"
+            " WHERE document_id = %s AND end_ > %s AND start < %s"
+            " ORDER BY start LIMIT 1",
+            (doc_id, start, end),
+        ).fetchone()
+        if span is None:
+            continue
+        page, index = span
+        line = page_lines.get(page, {}).get(index, {})
+        matches.append(
+            {
+                "start": start,
+                "end": end,
+                "page": page,
+                "line": index,
+                "bbox": line.get("bbox"),
+                "role": line.get("role", "body"),
+                **context(text, start, end),
+            }
+        )
+    for page in sorted(page_lines):
+        for index in sorted(page_lines[page]):
+            line = page_lines[page][index]
+            if line.get("role") not in _REMOVED_ROLES:
+                continue
+            for start in _occurrences(line["text"], needle):
+                matches.append(
+                    {
+                        "start": start,
+                        "end": start + len(needle),
+                        "page": page,
+                        "line": index,
+                        "bbox": line.get("bbox"),
+                        "role": line["role"],
+                        **context(line["text"], start, start + len(needle)),
+                    }
+                )
+    conn.commit()
+    return {"id": doc_id, "phrase": needle, "matches": matches}
