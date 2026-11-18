@@ -163,11 +163,52 @@ def test_page_number_forms(template):
         assert roles(page) == ["body", "page_number"]
 
 
-def test_page_number_in_band_on_single_page_still_page_number():
+def test_lone_number_in_band_stays_body():
+    # FR-004 removes repeated page numbers only; a lone number near the edge is text
     pages = make_pages(4)
     pages[1].lines.append(fline(3, "Стр. 2", BOTTOM))
+    pages[2].lines.append(fline(3, "1501", BOTTOM))
     mark_page_furniture(pages, ReadingSettings())
-    assert roles(pages[1]) == ["body", "page_number"]
+    assert roles(pages[1]) == ["body", "body"]
+    assert roles(pages[2]) == ["body", "body"]
+
+
+def test_page_numbers_of_different_width_are_grouped():
+    # right-aligned «9», «10», «11», «12»: the left edge moves, the right edge stays
+    pages = make_pages(4)
+    for page in pages:
+        n = page.page_number + 8
+        width = 6.0 * len(str(n))
+        page.lines.append(fline(3, str(n), (450.0 - width, 20.0, 450.0, 35.0)))
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "page_number"] for p in pages)
+
+
+def test_mixed_page_number_forms_are_one_group():
+    # «- 1 -» on odd pages, «Стр. 2» on even: each form alone is on half of the pages
+    pages = make_pages(4, number="placeholder")
+    for page in pages:
+        n = page.page_number
+        page.lines[-1].text = f"- {n} -" if n % 2 else f"Стр. {n}"
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "page_number"] for p in pages)
+
+
+def test_table_cells_in_band_are_never_furniture():
+    # amounts and «Итого» of a ruled table at the page bottom are contract data
+    pages = make_pages(4)
+    for page in pages:
+        cell = {"t": 0, "row": 5, "cell": 0}
+        page.lines.append(Line(index=7, text="Итого", bbox=BOTTOM, table=cell))
+        amount = {"t": 0, "row": 5, "cell": 1}
+        page.lines.append(
+            Line(index=8, text=str(1500 + page.page_number), bbox=(400.0, 20.0, 450.0, 35.0), table=amount)
+        )
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "body", "body"] for p in pages)
+    result = build_document_text([(p.page_number, p.lines) for p in pages])
+    assert "1503" in result.text
+    assert result.text.count("Итого") == 4
 
 
 def test_page_number_in_the_middle_is_body():
