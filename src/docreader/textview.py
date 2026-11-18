@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
+
 import psycopg
 from psycopg.rows import dict_row
 
@@ -11,7 +13,7 @@ from docreader.ids import format_document_id
 from docreader.quality import FLAG_ORDER
 from docreader.registry import _not_found, find_document
 from docreader.stages import Stage, State
-from docreader.textnorm import normalize_chars
+from docreader.textnorm import is_empty_phrase, locate, normalize_chars
 
 
 def _require_read(conn: psycopg.Connection, seq: int) -> dict:
@@ -123,31 +125,35 @@ _CONTEXT_CHARS = 30
 _REMOVED_ROLES = ("header", "footer", "page_number")
 
 
-def _occurrences(text: str, phrase: str) -> list[int]:
-    """Start offsets of non-overlapping, left-to-right, exact occurrences."""
-    found: list[int] = []
-    pos = text.find(phrase)
-    while pos != -1:
-        found.append(pos)
-        pos = text.find(phrase, pos + len(phrase))
-    return found
+def _covered_lines(
+    spans: list[tuple[int, int, int, int]], ends: list[int], start: int, end: int
+) -> list[tuple[int, int]]:
+    """(page, line) of every `text_span` that `[start, end)` overlaps, in text order."""
+    covered = []
+    k = bisect_right(ends, start)  # the first span that ends after `start`
+    while k < len(spans) and spans[k][0] < end:
+        covered.append((spans[k][2], spans[k][3]))
+        k += 1
+    return covered
 
 
 def find_phrase(
     conn: psycopg.Connection, seq: int, phrase: str, *, with_context: bool = False
 ) -> dict:
-    """Search a phrase in the clean text and in removed page elements (task T037).
+    """Search a phrase in the clean text and in removed page elements (tasks T037, T066).
 
-    `{"id", "phrase" (normalized), "matches": [{"start", "end", "page", "line",
-    "bbox", "role"}]}`; clean-text matches first (by start), then matches in lines
-    with role header/footer/page_number (by page and line; offsets inside the line). With
-    `with_context` every match also gets a `context` string (up to 30 characters around it)
-    for text rendering.
+    Matching is `textnorm.locate`: the comparison form, so a phrase across a line or page
+    break, «ё»/«е», dash and quote variants are found. `{"id", "phrase" (normalized),
+    "matches": [{"start", "end", "page", "line", "bbox", "role", "lines": [{"page",
+    "line", "bbox"}]}]}`; `page`, `line`, `bbox` are those of the first line, `lines`
+    lists every line the match covers. Clean-text matches first (by start), then matches
+    in lines with role header/footer/page_number (by page and line; offsets inside the
+    line). With `with_context` every match also gets a `context` string (up to 30
+    characters around it) for text rendering.
     """
     doc = _require_read(conn, seq)
     doc_id = doc["id"]
-    needle = normalize_chars(phrase)
-    if not needle:
+    if is_empty_phrase(phrase):
         raise UserError("Пустая фраза для поиска")
     text = fetch_row(
         conn.execute("SELECT text FROM document_text WHERE document_id = %s", (doc_id,))
@@ -158,6 +164,12 @@ def find_phrase(
         (doc_id,),
     ):
         page_lines[page] = {line["i"]: line for line in lines}
+    spans = conn.execute(
+        "SELECT start, end_, page_number, line_index FROM text_span"
+        " WHERE document_id = %s ORDER BY start",
+        (doc_id,),
+    ).fetchall()
+    ends = [span[1] for span in spans]
 
     def context(source: str, start: int, end: int) -> dict:
         if not with_context:
@@ -166,18 +178,16 @@ def find_phrase(
         after = source[end : end + _CONTEXT_CHARS]
         return {"context": f"{before}{source[start:end]}{after}".replace("\n", " ")}
 
+    def line_ref(page: int, index: int) -> dict:
+        bbox = page_lines.get(page, {}).get(index, {}).get("bbox")
+        return {"page": page, "line": index, "bbox": bbox}
+
     matches: list[dict] = []
-    for start in _occurrences(text, needle):
-        end = start + len(needle)
-        span = conn.execute(
-            "SELECT page_number, line_index FROM text_span"
-            " WHERE document_id = %s AND end_ > %s AND start < %s"
-            " ORDER BY start LIMIT 1",
-            (doc_id, start, end),
-        ).fetchone()
-        if span is None:
+    for start, end in locate(text, phrase):
+        covered = _covered_lines(spans, ends, start, end)
+        if not covered:
             continue
-        page, index = span
+        page, index = covered[0]
         line = page_lines.get(page, {}).get(index, {})
         matches.append(
             {
@@ -187,6 +197,7 @@ def find_phrase(
                 "line": index,
                 "bbox": line.get("bbox"),
                 "role": line.get("role", "body"),
+                "lines": [line_ref(p, i) for p, i in covered],
                 **context(text, start, end),
             }
         )
@@ -195,19 +206,20 @@ def find_phrase(
             line = page_lines[page][index]
             if line.get("role") not in _REMOVED_ROLES:
                 continue
-            for start in _occurrences(line["text"], needle):
+            for start, end in locate(line["text"], phrase):
                 matches.append(
                     {
                         "start": start,
-                        "end": start + len(needle),
+                        "end": end,
                         "page": page,
                         "line": index,
                         "bbox": line.get("bbox"),
                         "role": line["role"],
-                        **context(line["text"], start, start + len(needle)),
+                        "lines": [line_ref(page, index)],
+                        **context(line["text"], start, end),
                     }
                 )
-    return {"id": doc_id, "phrase": needle, "matches": matches}
+    return {"id": doc_id, "phrase": normalize_chars(phrase), "matches": matches}
 
 
 def reading_report(conn: psycopg.Connection) -> dict:

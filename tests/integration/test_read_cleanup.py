@@ -190,3 +190,22 @@ def test_run_settings_contain_dictionary_version(cli, db, tmp_path):
         (doc,),
     ).fetchone()
     assert version
+
+
+# --- T066: a phrase across a line break in a real PDF ------------------------------
+
+
+def test_find_phrase_across_a_line_break(cli, db, tmp_path):
+    doc = read_doc(cli, tmp_path, mk.make_contract_ru)
+    first, second = mk.CONTRACT_RU_PAGES[0][4], mk.CONTRACT_RU_PAGES[0][5]
+    assert f"{first}\n{second}" in clean_text(db, doc)
+    # the end of one line and the start of the next, as a quote would give them
+    phrase = " ".join(first.split()[-2:] + second.split()[:3])
+
+    (match,) = find(cli, doc, phrase)["matches"]
+
+    assert match["role"] == "body"
+    assert len(match["lines"]) == 2
+    assert match["lines"][0]["page"] == match["lines"][1]["page"] == 1
+    assert match["lines"][1]["line"] == match["lines"][0]["line"] + 1
+    assert clean_text(db, doc)[match["start"] : match["end"]].replace("\n", " ") == phrase

@@ -188,9 +188,18 @@ def test_find_clean_text_and_header(db) -> None:
     assert result["id"] == "D-0001"
     assert result["phrase"] == "Договор"
     assert result["matches"] == [
-        {"start": 0, "end": 7, "page": 1, "line": 0, "bbox": [1, 2, 3, 4], "role": "body"},
-        {"start": 31, "end": 38, "page": 2, "line": 0, "bbox": [0, 0, 1, 1], "role": "body"},
-        {"start": 11, "end": 18, "page": 1, "line": 2, "bbox": [9, 9, 9, 9], "role": "header"},
+        {
+            "start": 0, "end": 7, "page": 1, "line": 0, "bbox": [1, 2, 3, 4], "role": "body",
+            "lines": [{"page": 1, "line": 0, "bbox": [1, 2, 3, 4]}],
+        },
+        {
+            "start": 31, "end": 38, "page": 2, "line": 0, "bbox": [0, 0, 1, 1], "role": "body",
+            "lines": [{"page": 2, "line": 0, "bbox": [0, 0, 1, 1]}],
+        },
+        {
+            "start": 11, "end": 18, "page": 1, "line": 2, "bbox": [9, 9, 9, 9],
+            "role": "header", "lines": [{"page": 1, "line": 2, "bbox": [9, 9, 9, 9]}],
+        },
     ]
 
 
@@ -206,10 +215,32 @@ def test_find_normalizes_phrase(db) -> None:
     assert [(m["page"], m["line"]) for m in result["matches"]] == [(1, 1)]
 
 
-def test_find_skips_match_on_newline_join(db) -> None:
+def test_whitespace_only_phrase_is_empty(db) -> None:
     _seed_find(db)
 
-    assert find_phrase(db, 1, "\n")["matches"] == []
+    with pytest.raises(UserError, match="Пустая фраза для поиска"):
+        find_phrase(db, 1, "\n")
+
+
+def test_find_across_a_line_break_lists_both_lines(db) -> None:
+    _seed_find(db)
+
+    (match,) = find_phrase(db, 1, "аренды Срок 12")["matches"]
+
+    assert (match["start"], match["end"]) == (8, 22)
+    assert (match["page"], match["line"], match["bbox"]) == (1, 0, [1, 2, 3, 4])
+    assert match["lines"] == [
+        {"page": 1, "line": 0, "bbox": [1, 2, 3, 4]},
+        {"page": 1, "line": 1, "bbox": [5, 6, 7, 8]},
+    ]
+
+
+def test_find_across_a_page_break(db) -> None:
+    _seed_find(db)
+
+    (match,) = find_phrase(db, 1, "месяцев Договор")["matches"]
+
+    assert [(ln["page"], ln["line"]) for ln in match["lines"]] == [(1, 1), (2, 0)]
 
 
 def test_find_not_found_and_empty_phrase(db) -> None:
@@ -241,7 +272,10 @@ def test_cli_find_text_and_json(db, cli) -> None:
     as_json = cli("text", "D-0001", "--find", "Колонтитул", "--json")
     data = json.loads(as_json.stdout)
     assert data["matches"] == [
-        {"start": 0, "end": 10, "page": 1, "line": 2, "bbox": [9, 9, 9, 9], "role": "header"}
+        {
+            "start": 0, "end": 10, "page": 1, "line": 2, "bbox": [9, 9, 9, 9],
+            "role": "header", "lines": [{"page": 1, "line": 2, "bbox": [9, 9, 9, 9]}],
+        }
     ]
 
     missing = cli("text", "D-0001", "--find", "нет такого")
