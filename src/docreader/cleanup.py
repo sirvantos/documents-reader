@@ -126,10 +126,10 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
     A line is furniture only when the same text (digits aside) stands at the same place
     on more than `header_min_share` of the pages (FR-004: «повторяющиеся»). The place
     is measured from the page edges, so pages of another size or orientation match.
-    A page number is also furniture when the printed numbers follow the PDF page
-    numbers with one offset at the same distance from the band edge on more than
-    `header_min_share` of the pages: a document may move its number left or right
-    between sections. A lone number near the page edge stays in the text.
+    A page number is also furniture when it belongs to a run of at least
+    `header_min_pages` consecutive pages whose printed numbers grow with the PDF page
+    (one offset) at the same distance from the band edge: annexes may move the number
+    or restart the numbering. A lone number near the page edge stays in the text.
     Table cells are never furniture: they are contract data (amounts, totals).
     """
     if len(pages) < settings.header_min_pages:
@@ -167,8 +167,19 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
                 for e in entries
                 if abs(entry.place.edge - e.place.edge) <= POSITION_TOLERANCE
             }
-            if len(level_pages) / total > settings.header_min_share:
+            if _run_length(level_pages, entry.page) >= settings.header_min_pages:
                 entry.line.role = "page_number"
+
+
+def _run_length(pages: set[int], page: int) -> int:
+    """Length of the run of consecutive page numbers in `pages` that contains `page`."""
+    first = page
+    while first - 1 in pages:
+        first -= 1
+    last = page
+    while last + 1 in pages:
+        last += 1
+    return last - first + 1
 
 
 def _hyphen_word(a: str, b: str) -> str | None:

@@ -404,3 +404,27 @@ def test_sequence_numbers_at_different_levels_stay_body():
     ]
     mark_page_furniture(pages, ReadingSettings())
     assert all(roles(p) == ["body", "body"] for p in pages)
+
+
+def test_numbered_annex_with_its_own_level_and_numbering():
+    # 10 main pages numbered at one level; a 3-page annex at another level, numbered
+    # from 1 — less than half of the document, but a run of consecutive numbers
+    pages = [sized_page(n, PORTRAIT, [top_number(n, 306.0)]) for n in range(1, 11)]
+    for n in range(11, 14):
+        number = fline(4, str(n - 10), (297.0, 790.8, 303.0, 799.1))
+        pages.append(sized_page(n, PORTRAIT, [number]))
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "page_number"] for p in pages)
+
+
+def test_short_run_of_numbers_stays_body():
+    # two consecutive pages are not a run (header_min_pages = 3); a number off the
+    # sequence is still found by its place when it stands where the main numbers do
+    pages = [sized_page(n, PORTRAIT, [top_number(n, 306.0)]) for n in range(1, 11)]
+    for n in (11, 12):
+        pages.append(sized_page(n, PORTRAIT, [fline(4, str(n - 10), (297.0, 790.8, 303.0, 799.1))]))
+    pages[4].lines[-1].text = "7"  # page 5 printed «7»: off the sequence, at the main level
+    mark_page_furniture(pages, ReadingSettings())
+    assert roles(pages[10]) == ["body", "body"]
+    assert roles(pages[11]) == ["body", "body"]
+    assert roles(pages[4]) == ["body", "page_number"]  # same place as the main numbers

@@ -129,7 +129,7 @@ done | needs_review ──read ID / read --all──▶ done | needs_review | fa
 |---|---|---|
 | `header_band` | 0.1 | доля высоты страницы сверху и снизу, где ищутся колонтитулы |
 | `header_min_share` | 0.5 | строка — колонтитул, если повторяется больше чем на этой доле страниц |
-| `header_min_pages` | 3 | меньше страниц — колонтитулы не ищутся |
+| `header_min_pages` | 3 | меньше страниц — колонтитулы не ищутся; столько же страниц подряд нужно серии номеров страниц (R-4) |
 | `non_russian_min_letters` | 3 | порог флага `maybe_not_russian` |
 | `unreadable_min_letter_share` | 0.6 | порог доли букв и цифр |
 | `unreadable_max_bad_share` | 0.05 | порог доли знаков с ошибкой кодировки |
