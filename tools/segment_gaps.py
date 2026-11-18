@@ -26,7 +26,14 @@ from itertools import pairwise
 from docreader import db
 from docreader.config import load_settings
 from docreader.ids import parse_document_id
-from docreader.pagetext import _parts, build_lines, layout_page, read_page_chars, read_page_rules
+from docreader.pagetext import (
+    _find_tables,
+    _parts,
+    build_lines,
+    layout_page,
+    read_page_chars,
+    read_page_rules,
+)
 from docreader.pdfpages import open_pdf
 
 _CLAUSE_NUMBER = re.compile(r"^(\d+(\.\d+)*\.?|\d+\)|[а-яa-z]\))$", re.IGNORECASE)
@@ -166,6 +173,7 @@ def show_lines(raw_id: str, number: int) -> None:
 
     Numbers only: positions in pt, char counts, gaps in pt and in line heights.
     `частей` and `разрез` are what the column rule sees (`_parts`, `_gap_position`).
+    Then the ruling lines of the page and the tables they form (`_find_tables`).
     """
     settings = load_settings()
     conn = db.connect(settings)
@@ -178,6 +186,10 @@ def show_lines(raw_id: str, number: int) -> None:
         page = pdf[number - 1]
         try:
             lines = build_lines(read_page_chars(page))
+            rules = read_page_rules(page)
+            rotation = page.get_rotation() % 360
+            left, bottom, right, top = page.get_cropbox()
+            tables = _find_tables(rules, rotation, right - left, top - bottom)
         finally:
             page.close()
     finally:
@@ -205,6 +217,14 @@ def show_lines(raw_id: str, number: int) -> None:
             f"{i:3}: [{x0:.1f}, {y0:.1f}, {x1:.1f}, {y1:.1f}] {height:.1f} | "
             f"{len(parts)}, {cut} | " + "  ".join(pieces)
         )
+    print(f"\nлиний {len(rules)} (PDF, поворот {rotation}): x0, y0 – x1, y1")
+    for r in sorted(rules, key=lambda r: (-max(r.y0, r.y1), min(r.x0, r.x1))):
+        kind = "гор" if abs(r.y1 - r.y0) <= abs(r.x1 - r.x0) else "верт"
+        print(f"  {kind:4} {r.x0:.1f}, {r.y0:.1f} – {r.x1:.1f}, {r.y1:.1f}")
+    print(f"таблиц найдено: {len(tables)}")
+    for t in tables:
+        box = ", ".join(f"{v:.1f}" for v in t.box)
+        print(f"  [{box}] колонок {len(t.xs) - 1}, строк {len(t.ys) - 1}")
 
 
 if __name__ == "__main__":
