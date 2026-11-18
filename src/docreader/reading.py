@@ -209,7 +209,6 @@ def _write_result(
     reason: str | None,
 ) -> bool:
     """Replace the reading result of one document in one transaction; True if text changed."""
-    conn.commit()  # end the implicit read transaction: the block below is a real one
     with conn.transaction():
         # (1) lock the stage row (serialises concurrent reads) and get the old fingerprint
         conn.execute(
@@ -283,7 +282,6 @@ def _write_result(
 
 
 def _mark_failed(conn: psycopg.Connection, run_id: int, doc_id: str, reason: str) -> None:
-    conn.rollback()
     with conn.transaction():
         conn.execute(
             "UPDATE stage_status SET state = %s, reason = %s, run_id = %s, updated_at = now()"
@@ -343,7 +341,6 @@ def _read_document(
     }
     try:
         infos = _page_infos(conn, doc_id)
-        conn.commit()
         pages = read_copy(settings.data_dir / doc["copy_path"], infos, doc_id, settings)
         text = clean_document_text(pages, settings, is_known)
         state, reason = document_state({p.number: p.flags for p in pages}, text.read_pages)
@@ -379,7 +376,6 @@ def read_documents(
     if seqs and all_documents:
         raise UserError("Нельзя указать --all вместе с идентификаторами")
     docs = _select_documents(conn, seqs, all_documents)
-    conn.commit()
 
     result: dict = {
         "run_id": None,
@@ -401,7 +397,7 @@ def read_documents(
             result["documents"].append(entry)
             result["totals"][entry["state"]] += 1
     except KeyboardInterrupt:
-        conn.rollback()  # the current document is not written
+        # the current document is not written: its transaction() block rolled back
         result["interrupted"] = True
     runs.finish_run(conn, run_id)
     return result

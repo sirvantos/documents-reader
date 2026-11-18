@@ -153,7 +153,6 @@ def _cmd_remove(args: argparse.Namespace, settings: Settings, conn: psycopg.Conn
         raise UserError(
             f"Документ {format_document_id(seq)} не найден — список документов: docreader list"
         )
-    conn.commit()
     print("Будет удалено:")
     print(f"  {row['id']}  {row['original_name']}  {row['page_count']} стр.")
     print(f"  копия: {settings.data_dir / row['copy_path']}")

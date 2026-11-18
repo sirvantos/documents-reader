@@ -32,7 +32,10 @@ def fetch_row(cur: psycopg.Cursor) -> tuple:
 
 def connect(settings: Settings) -> psycopg.Connection:
     try:
-        return psycopg.connect(settings.database_url, connect_timeout=10)
+        # Autocommit: every atomic write is an explicit `with conn.transaction()`
+        # (tech-context «Правила кода»). Without it, a transaction() block after any
+        # SELECT is only a savepoint and its writes are lost when the connection closes.
+        return psycopg.connect(settings.database_url, connect_timeout=10, autocommit=True)
     except psycopg.OperationalError as exc:
         detail = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         raise EnvironmentProblem(
@@ -61,9 +64,7 @@ def pending_migrations(conn: psycopg.Connection) -> list[str]:
 def apply_migrations(conn: psycopg.Connection) -> list[str]:
     """Apply unapplied migrations, each in its own transaction; return their versions."""
     conn.execute(_CREATE_SCHEMA_MIGRATIONS)
-    conn.commit()
     applied = _applied_versions(conn)
-    conn.commit()
 
     done: list[str] = []
     for version, path in available_migrations():
@@ -79,7 +80,6 @@ def apply_migrations(conn: psycopg.Connection) -> list[str]:
 
 def ensure_schema_current(conn: psycopg.Connection) -> None:
     pending = pending_migrations(conn)
-    conn.commit()
     if pending:
         raise EnvironmentProblem(
             "Схема базы устарела — выполните docreader migrate "

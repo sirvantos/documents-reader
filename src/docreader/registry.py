@@ -57,7 +57,6 @@ def reclassify(
     stage states reset to pending, since every later stage depends on page kinds.
     """
     doc_ids = _require_documents(conn, seqs) if seqs else None
-    conn.commit()
 
     run_settings = {"command": "reclassify", **settings.settings_for_run()}
     run_id = runs.start_run(conn, INTAKE_STAGE, run_settings, label)
@@ -132,7 +131,6 @@ def remove(conn: psycopg.Connection, settings: Settings, seq: int) -> dict:
     row = find_document(conn, seq)
     if row is None:
         raise _not_found(seq)
-    conn.commit()
 
     with conn.transaction():
         conn.execute(

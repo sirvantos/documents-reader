@@ -37,7 +37,7 @@ def start_run(
     settings: dict,
     label: str | None = None,
 ) -> int:
-    """Insert a run row and commit it so it survives later rollbacks of per-file work."""
+    """Insert a run row; on the autocommit connection it survives rollbacks of later work."""
     row = fetch_row(
         conn.execute(
             "INSERT INTO run (stage, code_version, settings, label) "
@@ -45,11 +45,9 @@ def start_run(
             (stage, code_version(), Jsonb(settings), label),
         )
     )
-    conn.commit()
     return row[0]
 
 
 def finish_run(conn: psycopg.Connection, run_id: int) -> None:
     """Mark the run as finished."""
     conn.execute("UPDATE run SET finished_at = now() WHERE id = %s", (run_id,))
-    conn.commit()

@@ -424,8 +424,6 @@ def run_intake(
     # A missing path or a path inside a service folder fails before a run is created.
     inputs = collect_inputs(paths, service_dirs(settings))
 
-    # Each file commits on its own; reads between files must not hold a transaction.
-    conn.autocommit = True
     run_settings = {"command": "add", **settings.settings_for_run()}
     run_id = runs.start_run(conn, INTAKE_STAGE, run_settings, label)
     ctx = _Context(conn=conn, settings=settings, run_id=run_id, note=note)

@@ -71,7 +71,6 @@ def load_document_text(conn: psycopg.Connection, seq: int) -> dict:
         )
     }
     flags = _flags_by_page(conn, doc_id)
-    conn.commit()
     return {
         "id": doc_id,
         "read_pages": read_pages,
@@ -103,7 +102,6 @@ def load_page(conn: psycopg.Connection, seq: int, page: int) -> dict:
             (doc_id, page),
         ).fetchone()
     flags = _flags_by_page(conn, doc_id).get(page, [])
-    conn.commit()
     if row is None:
         raise UserError(f"Страница {page} документа {doc_id} не прочитана")
     return {
@@ -208,7 +206,6 @@ def find_phrase(
                         **context(line["text"], start, start + len(needle)),
                     }
                 )
-    conn.commit()
     return {"id": doc_id, "phrase": needle, "matches": matches}
 
 
@@ -237,7 +234,6 @@ def reading_report(conn: psycopg.Connection) -> dict:
         "   FROM page_flag GROUP BY document_id) pf ON pf.document_id = d.id"
         " WHERE s.state <> 'pending' ORDER BY d.seq"
     ).fetchall()
-    conn.commit()
     documents = [
         {
             "id": doc_id,
