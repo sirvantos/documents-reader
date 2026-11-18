@@ -525,6 +525,29 @@ def make_typography_ru(path: str | Path) -> Path:
     return _write(path, _pdf(draw))
 
 
+# Decomposed letters: «й» as U+0438 + U+0306, «ё» as U+0435 + U+0308 (some macOS producers).
+DECOMPOSED_RU_RAW: tuple[str, ...] = (
+    "Российская Федерация, ра\u0438\u0306он и\u0306ога.",
+    "Все\u0308 е\u0308лки растут, же\u0308лтый цвет.",
+)
+
+# The same lines after NFC (R-5): precomposed «й» and «ё».
+DECOMPOSED_RU_CLEAN: tuple[str, ...] = (
+    "Российская Федерация, район йога.",
+    "Всё ёлки растут, жёлтый цвет.",
+)
+
+
+def make_decomposed_ru(path: str | Path) -> Path:
+    """Russian page whose «й» and «ё» are written as base letter + combining mark."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, DECOMPOSED_RU_RAW)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
 # --- running headers, hyphenation, page breaks, fake bold (feature 03, R-4, R-6) ---
 
 _HEADER_TEXT = "Договор подряда № 123/45-У"

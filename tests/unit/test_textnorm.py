@@ -69,3 +69,12 @@ def test_combined_line() -> None:
         "  от «___»  2024\u202fг. — CKAВ\ufffe"
     )
     assert normalize_chars(src) == "\"Договор\" № 5 - 'а' от «___» 2024 г. — CKAВ\ufffe"
+
+
+def test_decomposed_letters_are_composed() -> None:
+    assert normalize_chars("й ё") == "й ё"
+
+
+def test_precomposed_text_is_unchanged() -> None:
+    text = "российская ёлка, Ёж"
+    assert normalize_chars(text) == text

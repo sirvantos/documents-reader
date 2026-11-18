@@ -578,3 +578,14 @@ def test_typography_is_normalized_in_stored_lines(cli, db, tmp_path):
     joined = "\n".join(stored_lines(db, doc)[0])
     for kept in ("—", "–", "«", "»", "ё"):
         assert kept in joined
+
+
+def test_decomposed_letters_are_composed_in_the_clean_text(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_decomposed_ru])
+
+    assert cli("read", doc).exit_code == 0
+
+    (text,) = db.execute(
+        "SELECT text FROM document_text WHERE document_id = %s", (doc,)
+    ).fetchone()
+    assert text == "\n".join(mk.DECOMPOSED_RU_CLEAN)

@@ -254,6 +254,22 @@ US2-1, US2-7, US2-8 (частично).
 
 ---
 
+## Phase 8b: После ревью архитектуры (2026-11-18)
+
+**Purpose**: привести код к разделу «Правила кода» в `docs/tech-context.md` и подготовить
+текст к проверке цитат (принцип III) до фич 04 и 05. Поведение команд не меняется, кроме
+`text --find`, где добавляется поле `lines` и находится фраза через перенос строки.
+`source_text_sha256` здесь не делается: таблиц со смещениями в тексте ещё нет, правило
+применяет миграция фичи 04.
+
+- [X] T063 Transactions: `db.connect` opens the connection with `autocommit=True`; remove the manual `conn.commit()`/`conn.rollback()` that close implicit transactions in `db.py`, `runs.py`, `reading.py`, `registry.py`, `textview.py`, `cli.py`, and `conn.autocommit = True` in `intake.py`; every multi-statement write stays inside `with conn.transaction()`; an integration test that `db.connect` gives an autocommit connection and that `read` interrupted mid-document leaves the previous result intact — executor: opus (critical: transaction ordering)
+- [ ] T064 Stages and states in one place: new `src/docreader/stages.py` with `Stage`, `State` (`StrEnum`, values equal to the CHECKs in `0001_intake.sql`), `RunStage` for `run.stage`, `later_stages(stage)`, and functions `set_state`, `reset_later`, `select_documents_in(stage, states)`; `db.STAGES`, `reading.READING_STAGE`/`LATER_STAGES`/`_STATES`, `intake.INTAKE_STAGE`, `quality.STATE_NEEDS_REVIEW` and literal `'pending'`/`'failed'`/`'reading'` in SQL go through it; a unit test that the enums match the migration CHECKs — executor: opus (critical: decision rules, after T063)
+- [X] T065 [P] NFC (R-5): `normalize_chars` applies `unicodedata.normalize("NFC")` first; a combining mark (category `Mn`) never starts a new segment in `_build_segments` and never counts as a jump back; unit tests (`и` + U+0306 whose box starts left of the base letter → one segment «й»; precomposed text unchanged) and a synthetic generator with decomposed «й»/«ё» read end to end — executor: sonnet
+- [ ] T066 One quote-locating function (tech-context «Договорённости между этапами»): `textnorm.compare_form(text) -> (folded, offsets)` (NFC, any whitespace run incl. `\n` → one space, `ё→е`, `Ё→Е`, `–`/`—` → `-`, `«»` → `"`, Latin look-alikes → Cyrillic inside Cyrillic words) and `textnorm.locate(text, phrase) -> list[(start, end)]` in offsets of the original text; `textview.find_phrase` uses it for the clean text and the removed lines, loads `text_span` once, and every match gets `lines: [{page, line, bbox}]` for all lines it covers (existing fields stay = first line); update `contracts/cli.md`; unit tests (phrase across a line break, across a page break, ё/е, dash and quote variants, offsets map back exactly) and an integration test of `text --find` across a line break — executor: opus (critical: principle III)
+- [ ] T067 Run `uv run ruff check .`, `uv run mypy` and the full suite; all green — executor: opus
+
+---
+
 ## Phase 9: Для аналитика на Mac (реальные договоры, без агента)
 
 **Purpose**: quickstart Б. Команды выполняет аналитик в своём терминале; агент их не

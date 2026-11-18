@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ctypes
 import math
+import unicodedata
 from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -122,6 +123,11 @@ def _build_segments(chars: Sequence[Char]) -> list[Segment]:
             continue
         if ch.text.isspace():
             parts.append(" ")
+            continue
+        if unicodedata.category(ch.text) == "Mn":
+            # a combining mark belongs to its base char: never a gap or a jump back
+            parts.append(ch.text)
+            bbox = ch.box if bbox is None else _union(bbox, ch.box)
             continue
         if prev is not None:
             gap = ch.box[0] - prev.box[2]

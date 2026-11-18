@@ -289,3 +289,36 @@ def test_pdfium_line_end_hyphen_mark_is_stored_as_hyphen() -> None:
     chars = [Char(ch, box(72 + 6 * i)) for i, ch in enumerate("мон￾")]
     (line,) = build_lines(chars)
     assert line.text == "мон-"
+
+
+def _decomposed_word(base_before: str, base: str, mark: str, after: str) -> list[Char]:
+    """`base_before` + `base` + combining `mark` + `after`; the mark's box starts left of
+    the base letter's box (a jump back), as some producers place it."""
+    chars = word(base_before + base, 10)
+    base_left = 10 + len(base_before) * W
+    chars.append(Char(mark, (base_left - 2.0, 100.0, base_left + 2.0, 110.0)))
+    chars += word(after, 10 + (len(base_before) + 1) * W)
+    return chars
+
+
+def test_combining_breve_left_of_base_stays_in_the_word() -> None:
+    # "росси" + "и" + U+0306 + "ская": decomposed spelling of «российская»
+    lines = build_lines(_decomposed_word("росси", "и", "\u0306", "ская"))
+
+    assert [line.text for line in lines] == ["российская"]
+    assert len(lines[0].segments) == 1
+
+
+def test_combining_diaeresis_left_of_base_stays_in_the_word() -> None:
+    # «ёлка» = е + U+0308 + "лка"
+    lines = build_lines(_decomposed_word("", "е", "\u0308", "лка"))
+
+    assert [line.text for line in lines] == ["ёлка"]
+
+
+def test_combining_mark_is_not_dropped_as_duplicate_or_split_off_the_line() -> None:
+    chars = _decomposed_word("росси", "и", "\u0306", "ская") + word("договор", 200)
+
+    lines = build_lines(chars)
+
+    assert [line.text for line in lines] == ["российская договор"]
