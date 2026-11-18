@@ -364,22 +364,39 @@ def render_document_text(view: dict) -> str:
     return "\n".join(lines)
 
 
+_ROLE_WORDS = {
+    "body": "текст",
+    "header": "колонтитул",
+    "footer": "нижний колонтитул",
+    "page_number": "номер стр.",
+    "rotated": "повёрнут",
+}
+
+
 def _line_marker(line: dict) -> str:
+    """Column or table-cell mark; table indices are 0-based in storage, shown 1-based."""
     table = line["table"]
     if table is not None:
-        return f"табл. {table['t']} стр. {table['row']} яч. {table['cell']}"
+        return f"табл. {table['t'] + 1} стр. {table['row'] + 1} яч. {table['cell'] + 1}"
     if line["column"] is not None:
         return f"кол. {line['column']}"
     return ""
 
 
-def _page_line_text(line: dict) -> str:
-    cells = [f"{line['i']:>3}", line["role"]]
-    marker = _line_marker(line)
-    if marker:
-        cells.append(marker)
-    cells.append(line["text"])
-    return "  ".join(cells)
+def _page_line_rows(page_lines: list[dict]) -> list[str]:
+    """One aligned row per line: index, role word, optional marker, text."""
+    roles = [_ROLE_WORDS.get(line["role"], line["role"]) for line in page_lines]
+    markers = [_line_marker(line) for line in page_lines]
+    role_width = max((len(role) for role in roles), default=0)
+    marker_width = max((len(marker) for marker in markers), default=0)
+    rows: list[str] = []
+    for line, role, marker in zip(page_lines, roles, markers):
+        cells = [f"{line['i']:>3}", role.ljust(role_width)]
+        if marker_width:
+            cells.append(marker.ljust(marker_width))
+        cells.append(line["text"])
+        rows.append("  ".join(cells).rstrip())
+    return rows
 
 
 def render_page_text(view: dict) -> str:
@@ -391,7 +408,7 @@ def render_page_text(view: dict) -> str:
             lines.append("Таблица: есть")
         if not page["lines"]:
             lines.append("(строк нет)")
-        lines.extend(_page_line_text(line) for line in page["lines"])
+        lines.extend(_page_line_rows(page["lines"]))
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 

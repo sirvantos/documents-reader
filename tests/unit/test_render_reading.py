@@ -238,16 +238,84 @@ def test_page_line_markers_for_column_and_table_cell():
     ]
     rendered = render_page_text(_page_view(lines=lines)).splitlines()
     assert rendered[2:] == [
-        "  0  header  Заголовок",
-        "  1  body  кол. 1  Левая колонка",
-        "  2  body  табл. 0 стр. 2 яч. 1  Ячейка",
-        "  3  body  Обычная строка",
+        f"  0  {'колонтитул':<10}  {'':<20}  Заголовок",
+        f"  1  {'текст':<10}  {'кол. 1':<20}  Левая колонка",
+        f"  2  {'текст':<10}  {'табл. 1 стр. 3 яч. 2':<20}  Ячейка",
+        f"  3  {'текст':<10}  {'':<20}  Обычная строка",
     ]
 
 
 def test_page_line_index_is_right_aligned_in_three_chars():
     rendered = render_page_text(_page_view(lines=[_line(12, "строка")])).splitlines()
-    assert rendered[-1] == " 12  body  строка"
+    assert rendered[-1] == " 12  текст  строка"
+
+
+def test_table_mark_indices_are_shown_one_based():
+    line = _line(0, "Ячейка", table={"t": 0, "row": 0, "cell": 0})
+    rendered = render_page_text(_page_view(lines=[line])).splitlines()
+    assert rendered[-1] == "  0  текст  табл. 1 стр. 1 яч. 1  Ячейка"
+
+
+def test_table_mark_higher_indices_are_shifted_by_one():
+    line = _line(7, "Ячейка", table={"t": 1, "row": 4, "cell": 2})
+    rendered = render_page_text(_page_view(lines=[line])).splitlines()
+    assert "табл. 2 стр. 5 яч. 3" in rendered[-1]
+
+
+def test_column_mark_shows_stored_column_as_is():
+    lines = [_line(0, "Левая", column=1), _line(1, "Правая", column=2)]
+    rendered = render_page_text(_page_view(lines=lines)).splitlines()
+    assert "кол. 1" in rendered[-2] and "кол. 2" not in rendered[-2]
+    assert "кол. 2" in rendered[-1] and "кол. 1" not in rendered[-1]
+
+
+def test_role_words_for_reader():
+    cases = {
+        "body": "текст",
+        "header": "колонтитул",
+        "footer": "нижний колонтитул",
+        "page_number": "номер стр.",
+        "rotated": "повёрнут",
+    }
+    for role, word in cases.items():
+        rendered = render_page_text(_page_view(lines=[_line(0, "x", role=role)]))
+        assert rendered.splitlines()[-1] == f"  0  {word}  x", role
+
+
+def test_rotated_line_is_marked_as_rotated():
+    line = _line(4, "Вертикально", role="rotated")
+    rendered = render_page_text(_page_view(lines=[line]))
+    assert rendered.splitlines()[-1] == "  4  повёрнут  Вертикально"
+
+
+def test_page_line_alignment_pads_role_and_marker_columns():
+    lines = [
+        _line(0, "Заголовок", role="header"),
+        _line(1, "Левая колонка", column=1),
+        _line(2, "Ячейка", table={"t": 0, "row": 2, "cell": 1}),
+        _line(3, "Обычная строка"),
+    ]
+    rendered = render_page_text(_page_view(lines=lines)).splitlines()
+    assert rendered[2:] == [
+        "  0  колонтитул  " + " " * 20 + "  Заголовок",
+        "  1  текст       кол. 1" + " " * 14 + "  Левая колонка",
+        "  2  текст       табл. 1 стр. 3 яч. 2  Ячейка",
+        "  3  текст       " + " " * 20 + "  Обычная строка",
+    ]
+
+
+def test_no_marker_padding_when_no_line_has_a_marker():
+    lines = [_line(0, "Заголовок", role="header"), _line(1, "Текст")]
+    rendered = render_page_text(_page_view(lines=lines)).splitlines()
+    assert rendered[-2:] == [
+        "  0  колонтитул  Заголовок",
+        "  1  текст       Текст",
+    ]
+
+
+def test_table_flag_with_page_without_lines():
+    rendered = render_page_text(_page_view(has_table=True)).splitlines()
+    assert rendered == ["D-0001, стр. 2", "Флаги: нет", "Таблица: есть", "(строк нет)"]
 
 
 def test_empty_page_shows_no_lines_placeholder():
