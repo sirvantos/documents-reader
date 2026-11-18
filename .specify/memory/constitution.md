@@ -1,28 +1,40 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 2.0.0 → 2.1.0 (MINOR)
-  Rationale: material expansion of a rule — the definition of done in «Порядок работы»
-  now also requires passing automated code checks (tests, linter, type checker).
-  Source: architecture review of 2026-11-18 (two independent reviews found no automated
-  quality gate; type checker reported 18 errors).
+Version change: 2.1.0 → 3.0.0 (MAJOR)
+  Rationale: a first-stage limit is redefined («Только PDF с извлекаемым текстом» → «PDF
+  с текстом и сканы») and principle VII is redefined (one more allowed use of a model).
+  Decision of the project owner, 2026-11-18. Reason: the real contract set is mostly scans —
+  53 of 56 contracts have no text layer and one more has 52 scanned pages, so the PoC
+  cannot be done on text PDFs only.
 
-Modified principles: none.
+Modified principles:
+  VII. Сомнительное — человеку: a language model is also allowed for recognizing the text
+       of scanned pages (keeps the choice of recognition engine open for /speckit.plan).
+  I and III — unchanged: the recognition model is downloaded in advance and works offline;
+       quotes are still checked by a program, now also against recognized text.
 
 Modified sections:
-  - Порядок работы: «Фича считается законченной» + «проходят автоматические проверки
-    кода (тесты, линтер, проверка типов)».
+  - О проекте: stage 1 «Чтение» covers local recognition of scanned pages.
+  - Ограничения первого этапа: «Только PDF с извлекаемым текстом» → «PDF с текстом
+    и сканы» (local recognition, recognized text marked and positioned, low-quality pages
+    flagged for manual review, a recognition error in a quote → unconfirmed quote).
+  - Что считается готовым PoC: + recognition quality of scanned pages as a separate figure.
 
 Added sections: none
 Removed sections: none
 
-Templates: not modified (no template references the definition of done).
+Templates: not modified (no template references the scan limit).
 
-Follow-up files:
-  ✅ docs/tech-context.md — new section «Правила кода» (commands, transactions, stage
-      states, typed results, nothing dropped silently, errors) and two stage agreements
-      (source_text_sha256, one quote-locating function)
-  ✅ CLAUDE.md, .claude/agents/implementer.md — check commands and the gate before [X]
+Follow-up files (not changed by this command):
+  ⚠ docs/tech-context.md — stack (recognition engine, Mac-only engines vs. «code works on
+      macOS and Linux»), feature map (new feature «Распознавание сканов» between intake
+      and reading), data model (recognized lines in page_text), assumptions table
+  ⚠ docs/features/03-pdf-text-reading.md and specs/002-pdf-text-reading/spec.md — the scan
+      page is no longer «помечается и не обрабатывается»; stays so within feature 002,
+      recognition comes with the new feature
+  ⚠ docs/features/01..12 — any wording «сканы не распознаются»
+  ⚠ CLAUDE.md «Machines» — recognition model runs only on the Mac; tests use fakes
 
 Deferred TODOs: none
 -->
@@ -41,7 +53,8 @@ Deferred TODOs: none
 
 Конвейер состоит из четырёх этапов:
 
-1. **Чтение** — превращение файла договора в чистый текст с сохранённой структурой.
+1. **Чтение** — превращение файла договора в чистый текст с сохранённой структурой:
+   текст берётся из текстового слоя PDF, а страницы-сканы распознаются локально.
 2. **Извлечение** — заполнение таблицы фактов по каждому договору.
 3. **Поиск** — нахождение нужных пунктов по вопросу.
 4. **Ответ** — краткий ответ на вопрос с цитатами и ссылками на источник.
@@ -110,8 +123,9 @@ Deferred TODOs: none
   не так, получают явный статус и причину.
 - Проверки (формат, диапазон, совпадение суммы цифрами и прописью, порядок дат)
   пишутся обычным кодом и работают одинаково при каждом запуске.
-- Языковая модель используется только там, где без неё нельзя: для извлечения
-  значений из текста, разбора вопроса и формулировки ответа.
+- Языковая модель используется только там, где без неё нельзя: для распознавания
+  текста страниц-сканов, извлечения значений из текста, разбора вопроса и формулировки
+  ответа.
 
 ### VIII. Простота
 
@@ -130,7 +144,7 @@ Deferred TODOs: none
 
 | Ограничение | Следствие |
 |---|---|
-| Только PDF с извлекаемым текстом | Распознавание сканов не выполняется; страница-скан помечается и не обрабатывается |
+| PDF с текстом и сканы | Страница-скан распознаётся локально на ноутбуке. Распознанный текст помечается как распознанный и хранит место на странице. Страница с низким качеством распознавания помечается и уходит на ручной просмотр. Цитата проверяется по распознанному тексту: ошибка распознавания внутри цитаты даёт неподтверждённую цитату, а не принятое значение |
 | Российские договоры на русском языке | Реквизиты сторон — ИНН, КПП, ОГРН; валюта — рубли. Страница с буквами не русского алфавита (например, казахскими: Ә, Ғ, Қ, Ң, Ө, Ұ, Ү, Һ, І) помечается и уходит на ручной просмотр |
 | Две стороны договора | «Заказчик» и «Подрядчик»; договор с иным составом сторон помечается |
 | Договоры не связаны между собой | Дополнительные соглашения не обрабатываются как изменения; если такой файл попадёт в систему, он будет обработан как самостоятельный договор. Сведения, которые договор переносит в дополнительные соглашения (например, календарный график работ), считаются отсутствующими |
@@ -143,6 +157,8 @@ Deferred TODOs: none
 - На 50 договорах заполняется таблица по полям первой очереди каталога полей.
 - Система отвечает на 50–100 эталонных вопросов с цитатой и ссылкой на пункт.
 - По каждому из четырёх этапов есть измеренные цифры в таблице результатов.
+- Качество распознавания страниц-сканов измерено и записано в таблицу результатов
+  отдельной цифрой.
 - Для каждой ошибки можно определить, на каком этапе она возникла.
 
 ## Порядок работы
@@ -199,4 +215,4 @@ Deferred TODOs: none
   проектирования и после него; найденные отступления оформляются по правилу из раздела
   «Порядок работы».
 
-**Версия:** 2.1.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-18
+**Версия:** 3.0.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-18
