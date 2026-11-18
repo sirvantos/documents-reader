@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import stat
 from pathlib import Path
 
@@ -38,6 +39,25 @@ def make_five(folder: Path) -> list[Path]:
     for i, name in enumerate(names):
         paths.append(mk.make_digital(folder / name, pages=i + 1, text_seed=f"seed{i}"))
     return paths
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+def test_unreadable_file_is_rejected_and_the_others_are_added(cli, db, tmp_path):
+    folder = tmp_path / "in"
+    paths = make_five(folder)
+    locked = paths[1]
+    locked.chmod(0)
+    try:
+        report = add_json(cli, folder)
+    finally:
+        locked.chmod(0o644)
+
+    assert report["totals"] == {"files": 5, "added": 4, "existing": 0, "rejected": 1}
+    entry = by_path(report)[str(locked.resolve())]
+    assert entry["status"] == "rejected"
+    assert entry["reason_code"] == "unsupported"
+    assert entry["reason"] == "файл не читается: нет прав на чтение"
+    assert report["finished_at"] is not None
 
 
 def test_folder_with_subfolder_adds_five_documents_in_sorted_order(cli, db, tmp_path):

@@ -26,7 +26,7 @@ import psycopg
 
 from docreader import db, runs
 from docreader.config import Settings
-from docreader.errors import UserError
+from docreader.errors import EnvironmentProblem, UserError
 from docreader.ids import format_document_id
 from docreader.pdfpages import KINDS, KIND_SCAN, KIND_SCAN_WITH_TEXT, PageMetrics, PdfOpenError
 from docreader.pdfpages import analyse_pdf, classify
@@ -372,6 +372,24 @@ def _process_file(ctx: _Context, item: _Input) -> dict:
     }
 
 
+def _process_or_reject(ctx: _Context, item: _Input) -> dict:
+    """A source file that cannot be read is rejected; the other files go on (principle VII).
+
+    Any other I/O error (e.g. writing to the data folder) stops the run as an environment
+    problem: going on would fail the same way for every file.
+    """
+    try:
+        return _process_file(ctx, item)
+    except OSError as exc:
+        if exc.filename is not None and os.fsdecode(exc.filename) == str(item.path):
+            hint = "нет прав на чтение" if isinstance(exc, PermissionError) else type(exc).__name__
+            return _rejected(item.path, "unsupported", f"{REASON_UNREADABLE}: {hint}")
+        raise EnvironmentProblem(
+            f"Ошибка ввода-вывода ({exc.strerror or type(exc).__name__}: {exc.filename}) — "
+            "проверьте папку данных и свободное место"
+        ) from exc
+
+
 # --- the command --------------------------------------------------------------------------
 
 
@@ -410,7 +428,7 @@ def run_intake(
     interrupted = False
     try:
         for item in inputs:
-            ctx.results.append(_process_file(ctx, item))
+            ctx.results.append(_process_or_reject(ctx, item))
     except KeyboardInterrupt:
         interrupted = True  # the current file is not committed; finished_at stays NULL
 
