@@ -370,3 +370,34 @@ def test_full_width_line_ends_the_area() -> None:
     result = layout(chars)
     assert result.lines[-1].column is None
     assert texts(result)[-1] == long_line
+
+
+def test_left_text_close_to_the_right_column_is_still_two_columns() -> None:
+    # signature block: one left line runs to 22 pt before the right column — below the
+    # wide gap max(20, 2.5 * 10) = 25, but the right segment starts at the cut
+    chars = two_cols(650, ["L1", "L2"], ["R1", "R2"])
+    long_left = "L" * 45  # 72 + 225 = 297, gap 23 to the right column at 320
+    chars += row(650 - 2 * 16, (long_left, 72), ("R3", 320))
+    chars += row(650 - 3 * 16, ("L4", 72), ("R4", 320))
+    result = layout(chars)
+    assert texts(result) == ["L1", "L2", long_left, "L4", "R1", "R2", "R3", "R4"]
+    assert [line.column for line in result.lines] == [1, 1, 1, 1, 2, 2, 2, 2]
+    assert result.unresolved_lines == 0
+
+
+def test_close_gap_does_not_start_an_area() -> None:
+    # without two-part lines around, a 23 pt gap is a word space
+    chars: list[Char] = []
+    for k in range(3):
+        chars += row(650 - k * 16, ("L" * 45, 72), ("R", 320))
+    result = layout(chars)
+    assert all(line.column is None for line in result.lines)
+
+
+def test_justified_line_after_the_area_ends_it() -> None:
+    chars = two_cols(650, ["L1", "L2", "L3"], ["R1", "R2", "R3"])
+    # many segments with even gaps of 21 pt, one of them at the cut
+    parts = [(f"word{k}", 78 + 46 * k) for k in range(7)]  # wordN at 78 … 354, 310 at the cut
+    chars += row(650 - 3 * 16, *parts)
+    result = layout(chars)
+    assert result.lines[-1].column is None

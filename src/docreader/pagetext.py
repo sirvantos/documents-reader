@@ -595,6 +595,30 @@ def layout_page(
     )
 
 
+def _cut_at(line: Line, anchor: float, settings: ReadingSettings) -> bool:
+    """Two segments, the right one at the cut of the area, at least `column_min_gap` apart.
+
+    Inside a two-column area the left text may run close to the right column: the gap
+    is then below the wide gap of `_parts`, yet the right segment starts at the cut.
+    Justified text has many segments with even gaps, so it never matches.
+    """
+    if len(line.segments) != 2:
+        return False
+    left, right = line.segments
+    return (
+        abs(right.bbox[0] - anchor) <= settings.column_gap_tolerance
+        and right.bbox[0] - left.bbox[2] >= settings.column_min_gap
+    )
+
+
+def _area_parts(line: Line, anchor: float, settings: ReadingSettings) -> list[tuple[Segment, ...]]:
+    """`_parts` of a line of a two-column area, split at the cut when `_cut_at`."""
+    parts = _parts(line, settings)
+    if len(parts) == 1 and _cut_at(line, anchor, settings):
+        return [(line.segments[0],), (line.segments[1],)]
+    return parts
+
+
 def _one_side(
     line: Line, previous: Line, anchor: float, left_edge: float, settings: ReadingSettings
 ) -> bool:
@@ -632,15 +656,19 @@ def _column_areas(
         for i in range(n)
     ]
 
+    cut_lines: set[int] = set()  # one-part lines split at the cut of their area
+
     def run_end(start: int, anchor: float) -> int:
         left_edge = lines[start].display_bbox[0]
         end = start + 1
         while end < n:
             position = positions[end]
             if position is None:
-                if table_of[end] is not None or not _one_side(
-                    lines[end], lines[end - 1], anchor, left_edge, settings
-                ):
+                if table_of[end] is not None:
+                    break
+                if _cut_at(lines[end], anchor, settings):
+                    cut_lines.add(end)
+                elif not _one_side(lines[end], lines[end - 1], anchor, left_edge, settings):
                     break
             elif abs(position - anchor) > settings.column_gap_tolerance:
                 break
@@ -648,7 +676,9 @@ def _column_areas(
         return end
 
     def two_part(start: int, end: int) -> int:
-        return sum(1 for j in range(start, end) if positions[j] is not None)
+        return sum(
+            1 for j in range(start, end) if positions[j] is not None or j in cut_lines
+        )
 
     areas: list[tuple[int, int, float]] = []
     i = 0
@@ -680,7 +710,7 @@ def _column_areas(
 def _column_part(
     line: Line, side: int, anchor: float, settings: ReadingSettings, to_pdf
 ) -> Line | None:
-    parts = _parts(line, settings)
+    parts = _area_parts(line, anchor, settings)
     if len(parts) == 1:  # a line of one column only (`_one_side`)
         line_side = 1 if parts[0][0].bbox[0] >= anchor - settings.column_gap_tolerance else 0
         if line_side != side:
