@@ -81,10 +81,35 @@ def test_skipped_lines_in_between_are_ignored():
     assert build_document_text(pages, is_known).text == "Работы монтажные проводятся"
 
 
-def test_capital_letter_digit_and_latin_are_untouched():
-    assert build("Работы мон-", "Тажные").text == "Работы мон-\nТажные"
-    assert build("Пункт 5-", "1 договора").text == "Пункт 5-\n1 договора"
+def test_latin_lowercase_after_hyphen_is_untouched():
     assert build("Работы мон-", "tажные").text == "Работы мон-\ntажные"
+
+
+def test_code_broken_before_digit_keeps_hyphen_without_line_break():
+    # «ОС-» / «14»: the hyphen of a form code, not a word break (real contracts)
+    assert build("акт формы № ОС-", "14 и справка").text == "акт формы № ОС-14 и справка"
+    assert build("Пункт 5-", "1 договора").text == "Пункт 5-1 договора"
+    assert build(f"код 00-01{HYPHEN_MARKER}", "0-01").text == "код 00-01-0-01"
+
+
+def test_name_broken_before_capital_keeps_hyphen_without_line_break():
+    assert build("г. Ростов-на-", "Дону").text == "г. Ростов-на-Дону"
+    assert build("№ 634/ОКЭ-", "ЦДИ/24").text == "№ 634/ОКЭ-ЦДИ/24"
+
+
+def test_ordinary_word_before_hyphen_keeps_the_line_break():
+    # an ordinary word may stand for a dash; a single capital is the start of a word
+    assert build("раздел-", "Приложение").text == "раздел-\nПриложение"
+    assert build("пункт-", "2 настоящего").text == "пункт-\n2 настоящего"
+    assert build("Москва-", "Тверь").text == "Москва-\nТверь"
+
+
+def test_code_break_spans_are_adjacent():
+    result = build("формы № ОС-", "14 и справка")
+    a, b = result.spans
+    assert result.text[a.start : a.end] == "формы № ОС-"
+    assert a.end == b.start
+    assert result.text[b.start : b.end] == "14 и справка"
 
 
 def test_hyphen_not_after_cyrillic_letter_is_untouched():

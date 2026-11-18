@@ -210,6 +210,26 @@ def _hyphen_word(a: str, b: str) -> str | None:
     return tail.group() + head.group()
 
 
+def _code_break(a: str, b: str) -> bool:
+    """A code or a name broken after its hyphen: «ОС-» / «14», «Ростов-на-» / «Дону».
+
+    The next line starts with a digit or a capital, and the word before the hyphen
+    looks like a code or a name: it has a digit, two capitals or a hyphen of its own.
+    An ordinary word («раздел-» / «Приложение») may stand for a dash: left as it is.
+    The hyphen stays in the text, only the line break goes (R-6).
+    """
+    if len(a) < 2 or a[-1] not in ("-", HYPHEN_MARKER) or not a[-2].isalnum():
+        return False
+    if not b or not (b[0].isdigit() or b[0].isupper()):
+        return False
+    word = a[:-1].split()[-1]
+    return (
+        any(ch.isdigit() for ch in word)
+        or sum(ch.isupper() for ch in word) >= 2
+        or "-" in word
+    )
+
+
 def build_document_text(
     pages: Sequence[tuple[int, Sequence[Line]]],
     is_known: Callable[[str], bool] | None = None,
@@ -244,6 +264,8 @@ def build_document_text(
                 stem = line.text[:-1]
                 emitted = stem if is_known(word.lower()) else stem + "-"
                 next_glue = True
+            elif _code_break(line.text, following):
+                next_glue = True  # `emitted` already ends with «-»
         if parts and not glue:
             position += 1  # the "\n" separator
         spans.append(Span(position, position + len(emitted), page_number, line.index))
