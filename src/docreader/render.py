@@ -5,11 +5,13 @@ The report dict has the shape described in specs/001-document-intake/contracts/c
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 from datetime import datetime
 from pathlib import PurePath
 
-from docreader.quality import FLAG_NAMES
+from docreader.quality import FLAG_NAMES, FLAG_ORDER
 
 _KIND_LABELS = (
     ("text", "текст"),
@@ -402,3 +404,63 @@ def render_find_text(view: dict) -> str:
         f"стр. {m['page']}, строка {m['line']}, {m['role']}: …{m['context']}…"
         for m in view["matches"]
     )
+
+
+# --- reading report ------------------------------------------------------------------
+
+_REPORT_HEADER = [
+    "ID", "Имя", "Стр.", "Прочит.", "Скан", "Распозн.", "Нечит.", "Не рус.",
+    "Пустые", "Порядок", "Таблицы", "Состояние",
+]
+_REPORT_TOTAL_LABEL = "Итого"
+NO_READ_DOCUMENTS = "Нет прочитанных документов — выполните docreader read"
+
+
+def _report_rows(report: dict) -> list[list[str]]:
+    """Header, one row per document and the totals row, all as strings."""
+    rows = [list(_REPORT_HEADER)]
+    for doc in report["documents"]:
+        rows.append(
+            [
+                doc["id"],
+                doc["name"],
+                str(doc["pages"]),
+                str(doc["read"]),
+                *(str(doc["flags"][code]) for code in FLAG_ORDER),
+                str(doc["tables"]),
+                _READ_STATE_WORDS.get(doc["state"], doc["state"]),
+            ]
+        )
+    totals = report["totals"]
+    rows.append(
+        [
+            _REPORT_TOTAL_LABEL,
+            "",
+            str(totals["pages"]),
+            str(totals["read"]),
+            *(str(totals["flags"][code]) for code in FLAG_ORDER),
+            str(totals["tables"]),
+            "",
+        ]
+    )
+    return rows
+
+
+def render_read_report_text(report: dict) -> str:
+    rows = _report_rows(report)
+    widths = [max(len(row[col]) for row in rows) for col in range(len(_REPORT_HEADER))]
+    lines = []
+    for row in rows:
+        cells = [
+            cell.ljust(width) if col in (0, 1, 11) else cell.rjust(width)
+            for col, (cell, width) in enumerate(zip(row, widths))
+        ]
+        lines.append("  ".join(cells).rstrip())
+    return "\n".join(lines)
+
+
+def render_read_report_csv(report: dict) -> str:
+    """CSV text (`;` separated, CRLF); the writer adds the BOM through `utf-8-sig`."""
+    buffer = io.StringIO()
+    csv.writer(buffer, delimiter=";").writerows(_report_rows(report))
+    return buffer.getvalue()

@@ -754,6 +754,303 @@ def make_unknown(path: str | Path) -> Path:
     return _write(path, b"Plain text note without any known file signature.\n")
 
 
+# --- reading order and layout pages for feature 03 (R-3, R-8, R-12) -----------
+
+_REQUISITES_HEADING = "Адреса и платежные реквизиты Сторон"
+_REQUISITES_INTRO = (
+    "Договор подряда № 123/45-У",
+    "г. Москва",
+    "«___» __________ 2024 г.",
+)
+_REQUISITES_CUSTOMER = (
+    "Заказчик:",
+    "ООО «Альфа»",
+    "ИНН 7701234567",
+    "КПП 770101001",
+    "р/с 40702810900000000001",
+)
+_REQUISITES_CONTRACTOR = (
+    "Подрядчик:",
+    "ООО «Бета»",
+    "ИНН 7702345678",
+    "КПП 770201001",
+    "р/с 40702810900000000002",
+)
+_REQUISITES_CUSTOMER_NEXT = (
+    "БИК 044525000",
+    "к/с 30101810400000000225",
+    "Тел. +7 495 000-00-01",
+)
+_REQUISITES_CONTRACTOR_NEXT = (
+    "БИК 044525001",
+    "к/с 30101810400000000226",
+    "Тел. +7 495 000-00-02",
+)
+_REQUISITES_SIGN = (
+    "Подписи сторон:",
+    "Заказчик: ____________________",
+    "Подрядчик: ___________________",
+)
+
+# Two columns without rules: page 1 has the section, page 2 its continuation.
+# Expected order per page: one-column lines, whole left column, whole right column,
+# then the following one-column lines.
+REQUISITES_COLUMNS_PAGES: tuple[tuple[str, ...], ...] = (
+    (
+        *_REQUISITES_INTRO,
+        _REQUISITES_HEADING,
+        *_REQUISITES_CUSTOMER,
+        *_REQUISITES_CONTRACTOR,
+    ),
+    (
+        *_REQUISITES_CUSTOMER_NEXT,
+        *_REQUISITES_CONTRACTOR_NEXT,
+        *_REQUISITES_SIGN,
+    ),
+)
+
+_REQUISITES_LEFT_X = 72
+_REQUISITES_RIGHT_X = 320
+
+
+def _two_columns(
+    c: canvas.Canvas,
+    left: tuple[str, ...],
+    right: tuple[str, ...],
+    y_top: float,
+) -> None:
+    """Left and right column start at the same y, so rows line up."""
+    _ru_page(c, left, x=_REQUISITES_LEFT_X, y_top=y_top)
+    _ru_page(c, right, x=_REQUISITES_RIGHT_X, y_top=y_top)
+
+
+def make_requisites_columns_ru(path: str | Path) -> Path:
+    """Requisites in two columns without rules; the section continues on page 2."""
+
+    def draw(c: canvas.Canvas) -> None:
+        y = PAGE_H - 72
+        _ru_page(c, _REQUISITES_INTRO, y_top=y)
+        y -= (len(_REQUISITES_INTRO) + 1) * 16  # one empty line before the heading
+        _ru_page(c, (_REQUISITES_HEADING,), y_top=y)
+        y -= 2 * 16
+        _two_columns(c, _REQUISITES_CUSTOMER, _REQUISITES_CONTRACTOR, y)
+        c.showPage()
+
+        _two_columns(
+            c, _REQUISITES_CUSTOMER_NEXT, _REQUISITES_CONTRACTOR_NEXT, PAGE_H - 72
+        )
+        y = PAGE_H - 72 - (len(_REQUISITES_CUSTOMER_NEXT) + 1) * 16
+        _ru_page(c, _REQUISITES_SIGN, y_top=y)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# The same requisites as a ruled table: one row, two cells (R-8).
+REQUISITES_TABLE_PAGES: tuple[tuple[str, ...], ...] = (
+    (_REQUISITES_HEADING, *_REQUISITES_CUSTOMER, *_REQUISITES_CONTRACTOR),
+)
+
+_REQUISITES_TABLE_LEFT = 72
+_REQUISITES_TABLE_DIVIDER = 300
+_REQUISITES_TABLE_RIGHT = 523
+_REQUISITES_TABLE_TOP = PAGE_H - 110
+_REQUISITES_TABLE_HEIGHT = 100  # room for five lines in a cell
+
+
+def make_requisites_table_ru(path: str | Path) -> Path:
+    """The requisites in a ruled table: left cell Заказчик, right cell Подрядчик."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, (_REQUISITES_HEADING,))
+        top = _REQUISITES_TABLE_TOP
+        bottom = top - _REQUISITES_TABLE_HEIGHT
+        c.rect(
+            _REQUISITES_TABLE_LEFT,
+            bottom,
+            _REQUISITES_TABLE_RIGHT - _REQUISITES_TABLE_LEFT,
+            _REQUISITES_TABLE_HEIGHT,
+            stroke=1,
+            fill=0,
+        )
+        c.line(_REQUISITES_TABLE_DIVIDER, top, _REQUISITES_TABLE_DIVIDER, bottom)
+        _ru_page(
+            c, _REQUISITES_CUSTOMER, x=_REQUISITES_TABLE_LEFT + 8, y_top=top - 20
+        )
+        _ru_page(
+            c, _REQUISITES_CONTRACTOR, x=_REQUISITES_TABLE_DIVIDER + 8, y_top=top - 20
+        )
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Price schedule: heading, then a ruled table 3 columns x 4 rows (R-8).
+PRICE_TABLE_HEADING = "Приложение 1. Ведомость договорной цены"
+_PRICE_TABLE_ROWS: tuple[tuple[str, ...], ...] = (
+    ("№", "Наименование работ", "Стоимость, руб."),
+    ("1", "Демонтажные работы", "150 000,00"),
+    ("2", "Монтаж перегородок", "420 000,00"),
+    ("3", "Отделочные работы", "980 000,00"),
+)
+_PRICE_TABLE_COLUMNS = (72, 112, 392, 535)  # column boundaries, left to right
+_PRICE_TABLE_ROW_HEIGHT = 24
+
+# Expected order: row by row, cell by cell.
+PRICE_TABLE_PAGES: tuple[tuple[str, ...], ...] = (
+    (
+        PRICE_TABLE_HEADING,
+        *(cell for row in _PRICE_TABLE_ROWS for cell in row),
+    ),
+)
+
+
+def make_price_table_ru(path: str | Path) -> Path:
+    """Heading and a ruled price table: header row and three data rows."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, (PRICE_TABLE_HEADING,))
+        top = PAGE_H - 110
+        rows = len(_PRICE_TABLE_ROWS)
+        bottom = top - rows * _PRICE_TABLE_ROW_HEIGHT
+        for i in range(rows + 1):
+            y = top - i * _PRICE_TABLE_ROW_HEIGHT
+            c.line(_PRICE_TABLE_COLUMNS[0], y, _PRICE_TABLE_COLUMNS[-1], y)
+        for x in _PRICE_TABLE_COLUMNS:
+            c.line(x, top, x, bottom)
+        for i, row in enumerate(_PRICE_TABLE_ROWS):
+            row_top = top - i * _PRICE_TABLE_ROW_HEIGHT
+            for j, cell in enumerate(row):
+                _ru_page(c, (cell,), x=_PRICE_TABLE_COLUMNS[j] + 6, y_top=row_top - 16)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Whole page turned with /Rotate 90; the content is drawn in the turned system,
+# so it reads normally on the displayed page (R-3, FR-018).
+ROTATED_PAGE_PAGES: tuple[tuple[str, ...], ...] = (
+    (
+        "Приложение 2. Сводная ведомость объёмов",
+        "Таблица выполнена в альбомной ориентации.",
+        "Графа 1: порядковый номер; графа 2: наименование.",
+        "Итого по ведомости: 1 550 000 рублей.",
+    ),
+)
+
+
+def make_rotated_page_ru(path: str | Path) -> Path:
+    """Page with /Rotate 90 and text that reads normally when displayed."""
+
+    def draw(c: canvas.Canvas) -> None:
+        c.setPageRotation(90)
+        c.saveState()
+        # displayed page is PAGE_H wide and PAGE_W high; map its top-left corner
+        c.translate(PAGE_W, 0)
+        c.rotate(90)
+        _ru_page(c, ROTATED_PAGE_PAGES[0], y_top=PAGE_W - 72)
+        c.restoreState()
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Normal page: horizontal lines first, then a block turned by 90 degrees (R-3, R-8).
+_ROTATED_TEXT_HORIZONTAL = (
+    "Договор подряда № 123/45-У",
+    "Приложение 3. Сводная таблица объёмов работ",
+    "Таблица 1 повёрнута поперёк листа.",
+)
+ROTATED_TEXT_TURNED_LINES: tuple[str, ...] = (
+    "Ось 1: объём 12,5 м²",
+    "Ось 2: объём 8,0 м²",
+    "Итого: 20,5 м²",
+)
+ROTATED_TEXT_PAGES: tuple[tuple[str, ...], ...] = (
+    (*_ROTATED_TEXT_HORIZONTAL, *ROTATED_TEXT_TURNED_LINES),
+)
+
+
+def make_rotated_text_ru(path: str | Path) -> Path:
+    """Normal page with horizontal lines and a three-line block turned by 90 degrees."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, _ROTATED_TEXT_HORIZONTAL)
+        c.saveState()
+        c.translate(330, 110)
+        c.rotate(90)  # text runs upwards; the lines follow each other to the right
+        _ru_page(c, ROTATED_TEXT_TURNED_LINES, x=0, y_top=0)
+        c.restoreState()
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Columns aligned by spaces: no rules, three segments per line, and the column
+# positions differ from line to line, so no two-column area forms (R-3, R-8).
+# Each line is a tuple of its segments in left-to-right order.
+_SPACED_TABLE_LINES: tuple[tuple[str, ...], ...] = (
+    ("Демонтаж перегородок", "м²", "120,50"),
+    ("Штукатурка стен", "м²", "340,00"),
+    ("Монтаж дверей", "шт.", "4"),
+    ("Уборка объекта", "усл.", "1"),
+)
+_SPACED_TABLE_X: tuple[tuple[float, float, float], ...] = (
+    (72, 250, 420),
+    (72, 262, 411),
+    (72, 244, 431),
+    (72, 257, 418),
+)
+SPACED_TABLE_PAGES: tuple[tuple[tuple[str, ...], ...], ...] = (_SPACED_TABLE_LINES,)
+
+
+def make_spaced_table_ru(path: str | Path) -> Path:
+    """Four lines with three segments each, aligned by spaces, no rules."""
+
+    def draw(c: canvas.Canvas) -> None:
+        _register_cyrillic_font()
+        c.setFont(_CYRILLIC_FONT, 11)
+        y = PAGE_H - 110
+        for segments, xs in zip(_SPACED_TABLE_LINES, _SPACED_TABLE_X):
+            for segment, x in zip(segments, xs):
+                c.drawString(x, y, segment)
+            y -= 24
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
+# Signature sheet at the end of a contract; the default is 3 pages (R-12, US4).
+SIGNATURE_SHEET_LINES: tuple[str, ...] = (
+    "Лист подписания",
+    "Номер договора: 123/45-У",
+    "Дата подписания: 15.03.2024",
+    "ФИО: Иванов Иван Иванович",
+    "Организация: ООО «Альфа»",
+    "Подпись: действительна",
+)
+SIGNATURE_SHEET_PAGES: tuple[tuple[str, ...], ...] = (
+    *HEADERS_RU_BODY_PAGES[:2],
+    SIGNATURE_SHEET_LINES,
+)
+
+
+def make_signature_sheet_ru(path: str | Path, pages: int = 3) -> Path:
+    """Contract pages with the running header and footer; the last page is the sheet."""
+    _check_pages(pages, len(HEADERS_RU_BODY_PAGES) + 1)
+
+    def draw(c: canvas.Canvas) -> None:
+        for n, lines in enumerate(HEADERS_RU_BODY_PAGES[: pages - 1], start=1):
+            _draw_running_head(c, n)
+            _ru_page(c, lines, y_top=_BODY_TOP)
+            c.showPage()
+        _draw_running_head(c, pages)
+        _ru_page(c, SIGNATURE_SHEET_LINES, y_top=_BODY_TOP)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
 # --- demo set ------------------------------------------------------------------
 
 
