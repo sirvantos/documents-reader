@@ -401,3 +401,23 @@ def test_justified_line_after_the_area_ends_it() -> None:
     chars += row(650 - 3 * 16, *parts)
     result = layout(chars)
     assert result.lines[-1].column is None
+
+
+def test_narrow_gap_flush_with_the_cut_is_two_columns() -> None:
+    # left text 17 pt before the right column (a segment break, below column_min_gap);
+    # the right segment starts exactly at the cut
+    chars = two_cols(650, ["L1", "L2"], ["R1", "R2"])
+    long_left = "L" * 46  # 72 + 230 = 302, gap 18 to the right column at 320
+    chars += row(650 - 2 * 16, (long_left, 72), ("R3", 320))
+    chars += row(650 - 3 * 16, ("L4", 72), ("R4", 320))
+    result = layout(chars)
+    assert texts(result) == ["L1", "L2", long_left, "L4", "R1", "R2", "R3", "R4"]
+    assert result.unresolved_lines == 0
+
+
+def test_narrow_gap_off_the_cut_ends_the_area() -> None:
+    # a narrow gap of 18 pt, the right segment 10 pt left of the cut at 320
+    chars = two_cols(650, ["L1", "L2", "L3"], ["R1", "R2", "R3"])
+    chars += row(650 - 3 * 16, ("L" * 44, 72), ("R4", 310))
+    result = layout(chars)
+    assert result.lines[-1].column is None

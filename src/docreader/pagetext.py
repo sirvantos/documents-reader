@@ -595,18 +595,27 @@ def layout_page(
     )
 
 
+# pt: a right segment this close to the cut of an area is the right column whatever the gap
+CUT_ALIGN_TOLERANCE = 3.0
+
+
 def _cut_at(line: Line, anchor: float, settings: ReadingSettings) -> bool:
-    """Two segments, the right one at the cut of the area, at least `column_min_gap` apart.
+    """Two segments and the right one at the cut of the area.
 
     Inside a two-column area the left text may run close to the right column: the gap
-    is then below the wide gap of `_parts`, yet the right segment starts at the cut.
-    Justified text has many segments with even gaps, so it never matches.
+    is then below the wide gap of `_parts`, yet the right segment starts at the cut —
+    either at least `column_min_gap` away, or flush with the cut (± 3 pt) at any gap:
+    in signature blocks the left text comes to 12 pt of the right column (real
+    contracts, 2026-11-18). Justified text has many segments, so it never matches.
     """
     if len(line.segments) != 2:
         return False
     left, right = line.segments
+    shift = abs(right.bbox[0] - anchor)
+    if shift <= CUT_ALIGN_TOLERANCE:
+        return True
     return (
-        abs(right.bbox[0] - anchor) <= settings.column_gap_tolerance
+        shift <= settings.column_gap_tolerance
         and right.bbox[0] - left.bbox[2] >= settings.column_min_gap
     )
 
