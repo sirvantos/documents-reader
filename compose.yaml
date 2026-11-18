@@ -46,7 +46,7 @@ services:
       dockerfile: docker/tests.Dockerfile
     network_mode: none
     entrypoint: ["sh", "-c"]
-    command: ["uv run --frozen ruff check . && uv run --frozen mypy"]
+    command: ["/opt/venv/bin/ruff check . && /opt/venv/bin/mypy"]
     environment:
       # The repository is mounted read-only: keep tool caches out of it.
       RUFF_NO_CACHE: "true"
