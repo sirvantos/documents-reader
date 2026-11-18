@@ -3,6 +3,7 @@
 Run by the analyst on the Mac, on real contracts:
 
     uv run python tools/segment_gaps.py D-0054 D-0055 D-0056
+    uv run python tools/segment_gaps.py --pages D-0056      # one row per page
 
 Prints numbers only — counts and gap sizes, never text of the contract — so the output
 may be shared with the coding agent (CLAUDE.md, principle I).
@@ -24,7 +25,7 @@ from itertools import pairwise
 from docreader import db
 from docreader.config import load_settings
 from docreader.ids import parse_document_id
-from docreader.pagetext import _parts, build_lines, read_page_chars
+from docreader.pagetext import _parts, build_lines, layout_page, read_page_chars, read_page_rules
 from docreader.pdfpages import open_pdf
 
 _CLAUSE_NUMBER = re.compile(r"^(\d+(\.\d+)*\.?|\d+\)|[а-яa-z]\))$", re.IGNORECASE)
@@ -44,7 +45,20 @@ def _length_bucket(n: int) -> str:
     return "1–3" if n <= 3 else "4–10" if n <= 10 else "11–30" if n <= 30 else "> 30"
 
 
-def main(ids: list[str]) -> None:
+def _object_counts(page) -> Counter[str]:  # page: pypdfium2.PdfPage
+    """Top-level page objects by type: text, path (lines, rectangles), image, form."""
+    import pypdfium2.raw as raw
+
+    names = {
+        raw.FPDF_PAGEOBJ_TEXT: "текст",
+        raw.FPDF_PAGEOBJ_PATH: "контуры",
+        raw.FPDF_PAGEOBJ_IMAGE: "изображения",
+        raw.FPDF_PAGEOBJ_FORM: "формы",
+    }
+    return Counter(names.get(obj.type, "прочее") for obj in page.get_objects(max_depth=1))
+
+
+def main(ids: list[str], per_page: bool = False) -> None:
     settings = load_settings()
     conn = db.connect(settings)
     lines_total = multi_lines = multi_part_lines = pages_read = 0
@@ -76,11 +90,33 @@ def main(ids: list[str]) -> None:
                     if page.get_rotation() % 360:
                         kinds["страница повёрнута, пропущена"] += 1
                         continue
-                    lines = build_lines(read_page_chars(page))
+                    chars = read_page_chars(page)
+                    lines = build_lines(chars)
+                    if per_page:
+                        rules = read_page_rules(page)
+                        left, bottom, right, top = page.get_cropbox()
+                        layout = layout_page(
+                            chars,
+                            rotation=0,
+                            width=right - left,
+                            height=top - bottom,
+                            rules=rules,
+                            settings=settings.reading,
+                        )
+                        horizontal = sum(1 for r in rules if abs(r.y1 - r.y0) < abs(r.x1 - r.x0))
+                        objects = _object_counts(page)
                 finally:
                     page.close()
                 pages_read += 1
                 wide = sum(1 for line in lines if len(_parts(line, settings.reading)) >= 2)
+                if per_page:
+                    shown = ", ".join(f"{k} {v}" for k, v in sorted(objects.items()))
+                    print(
+                        f"{raw_id} стр. {number}: строк {len(lines)}, из частей {wide}, "
+                        f"неясных {layout.unresolved_lines}, линий гор./верт. "
+                        f"{horizontal}/{len(rules) - horizontal}, "
+                        f"таблица {'да' if layout.has_table else 'нет'}; объекты: {shown}"
+                    )
                 multi_part_lines += wide
                 flagged_pages += wide >= 3  # the flag rule before columns and tables
                 for line in lines:
@@ -125,6 +161,7 @@ def main(ids: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit("Укажите идентификаторы: uv run python tools/segment_gaps.py D-0054 …")
-    main(sys.argv[1:])
+    args = [a for a in sys.argv[1:] if a != "--pages"]
+    if not args:
+        sys.exit("Укажите идентификаторы: uv run python tools/segment_gaps.py [--pages] D-0054 …")
+    main(args, per_page="--pages" in sys.argv[1:])

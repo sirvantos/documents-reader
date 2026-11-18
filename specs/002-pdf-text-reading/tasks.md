@@ -277,7 +277,7 @@ US2-1, US2-7, US2-8 (частично).
 по каждому пункту и числа, без имён файлов и текста договоров. Цифры хранятся в папке
 данных, пока фича 02 не создаст таблицу результатов.
 
-- [ ] T056 Analyst: on the Mac after pulling the branch — `uv sync`, `uv run docreader migrate`, `DOCREADER_TEST_DATABASE_URL=postgresql:///postgres uv run pytest`; check `pymorphy3` on macOS arm64 the same way as T001 (load time, four `word_is_known` answers); report pass/fail and the numbers — executor: analyst
+- [X] T056 Analyst: on the Mac after pulling the branch — `uv sync`, `uv run docreader migrate`, `DOCREADER_TEST_DATABASE_URL=postgresql:///postgres uv run pytest`; check `pymorphy3` on macOS arm64 the same way as T001 (load time, four `word_is_known` answers); report pass/fail and the numbers — executor: analyst
 - [ ] T057 Analyst: quickstart Б1 (R-1 **[проверить]**): `docreader read D-0001 D-0002 D-0003`, `docreader text D-XXXX --page …` for the first page, the requisites page and the signature sheet; compare with the PDF side by side (line order, clause numbers, headings, Заказчик/Подрядчик not mixed, signature sheet read, header removed); report pass/fail; on failure the plan switches to pdfplumber (R-1) — executor: analyst
 - [ ] T058 Analyst: quickstart Б2 — `docreader read`, `docreader read-report --csv`; review flagged pages, tune `[reading]` thresholds in `settings.toml` on false flags or misses, `docreader read --all`, repeat; report the final thresholds (numbers only) for tech-context — executor: analyst
 - [ ] T059 Analyst: quickstart Б3, SC-004 — `time docreader read --all` on 50 contracts, limit 10 minutes; report the time — executor: analyst
