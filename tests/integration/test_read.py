@@ -77,7 +77,7 @@ def page_rows(db, doc_id: str) -> list[tuple]:
 
 def count(db, table: str, doc_id: str) -> int:
     return db.execute(
-        f"SELECT count(*) FROM {table} WHERE document_id = %s", (doc_id,)  # noqa: S608
+        f"SELECT count(*) FROM {table} WHERE document_id = %s", (doc_id,)
     ).fetchone()[0]
 
 

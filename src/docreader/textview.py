@@ -5,6 +5,7 @@ from __future__ import annotations
 import psycopg
 from psycopg.rows import dict_row
 
+from docreader.db import fetch_row
 from docreader.errors import UserError
 from docreader.ids import format_document_id
 from docreader.quality import FLAG_ORDER
@@ -49,9 +50,11 @@ def load_document_text(conn: psycopg.Connection, seq: int) -> dict:
     """
     doc = _require_read(conn, seq)
     doc_id = doc["id"]
-    text, read_pages = conn.execute(
-        "SELECT text, read_pages FROM document_text WHERE document_id = %s", (doc_id,)
-    ).fetchone()
+    text, read_pages = fetch_row(
+        conn.execute(
+            "SELECT text, read_pages FROM document_text WHERE document_id = %s", (doc_id,)
+        )
+    )
     numbers = [
         r[0]
         for r in conn.execute(
@@ -138,17 +141,18 @@ def find_phrase(
 
     `{"id", "phrase" (normalized), "matches": [{"start", "end", "page", "line",
     "bbox", "role"}]}`; clean-text matches first (by start), then matches in lines
-    with role header/footer/page_number (by page and line; offsets inside the line). With `with_context` every match also
-    gets a `context` string (up to 30 characters around it) for text rendering.
+    with role header/footer/page_number (by page and line; offsets inside the line). With
+    `with_context` every match also gets a `context` string (up to 30 characters around it)
+    for text rendering.
     """
     doc = _require_read(conn, seq)
     doc_id = doc["id"]
     needle = normalize_chars(phrase)
     if not needle:
         raise UserError("Пустая фраза для поиска")
-    text = conn.execute(
-        "SELECT text FROM document_text WHERE document_id = %s", (doc_id,)
-    ).fetchone()[0]
+    text = fetch_row(
+        conn.execute("SELECT text FROM document_text WHERE document_id = %s", (doc_id,))
+    )[0]
     page_lines: dict[int, dict[int, dict]] = {}
     for page, lines in conn.execute(
         "SELECT page_number, lines FROM page_text WHERE document_id = %s ORDER BY page_number",
@@ -221,7 +225,7 @@ def reading_report(conn: psycopg.Connection) -> dict:
     )
     flag_selects = ", ".join(f"coalesce(pf.{code}, 0)" for code in FLAG_ORDER)
     rows = conn.execute(
-        f"SELECT d.id, d.original_name, d.page_count, s.state,"  # noqa: S608
+        f"SELECT d.id, d.original_name, d.page_count, s.state,"
         f" coalesce(pt.read, 0), coalesce(pt.tables, 0), {flag_selects}"
         " FROM document d"
         " JOIN stage_status s ON s.document_id = d.id AND s.stage = 'reading'"
@@ -240,7 +244,7 @@ def reading_report(conn: psycopg.Connection) -> dict:
             "name": name,
             "pages": pages,
             "read": read,
-            "flags": dict(zip(FLAG_ORDER, counts)),
+            "flags": dict(zip(FLAG_ORDER, counts, strict=True)),
             "tables": tables,
             "state": state,
         }

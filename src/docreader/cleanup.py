@@ -110,10 +110,15 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
                 line.role = "page_number" if _PAGE_NUMBER.match(line.text.strip()) else band
 
 
-def _is_hyphen_candidate(a: str, b: str) -> bool:
+def _hyphen_word(a: str, b: str) -> str | None:
+    """The word broken between line `a` and line `b`, or None if it is not a candidate."""
     if len(a) < 2 or a[-1] not in ("-", HYPHEN_MARKER):
-        return False
-    return bool(_TRAILING_CYRILLIC.search(a[:-1])) and bool(_LEADING_CYRILLIC.match(b))
+        return None
+    tail = _TRAILING_CYRILLIC.search(a[:-1])
+    head = _LEADING_CYRILLIC.match(b)
+    if tail is None or head is None:
+        return None
+    return tail.group() + head.group()
 
 
 def build_document_text(
@@ -145,9 +150,9 @@ def build_document_text(
             emitted = emitted[:-1] + "-"  # not a candidate unless changed below
         if is_known is not None and i + 1 < len(included):
             following = included[i + 1][1].text
-            if _is_hyphen_candidate(line.text, following):
+            word = _hyphen_word(line.text, following)
+            if word is not None:
                 stem = line.text[:-1]
-                word = _TRAILING_CYRILLIC.search(stem).group() + _LEADING_CYRILLIC.match(following).group()
                 emitted = stem if is_known(word.lower()) else stem + "-"
                 next_glue = True
         if parts and not glue:

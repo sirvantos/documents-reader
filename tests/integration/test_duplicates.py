@@ -216,4 +216,7 @@ def test_restored_copy_is_shown_in_text_report(cli, db, data_dir, tmp_path):
     result = cli("add", folder)
 
     assert result.exit_code == 0
-    assert "! копия отсутствовала или была повреждена — восстановлена из этого файла" in result.stdout
+    assert (
+        "! копия отсутствовала или была повреждена — восстановлена из этого файла"
+        in result.stdout
+    )

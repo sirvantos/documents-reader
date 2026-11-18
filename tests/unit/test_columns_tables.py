@@ -28,7 +28,9 @@ def row(y: float, *parts: tuple[str, float]) -> list[Char]:
     return chars
 
 
-def layout(chars, *, rotation=0, rules=(), continues=False, width=PAGE_W, height=PAGE_H) -> PageLayout:
+def layout(
+    chars, *, rotation=0, rules=(), continues=False, width=PAGE_W, height=PAGE_H
+) -> PageLayout:
     return layout_page(
         chars,
         rotation=rotation,
@@ -49,14 +51,14 @@ def texts(result: PageLayout) -> list[str]:
 
 def to_pdf_box(box, rotation: int):
     """Display box -> unrotated PDF box for a page of PAGE_W x PAGE_H (inverse of /Rotate)."""
-    l, b, r, t = box
+    left, b, r, t = box
     if rotation == 0:
         return box
     if rotation == 90:
-        return (PAGE_W - t, l, PAGE_W - b, r)
+        return (PAGE_W - t, left, PAGE_W - b, r)
     if rotation == 180:
-        return (PAGE_W - r, PAGE_H - t, PAGE_W - l, PAGE_H - b)
-    return (b, PAGE_H - r, t, PAGE_H - l)  # 270
+        return (PAGE_W - r, PAGE_H - t, PAGE_W - left, PAGE_H - b)
+    return (b, PAGE_H - r, t, PAGE_H - left)  # 270
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
@@ -77,7 +79,8 @@ def test_page_rotation_gives_display_order(rotation: int) -> None:
     assert all(line.role == "body" for line in result.lines)
     # bbox stays in unrotated PDF space
     first = result.lines[0]
-    assert first.bbox == pytest.approx(to_pdf_box((50, disp_h - 100, 50 + 5 * W, disp_h - 100 + H), rotation))
+    display_box = (50, disp_h - 100, 50 + 5 * W, disp_h - 100 + H)
+    assert first.bbox == pytest.approx(to_pdf_box(display_box, rotation))
     assert first.display_bbox == pytest.approx((50, disp_h - 100, 50 + 5 * W, disp_h - 100 + H))
 
 
@@ -120,7 +123,7 @@ def test_page_rotated_in_properties_with_normal_content_has_no_rotated_lines() -
 
 def two_cols(y_top: float, left: list[str], right: list[str], lx=72.0, rx=320.0) -> list[Char]:
     chars: list[Char] = []
-    for k, (a, b) in enumerate(zip(left, right)):
+    for k, (a, b) in enumerate(zip(left, right, strict=True)):
         chars += row(y_top - k * 16, (a, lx), (b, rx))
     return chars
 

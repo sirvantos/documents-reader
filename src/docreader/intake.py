@@ -28,8 +28,15 @@ from docreader import db, runs
 from docreader.config import Settings
 from docreader.errors import EnvironmentProblem, UserError
 from docreader.ids import format_document_id
-from docreader.pdfpages import KINDS, KIND_SCAN, KIND_SCAN_WITH_TEXT, PageMetrics, PdfOpenError
-from docreader.pdfpages import analyse_pdf, classify
+from docreader.pdfpages import (
+    KIND_SCAN,
+    KIND_SCAN_WITH_TEXT,
+    KINDS,
+    PageMetrics,
+    PdfOpenError,
+    analyse_pdf,
+    classify,
+)
 from docreader.sniff import sniff
 
 INTAKE_STAGE = "intake"
@@ -241,9 +248,9 @@ def _register_document(
 ) -> str:
     """One transaction: next ID from the counter, document, pages, stage states."""
     with conn.transaction():
-        seq = conn.execute(
-            "UPDATE document_counter SET last_seq = last_seq + 1 RETURNING last_seq"
-        ).fetchone()[0]
+        seq = db.fetch_row(
+            conn.execute("UPDATE document_counter SET last_seq = last_seq + 1 RETURNING last_seq")
+        )[0]
         doc_id = format_document_id(seq)
         conn.execute(
             "INSERT INTO document (id, seq, sha256, original_name, source_path, copy_path,"
@@ -323,7 +330,7 @@ def _process_file(ctx: _Context, item: _Input) -> dict:
 
     sniffed = sniff(path)
     if sniffed.kind != "pdf":
-        return _rejected(path, sniffed.reason_code, sniffed.reason)
+        return _rejected(path, sniffed.reason_code or "", sniffed.reason or "")
 
     sha256, size = _sha256_of(path)
     existing = _find_existing(ctx.conn, sha256)
@@ -360,7 +367,7 @@ def _process_file(ctx: _Context, item: _Input) -> dict:
         copy_path=copy.relative_to(ctx.settings.data_dir).as_posix(),
         size_bytes=size,
         note=ctx.note,
-        pages=list(zip(metrics, kinds)),
+        pages=list(zip(metrics, kinds, strict=True)),
     )
     return {
         "path": str(path),

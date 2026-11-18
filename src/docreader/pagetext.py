@@ -48,6 +48,10 @@ class Segment:
     bbox: Box
 
 
+# Identity sentinel: "display_bbox was not passed" (NaN never equals a real box).
+_NO_BOX: Box = (math.nan, math.nan, math.nan, math.nan)
+
+
 @dataclass
 class Line:
     """One line of the page; `to_json` gives the `page_text.lines` element (data-model)."""
@@ -60,7 +64,12 @@ class Line:
     table: dict | None = None
     segments: tuple[Segment, ...] = field(default=(), compare=False)
     # Box in display space (after /Rotate); `bbox` stays in unrotated PDF space.
-    display_bbox: Box | None = field(default=None, compare=False)
+    # When not given, it starts equal to `bbox` (see __post_init__).
+    display_bbox: Box = field(default=_NO_BOX, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.display_bbox is _NO_BOX:
+            self.display_bbox = self.bbox
 
     def to_json(self) -> dict:
         return {
@@ -196,7 +205,7 @@ def build_lines(chars: Sequence[Char]) -> list[Line]:
     return lines
 
 
-def read_page_chars(pdf_page) -> list[Char]:  # noqa: ANN001 - pypdfium2.PdfPage
+def read_page_chars(pdf_page) -> list[Char]:
     """All chars of a pypdfium2 page via the raw PDFium API; every handle is closed."""
     import pypdfium2.raw as raw
 
@@ -263,7 +272,9 @@ class PageLayout:
     ends_in_columns: bool = False
 
 
-def _display_point(x: float, y: float, rotation: int, width: float, height: float) -> tuple[float, float]:
+def _display_point(
+    x: float, y: float, rotation: int, width: float, height: float
+) -> tuple[float, float]:
     if rotation == 90:
         return y, width - x
     if rotation == 180:
@@ -273,7 +284,9 @@ def _display_point(x: float, y: float, rotation: int, width: float, height: floa
     return x, y
 
 
-def _pdf_point(x: float, y: float, rotation: int, width: float, height: float) -> tuple[float, float]:
+def _pdf_point(
+    x: float, y: float, rotation: int, width: float, height: float
+) -> tuple[float, float]:
     if rotation == 90:
         return width - y, x
     if rotation == 180:
@@ -283,14 +296,16 @@ def _pdf_point(x: float, y: float, rotation: int, width: float, height: float) -
     return x, y
 
 
-def _map_box(box: Box, fn) -> Box:  # noqa: ANN001 - point mapping function
+def _map_box(box: Box, fn) -> Box:
     points = [fn(x, y) for x in (box[0], box[2]) for y in (box[1], box[3])]
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _chars_to_display(chars: Sequence[Char], rotation: int, width: float, height: float) -> list[Char]:
+def _chars_to_display(
+    chars: Sequence[Char], rotation: int, width: float, height: float
+) -> list[Char]:
     if rotation == 0:
         return list(chars)
     return [
@@ -397,7 +412,7 @@ def _find_tables(rules: Sequence[Rule], rotation: int, width: float, height: flo
     nodes = [("h", i) for i in range(len(horizontal))] + [("v", i) for i in range(len(vertical))]
     parent = {node: node for node in nodes}
 
-    def find(node):  # noqa: ANN001, ANN202
+    def find(node):
         while parent[node] != node:
             parent[node] = parent[parent[node]]
             node = parent[node]
@@ -405,7 +420,10 @@ def _find_tables(rules: Sequence[Rule], rotation: int, width: float, height: flo
 
     for hi, (y, hx0, hx1) in enumerate(horizontal):
         for vi, (x, vy0, vy1) in enumerate(vertical):
-            if hx0 - JOIN_TOLERANCE <= x <= hx1 + JOIN_TOLERANCE and vy0 - JOIN_TOLERANCE <= y <= vy1 + JOIN_TOLERANCE:
+            if (
+                hx0 - JOIN_TOLERANCE <= x <= hx1 + JOIN_TOLERANCE
+                and vy0 - JOIN_TOLERANCE <= y <= vy1 + JOIN_TOLERANCE
+            ):
                 parent[find(("h", hi))] = find(("v", vi))
     components: dict[tuple[str, int], list[tuple[str, int]]] = {}
     for node in nodes:
@@ -457,7 +475,7 @@ def layout_page(
 
     keys = _rotated_keys(chars, rotation, settings.rotated_min_angle)
     display = _chars_to_display(chars, rotation, width, height)
-    normal = [ch for ch, k in zip(display, keys) if k is None]
+    normal = [ch for ch, k in zip(display, keys, strict=True) if k is None]
     lines = build_lines(normal)
     for line in lines:
         line.display_bbox = line.bbox
@@ -465,7 +483,7 @@ def layout_page(
 
     turned: list[Line] = []
     for angle in sorted({k for k in keys if k is not None}):
-        group = [ch for ch, k in zip(display, keys) if k == angle]
+        group = [ch for ch, k in zip(display, keys, strict=True) if k == angle]
         for line, disp_box in _rotated_lines(group, angle):
             turned.append(
                 Line(
@@ -505,7 +523,7 @@ def layout_page(
         if k is not None:
             if k not in emitted_tables:
                 emitted_tables.add(k)
-                members = [line for line, kk in zip(lines, table_of) if kk == k]
+                members = [line for line, kk in zip(lines, table_of, strict=True) if kk == k]
                 ordered.extend(_table_lines(members, k, tables[k], to_pdf))
             i += 1
             continue
@@ -550,10 +568,12 @@ def _column_areas(
         for i in range(n)
     ]
 
-    def run_end(start: int) -> int:
-        anchor = positions[start]
+    def run_end(start: int, anchor: float) -> int:
         end = start + 1
-        while end < n and positions[end] is not None and abs(positions[end] - anchor) <= settings.column_gap_tolerance:
+        while end < n:
+            position = positions[end]
+            if position is None or abs(position - anchor) > settings.column_gap_tolerance:
+                break
             end += 1
         return end
 
@@ -563,17 +583,19 @@ def _column_areas(
         # the area starts at the first line, past single lines of the running header band
         top_limit = disp_h * (1 - settings.header_band)
         for first in range(n):
-            if positions[first] is not None:
-                areas.append((first, run_end(first)))
+            first_position = positions[first]
+            if first_position is not None:
+                areas.append((first, run_end(first, first_position)))
                 i = areas[0][1]
                 break
             if lines[first].display_bbox[3] < top_limit:
                 break
     while i < n:
-        if positions[i] is None:
+        position = positions[i]
+        if position is None:
             i += 1
             continue
-        end = run_end(i)
+        end = run_end(i, position)
         if end - i >= settings.column_min_lines:
             areas.append((i, end))
             i = end
@@ -582,7 +604,7 @@ def _column_areas(
     return areas
 
 
-def _column_part(line: Line, side: int, to_pdf) -> Line | None:  # noqa: ANN001
+def _column_part(line: Line, side: int, to_pdf) -> Line | None:
     segment = line.segments[side]
     text = _line_text(segment.text)
     if not text:
@@ -597,7 +619,7 @@ def _column_part(line: Line, side: int, to_pdf) -> Line | None:  # noqa: ANN001
     )
 
 
-def _table_lines(members: Sequence[Line], t: int, table: _Table, to_pdf) -> list[Line]:  # noqa: ANN001
+def _table_lines(members: Sequence[Line], t: int, table: _Table, to_pdf) -> list[Line]:
     """Cell lines of one table: row by row, cell by cell, lines of a cell top to bottom.
     A page line is cut at the cell borders; its parts inside one cell are joined."""
     parts: dict[tuple[int, int, int], list[Segment]] = {}
@@ -631,7 +653,7 @@ def _table_lines(members: Sequence[Line], t: int, table: _Table, to_pdf) -> list
 # --- ruling lines from path objects (R-8) -------------------------------------------------
 
 
-def _path_rules(obj, matrices) -> list[Rule]:  # noqa: ANN001 - pypdfium2.PdfObject
+def _path_rules(obj, matrices) -> list[Rule]:
     """Horizontal and vertical segments of one path object in page space."""
     import pypdfium2.raw as raw
 
@@ -648,7 +670,8 @@ def _path_rules(obj, matrices) -> list[Rule]:  # noqa: ANN001 - pypdfium2.PdfObj
     if width <= RULE_MAX_THICKNESS and height <= RULE_MAX_THICKNESS:
         return []
     fill, stroke = ctypes.c_int(), ctypes.c_int()
-    if not raw.FPDFPath_GetDrawMode(obj.raw, ctypes.byref(fill), ctypes.byref(stroke)) or not stroke.value:
+    drawn = raw.FPDFPath_GetDrawMode(obj.raw, ctypes.byref(fill), ctypes.byref(stroke))
+    if not drawn or not stroke.value:
         return []  # a filled area (cell background) is not a ruling
     count = raw.FPDFPath_CountSegments(obj.raw)
     if count <= 0:
@@ -661,7 +684,7 @@ def _path_rules(obj, matrices) -> list[Rule]:  # noqa: ANN001 - pypdfium2.PdfObj
     object_matrix = tuple(obj.get_matrix().get())
     chain = [object_matrix, *matrices]
 
-    def point(segment) -> tuple[float, float]:  # noqa: ANN001
+    def point(segment) -> tuple[float, float]:
         x, y = ctypes.c_float(), ctypes.c_float()
         raw.FPDFPathSegment_GetPoint(segment, ctypes.byref(x), ctypes.byref(y))
         px, py = x.value, y.value
@@ -700,7 +723,7 @@ def _path_rules(obj, matrices) -> list[Rule]:  # noqa: ANN001 - pypdfium2.PdfObj
     return rules
 
 
-def read_page_rules(pdf_page) -> list[Rule]:  # noqa: ANN001 - pypdfium2.PdfPage
+def read_page_rules(pdf_page) -> list[Rule]:
     """Ruling segments of the page: path objects (also inside forms) as H/V segments in
     page space; form matrices are applied as in `pdfpages._page_metrics`."""
     import pypdfium2.raw as raw

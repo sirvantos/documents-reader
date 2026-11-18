@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import os
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 import psycopg
 from psycopg.conninfo import conninfo_to_dict
@@ -98,7 +99,7 @@ def _resolve_data_dir(env: Mapping[str, str]) -> Path:
         )
     data_dir = Path(raw).expanduser().resolve()
 
-    repos = {REPO_ROOT, _find_git_root(Path.cwd().resolve())} - {None}
+    repos = {r for r in (REPO_ROOT, _find_git_root(Path.cwd().resolve())) if r is not None}
     for repo in repos:
         if data_dir == repo or data_dir.is_relative_to(repo):
             raise EnvironmentProblem(
@@ -114,7 +115,8 @@ def _resolve_data_dir(env: Mapping[str, str]) -> Path:
         data_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise EnvironmentProblem(
-            f"Не удалось создать папку данных {data_dir}: {exc.strerror} — проверьте DOCREADER_DATA_DIR"
+            f"Не удалось создать папку данных {data_dir}: {exc.strerror} — "
+            "проверьте DOCREADER_DATA_DIR"
         ) from exc
     return data_dir
 
@@ -154,7 +156,7 @@ def _check_local_database(url: str, env: Mapping[str, str]) -> None:
 # --- settings.toml ---------------------------------------------------------------
 
 # table -> key -> (field name, type, validator, description of the allowed range)
-_SCHEMA = {
+_SCHEMA: dict[str, dict[str, tuple[str, type, Callable[[Any], bool], str]]] = {
     "page_kinds": {
         "text_min_chars": ("text_min_chars", int, lambda v: v >= 1, "целое ≥ 1"),
         "full_image_coverage": (
@@ -235,7 +237,8 @@ def _read_settings_file(data_dir: Path) -> dict:
             if key not in _SCHEMA[table]:
                 raise bad(f"неизвестный ключ {table}.{key}")
             field, kind, valid, allowed = _SCHEMA[table][key]
-            if isinstance(value, bool) or not isinstance(value, (int, float) if kind is float else int):
+            expected = (int, float) if kind is float else int
+            if isinstance(value, bool) or not isinstance(value, expected):
                 raise bad(f"{table}.{key} = {value!r}: нужно {allowed}")
             value = kind(value)
             if not valid(value):

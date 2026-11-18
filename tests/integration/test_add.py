@@ -172,7 +172,11 @@ def test_all_bad_files_in_one_folder(cli, db, tmp_path):
         "existing": 0,
         "rejected": len(REJECTIONS),
     }
-    codes = {Path(f["path"]).name: f["reason_code"] for f in report["files"] if f["status"] == "rejected"}
+    codes = {
+        Path(f["path"]).name: f["reason_code"]
+        for f in report["files"]
+        if f["status"] == "rejected"
+    }
     assert codes == {name: code for _, name, code in REJECTIONS}
 
 
@@ -265,10 +269,13 @@ def test_run_row_is_recorded(cli, db, tmp_path):
     assert settings["intake"]["large_file_pages"] == 200
     assert finished_at is not None
     assert (
-        db.execute("SELECT count(*) FROM document WHERE intake_run_id <> %s", (run_id,)).fetchone()[0]
+        db.execute(
+            "SELECT count(*) FROM document WHERE intake_run_id <> %s", (run_id,)
+        ).fetchone()[0]
         == 0
     )
-    assert db.execute("SELECT count(*) FROM page WHERE kind_run_id <> %s", (run_id,)).fetchone()[0] == 0
+    stale = db.execute("SELECT count(*) FROM page WHERE kind_run_id <> %s", (run_id,)).fetchone()
+    assert stale[0] == 0
     assert db.execute("SELECT count(*) FROM page").fetchone()[0] == 1 + 2 + 3 + 4 + 5
 
 

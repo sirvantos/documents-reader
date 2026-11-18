@@ -123,7 +123,7 @@ def test_reading_section_does_not_touch_other_sections(data_dir: Path) -> None:
 
 def test_unknown_reading_key_rejected(data_dir: Path) -> None:
     write_settings(data_dir, "[reading]\nheader_colour = 1\n")
-    with pytest.raises(EnvironmentProblem, match="settings.toml"):
+    with pytest.raises(EnvironmentProblem, match=r"settings\.toml"):
         load_settings(env_for(data_dir))
 
 
@@ -153,7 +153,7 @@ def test_unknown_reading_key_rejected(data_dir: Path) -> None:
 )
 def test_reading_out_of_range_rejected(data_dir: Path, line: str) -> None:
     write_settings(data_dir, f"[reading]\n{line}\n")
-    with pytest.raises(EnvironmentProblem, match="settings.toml"):
+    with pytest.raises(EnvironmentProblem, match=r"settings\.toml"):
         load_settings(env_for(data_dir))
 
 
@@ -171,13 +171,13 @@ def test_reading_out_of_range_rejected(data_dir: Path, line: str) -> None:
 )
 def test_reading_wrong_type_rejected(data_dir: Path, line: str) -> None:
     write_settings(data_dir, f"[reading]\n{line}\n")
-    with pytest.raises(EnvironmentProblem, match="settings.toml"):
+    with pytest.raises(EnvironmentProblem, match=r"settings\.toml"):
         load_settings(env_for(data_dir))
 
 
 def test_reading_as_non_table_rejected(data_dir: Path) -> None:
     write_settings(data_dir, "reading = 1\n")
-    with pytest.raises(EnvironmentProblem, match="settings.toml"):
+    with pytest.raises(EnvironmentProblem, match=r"settings\.toml"):
         load_settings(env_for(data_dir))
 
 

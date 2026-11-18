@@ -15,8 +15,12 @@ from docreader.quality import (
 )
 
 
-def info(kind: str = "text", char_count: int = 500, image_coverage: float = 0.0, page: int = 1) -> PageInfo:
-    return PageInfo(page_number=page, kind=kind, char_count=char_count, image_coverage=image_coverage)
+def info(
+    kind: str = "text", char_count: int = 500, image_coverage: float = 0.0, page: int = 1
+) -> PageInfo:
+    return PageInfo(
+        page_number=page, kind=kind, char_count=char_count, image_coverage=image_coverage
+    )
 
 
 # --- flag catalogue -------------------------------------------------------------------
@@ -112,7 +116,9 @@ def test_reason_follows_flag_order_and_ascending_pages() -> None:
 
 
 def test_no_read_text_needs_review() -> None:
-    state, reason = document_state({1: [flag("scan_unread")], 2: [flag("scan_unread")]}, read_pages=0)
+    state, reason = document_state(
+        {1: [flag("scan_unread")], 2: [flag("scan_unread")]}, read_pages=0
+    )
     assert state == "needs_review"
     assert reason is not None
     assert reason.startswith(NO_TEXT_REASON)
@@ -138,7 +144,9 @@ RUSSIAN = (
 )
 
 
-def codes(text: str, kind: str = "text", settings: ReadingSettings = RS, map_errors: int = 0) -> list[str]:
+def codes(
+    text: str, kind: str = "text", settings: ReadingSettings = RS, map_errors: int = 0
+) -> list[str]:
     flags = content_flags(info(kind=kind), text, settings, MIN_CHARS, map_errors=map_errors)
     for f in flags:
         assert f.reason.strip()

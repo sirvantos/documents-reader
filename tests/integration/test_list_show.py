@@ -196,7 +196,8 @@ def test_show_json_has_all_fields_and_copy_matches_sha(cli, tmp_path):
     assert [p["page_number"] for p in pages] == [1, 2, 3, 4]
     assert [p["kind"] for p in pages] == ["text", "text", "text", "scan"]
     for p in pages:
-        assert {"page_number", "kind", "char_count", "image_coverage", "invisible_text_share"} <= set(p)
+        expected = {"page_number", "kind", "char_count", "image_coverage", "invisible_text_share"}
+        assert expected <= set(p)
     assert pages[0]["char_count"] > 0
     assert pages[3]["image_coverage"] > 0.5
 

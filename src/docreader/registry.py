@@ -13,8 +13,8 @@ from psycopg.rows import dict_row
 
 from docreader import runs
 from docreader.config import Settings
-from docreader.errors import UserError
 from docreader.db import STAGES
+from docreader.errors import UserError
 from docreader.ids import format_document_id, parse_document_id
 from docreader.intake import INTAKE_STAGE
 from docreader.pdfpages import KINDS, PageMetrics, classify
@@ -274,6 +274,7 @@ def verify(
     problems = []
     for doc in docs:
         copy = settings.data_dir / doc["copy_path"]
+        problem: str | None
         try:
             ok = _file_sha256(copy) == doc["sha256"]
         except OSError:

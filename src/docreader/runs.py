@@ -10,6 +10,8 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
+from docreader.db import fetch_row
+
 
 @functools.lru_cache(maxsize=1)
 def code_version() -> str:
@@ -36,11 +38,13 @@ def start_run(
     label: str | None = None,
 ) -> int:
     """Insert a run row and commit it so it survives later rollbacks of per-file work."""
-    row = conn.execute(
-        "INSERT INTO run (stage, code_version, settings, label) "
-        "VALUES (%s, %s, %s, %s) RETURNING id",
-        (stage, code_version(), Jsonb(settings), label),
-    ).fetchone()
+    row = fetch_row(
+        conn.execute(
+            "INSERT INTO run (stage, code_version, settings, label) "
+            "VALUES (%s, %s, %s, %s) RETURNING id",
+            (stage, code_version(), Jsonb(settings), label),
+        )
+    )
     conn.commit()
     return row[0]
 

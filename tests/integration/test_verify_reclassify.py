@@ -179,7 +179,8 @@ def test_reclassify_with_id_limits_to_one_document(cli, db, data_dir, tmp_path):
 
 def write_labels(tmp_path: Path, rows: list[str]) -> Path:
     path = tmp_path / "labels.csv"
-    path.write_text("document_id,page_number,kind\n" + "".join(r + "\n" for r in rows), encoding="utf-8")
+    body = "".join(r + "\n" for r in rows)
+    path.write_text("document_id,page_number,kind\n" + body, encoding="utf-8")
     return path
 
 

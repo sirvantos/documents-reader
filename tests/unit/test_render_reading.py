@@ -1,4 +1,9 @@
-from docreader.render import render_document_text, render_find_text, render_page_text, render_read_text
+from docreader.render import (
+    render_document_text,
+    render_find_text,
+    render_page_text,
+    render_read_text,
+)
 
 
 def _doc(seq: int, *, pages: int = 3, state: str = "done", reason: str | None = None,

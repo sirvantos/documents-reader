@@ -64,7 +64,7 @@ def test_gap_threshold_uses_larger_height_of_the_two_chars() -> None:
 
 
 def test_generated_line_break_splits_segments_on_same_baseline() -> None:
-    chars = word("ab", 0) + [gen("\n", 10)] + word("cd", 10)
+    chars = [*word("ab", 0), gen("\n", 10), *word("cd", 10)]
     lines = build_lines(chars)
     assert len(lines) == 1
     assert lines[0].text == "ab cd"
@@ -72,22 +72,22 @@ def test_generated_line_break_splits_segments_on_same_baseline() -> None:
 
 
 def test_generated_cr_also_breaks() -> None:
-    chars = word("ab", 0) + [gen("\r", 10), gen("\n", 10)] + word("cd", 10)
+    chars = [*word("ab", 0), gen("\r", 10), gen("\n", 10), *word("cd", 10)]
     assert build_lines(chars)[0].text == "ab cd"
 
 
 def test_generated_space_inside_segment_is_kept_as_one_space() -> None:
-    chars = word("ab", 0) + [gen(" ", 10)] + word("cd", 10)
+    chars = [*word("ab", 0), gen(" ", 10), *word("cd", 10)]
     assert build_lines(chars)[0].text == "ab cd"
 
 
 def test_runs_of_spaces_collapse_to_one() -> None:
-    chars = word("ab", 0) + [gen(" ", 10), gen(" ", 10)] + word("cd", 10)
+    chars = [*word("ab", 0), gen(" ", 10), gen(" ", 10), *word("cd", 10)]
     assert build_lines(chars)[0].text == "ab cd"
 
 
 def test_leading_and_trailing_spaces_of_segment_are_stripped() -> None:
-    chars = [gen(" ", 0)] + word("ab", 0) + [gen(" ", 10)]
+    chars = [gen(" ", 0), *word("ab", 0), gen(" ", 10)]
     lines = build_lines(chars)
     assert lines[0].text == "ab"
     assert lines[0].segments[0].text == "ab"
@@ -99,7 +99,7 @@ def test_whitespace_only_input_gives_no_lines() -> None:
 
 def test_whitespace_chars_do_not_count_toward_boxes() -> None:
     wide_space = Char(" ", (10.0, 0.0, 200.0, 500.0))
-    chars = word("ab", 0) + [wide_space] + word("cd", 10)
+    chars = [*word("ab", 0), wide_space, *word("cd", 10)]
     line = build_lines(chars)[0]
     assert line.text == "ab cd"
     assert line.bbox == (0.0, 100.0, 20.0, 110.0)
@@ -191,7 +191,7 @@ def test_fake_bold_line_drawn_twice_is_read_once() -> None:
 def test_fake_bold_interleaved_duplicates_are_read_once() -> None:
     base = word("Договор", 10)
     dup = shifted(base, dx=0.3)
-    mixed = [ch for pair in zip(base, dup) for ch in pair]
+    mixed = [ch for pair in zip(base, dup, strict=True) for ch in pair]
     assert [ln.text for ln in build_lines(mixed)] == ["Договор"]
 
 
@@ -212,7 +212,7 @@ def test_genuine_double_letters_are_kept() -> None:
 
 
 def test_same_letter_at_same_x_on_two_lines_is_kept() -> None:
-    chars = word("а", 10, bottom=100) + [gen("\n", 15)] + word("а", 10, bottom=100 - H - 2)
+    chars = [*word("а", 10, bottom=100), gen("\n", 15), *word("а", 10, bottom=100 - H - 2)]
     assert [ln.text for ln in build_lines(chars)] == ["а", "а"]
 
 

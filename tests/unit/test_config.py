@@ -201,7 +201,7 @@ def test_partial_override_keeps_other_defaults(data_dir: Path) -> None:
 )
 def test_bad_settings_rejected(data_dir: Path, text: str) -> None:
     write_settings(data_dir, text)
-    with pytest.raises(EnvironmentProblem, match="settings.toml"):
+    with pytest.raises(EnvironmentProblem, match=r"settings\.toml"):
         load_settings(env_for(data_dir))
 
 

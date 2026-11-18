@@ -245,7 +245,7 @@ def render_list_text(docs: list[dict]) -> str:
     for row in rows:
         cells = [
             cell.rjust(width) if col in _LIST_NUMERIC_COLUMNS else cell.ljust(width)
-            for col, (cell, width) in enumerate(zip(row, widths))
+            for col, (cell, width) in enumerate(zip(row, widths, strict=True))
         ]
         lines.append("  ".join(cells).rstrip())
     return "\n".join(lines)
@@ -390,7 +390,7 @@ def _page_line_rows(page_lines: list[dict]) -> list[str]:
     role_width = max((len(role) for role in roles), default=0)
     marker_width = max((len(marker) for marker in markers), default=0)
     rows: list[str] = []
-    for line, role, marker in zip(page_lines, roles, markers):
+    for line, role, marker in zip(page_lines, roles, markers, strict=True):
         cells = [f"{line['i']:>3}", role.ljust(role_width)]
         if marker_width:
             cells.append(marker.ljust(marker_width))
@@ -470,7 +470,7 @@ def render_read_report_text(report: dict) -> str:
     for row in rows:
         cells = [
             cell.ljust(width) if col in (0, 1, 11) else cell.rjust(width)
-            for col, (cell, width) in enumerate(zip(row, widths))
+            for col, (cell, width) in enumerate(zip(row, widths, strict=True))
         ]
         lines.append("  ".join(cells).rstrip())
     return "\n".join(lines)

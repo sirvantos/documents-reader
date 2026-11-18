@@ -60,7 +60,8 @@ def skip_flag(page: PageInfo) -> Flag | None:
             detail = f"в текстовом слое {page.char_count} зн."
         return Flag(
             "scan_unread",
-            f"изображение на {page.image_coverage:.0%} страницы, {detail}; распознавание не выполняется",
+            f"изображение на {page.image_coverage:.0%} страницы, {detail}; "
+            "распознавание не выполняется",
         )
     return None
 
@@ -94,7 +95,7 @@ def _is_bad_char(ch: str) -> bool:
 
 
 def _is_letter_or_digit(ch: str) -> bool:
-    return _is_cyrillic(ch) and ch.isalpha() or ch.isascii() and ch.isalnum()
+    return (_is_cyrillic(ch) and ch.isalpha()) or (ch.isascii() and ch.isalnum())
 
 
 def count_map_errors(chars: Iterable[Char]) -> int:

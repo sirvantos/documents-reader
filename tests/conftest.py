@@ -217,14 +217,18 @@ def _make_runner(monkeypatch: pytest.MonkeyPatch) -> CliRunner:
 
 
 @pytest.fixture
-def cli(cli_env: Callable[[str], None], database_url: str, monkeypatch: pytest.MonkeyPatch) -> CliRunner:
+def cli(
+    cli_env: Callable[[str], None], database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> CliRunner:
     """`cli("add", path, "--json")` → CliResult(exit_code, stdout, stderr)."""
     cli_env(database_url)
     return _make_runner(monkeypatch)
 
 
 @pytest.fixture
-def cli_on(cli_env: Callable[[str], None], monkeypatch: pytest.MonkeyPatch) -> Callable[[str], CliRunner]:
+def cli_on(
+    cli_env: Callable[[str], None], monkeypatch: pytest.MonkeyPatch
+) -> Callable[[str], CliRunner]:
     """`cli_on(url)` → runner bound to another database (e.g. `empty_database_url`)."""
 
     def bind(database_url: str) -> CliRunner:

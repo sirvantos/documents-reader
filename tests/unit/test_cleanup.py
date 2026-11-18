@@ -90,7 +90,9 @@ def test_page_with_only_empty_line_is_not_read():
 
 
 def test_header_only_page_counts_as_read_but_adds_no_text():
-    result = build_document_text([(1, [line(0, "Колонтитул", role="header")]), (2, [line(0, "Текст")])])
+    result = build_document_text(
+        [(1, [line(0, "Колонтитул", role="header")]), (2, [line(0, "Текст")])]
+    )
     assert result.read_pages == 2
     assert result.text == "Текст"
     assert [s.page_number for s in result.spans] == [2]
@@ -154,7 +156,10 @@ def test_repeated_top_and_bottom_lines_are_header_and_footer():
 
 @pytest.mark.parametrize(
     "template",
-    ["{n}", "- {n} -", "— {n} —", "Стр. {n}", "стр. {n}", "Страница {n}", "{n} из 10", "Стр. {n} из 10"],
+    [
+        "{n}", "- {n} -", "— {n} —", "Стр. {n}", "стр. {n}", "Страница {n}", "{n} из 10",
+        "Стр. {n} из 10",
+    ],
 )
 def test_page_number_forms(template):
     pages = make_pages(4, number=template)
@@ -202,7 +207,12 @@ def test_table_cells_in_band_are_never_furniture():
         page.lines.append(Line(index=7, text="Итого", bbox=BOTTOM, table=cell))
         amount = {"t": 0, "row": 5, "cell": 1}
         page.lines.append(
-            Line(index=8, text=str(1500 + page.page_number), bbox=(400.0, 20.0, 450.0, 35.0), table=amount)
+            Line(
+                index=8,
+                text=str(1500 + page.page_number),
+                bbox=(400.0, 20.0, 450.0, 35.0),
+                table=amount,
+            )
         )
     mark_page_furniture(pages, ReadingSettings())
     assert all(roles(p) == ["body", "body", "body"] for p in pages)
@@ -232,7 +242,9 @@ def test_min_pages_setting_is_respected():
 
 
 def test_digits_in_header_text_are_normalized():
-    pages = [PageLines(n, HEIGHT, [fline(0, f"Приложение {n}   к договору", TOP)]) for n in range(1, 5)]
+    pages = [
+        PageLines(n, HEIGHT, [fline(0, f"Приложение {n}   к договору", TOP)]) for n in range(1, 5)
+    ]
     mark_page_furniture(pages, ReadingSettings())
     assert all(roles(p) == ["header"] for p in pages)
 
@@ -294,7 +306,9 @@ def test_sentence_split_by_page_break_has_no_header_between():
             HEIGHT,
             [fline(0, "ДОГОВОР № 15", TOP), fline(1, text, MIDDLE), fline(2, f"Стр. {n}", BOTTOM)],
         )
-        for n, text in enumerate(["Поставщик обязуется передать", "товар Покупателю.", "Конец."], start=1)
+        for n, text in enumerate(
+            ["Поставщик обязуется передать", "товар Покупателю.", "Конец."], start=1
+        )
     ]
     mark_page_furniture(pages, ReadingSettings())
     result = build_document_text([(p.page_number, p.lines) for p in pages])

@@ -14,7 +14,9 @@ def test_space_variants_become_space(ch: str) -> None:
     assert normalize_chars(f"а{ch}б") == "а б"
 
 
-@pytest.mark.parametrize("ch", ["\u2010", "\u2011", "\u2012", "\u2212"], ids=lambda c: f"U+{ord(c):04X}")
+@pytest.mark.parametrize(
+    "ch", ["\u2010", "\u2011", "\u2012", "\u2212"], ids=lambda c: f"U+{ord(c):04X}"
+)
 def test_hyphens_and_minus_become_hyphen(ch: str) -> None:
     assert normalize_chars(f"а{ch}б") == "а-б"
 
@@ -62,5 +64,8 @@ def test_must_not_change(text: str) -> None:
 
 
 def test_combined_line() -> None:
-    src = "\u00a0\u201eДо\u00adговор\u201d\u2009№\u00a05 \u2012 \u2018а\u2019  от «___»  2024\u202fг. — CKAВ\ufffe"
+    src = (
+        "\u00a0\u201eДо\u00adговор\u201d\u2009№\u00a05 \u2012 \u2018а\u2019"
+        "  от «___»  2024\u202fг. — CKAВ\ufffe"
+    )
     assert normalize_chars(src) == "\"Договор\" № 5 - 'а' от «___» 2024 г. — CKAВ\ufffe"

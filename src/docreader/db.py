@@ -22,6 +22,14 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 """
 
 
+def fetch_row(cur: psycopg.Cursor) -> tuple:
+    """The one row of a query that always returns one (aggregate, RETURNING, key lookup)."""
+    row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("the query returned no row")
+    return row
+
+
 def connect(settings: Settings) -> psycopg.Connection:
     try:
         return psycopg.connect(settings.database_url, connect_timeout=10)
@@ -39,7 +47,7 @@ def available_migrations() -> list[tuple[str, Path]]:
 
 
 def _applied_versions(conn: psycopg.Connection) -> set[str]:
-    exists = conn.execute("SELECT to_regclass('schema_migrations') IS NOT NULL").fetchone()[0]
+    exists = fetch_row(conn.execute("SELECT to_regclass('schema_migrations') IS NOT NULL"))[0]
     if not exists:
         return set()
     return {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}

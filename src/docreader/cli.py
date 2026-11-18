@@ -9,17 +9,13 @@ from pathlib import Path
 
 import psycopg
 
-from docreader import db
-from docreader import reading, textview
+from docreader import db, reading, registry, textview
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
-from docreader.intake import run_intake
-from docreader import registry
 from docreader.ids import format_document_id, parse_document_id
+from docreader.intake import run_intake
 from docreader.render import (
     NO_READ_DOCUMENTS,
-    render_read_report_csv,
-    render_read_report_text,
     render_document_text,
     render_find_text,
     render_intake_json,
@@ -27,6 +23,8 @@ from docreader.render import (
     render_list_text,
     render_page_kinds_text,
     render_page_text,
+    render_read_report_csv,
+    render_read_report_text,
     render_read_text,
     render_reclassify_text,
     render_show_text,
@@ -80,7 +78,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("labels", metavar="labels.csv", help="CSV-файл с разметкой")
 
     p = sub.add_parser("read", help="прочитать текст документов")
-    p.add_argument("ids", nargs="*", metavar="ID", help="идентификаторы (по умолчанию — непрочитанные)")
+    p.add_argument(
+        "ids", nargs="*", metavar="ID", help="идентификаторы (по умолчанию — непрочитанные)"
+    )
     p.add_argument("--all", action="store_true", help="перечитать все документы реестра")
     p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")

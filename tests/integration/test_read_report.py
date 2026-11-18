@@ -9,7 +9,6 @@ from __future__ import annotations
 import csv
 import json
 import re
-from pathlib import Path
 
 import pytest
 
@@ -48,7 +47,9 @@ def read_docs(cli, db, tmp_path):
     )
     assert cli("read").exit_code == 0
     (pending,) = add_files(cli, tmp_path / "more", [lambda p: mk.make_digital(p, pages=1)])
-    (failed,) = add_files(cli, tmp_path / "more2", [lambda p: mk.make_digital(p, pages=2, text_seed="Z")])
+    (failed,) = add_files(
+        cli, tmp_path / "more2", [lambda p: mk.make_digital(p, pages=2, text_seed="Z")]
+    )
     assert (pending, failed) == ("D-0006", "D-0007")
     set_stage(db, failed, "reading", "failed", "не удалось прочитать")
     return {"read": ids, "pending": pending, "failed": failed}
@@ -131,7 +132,7 @@ def test_text_table_layout_and_totals_row(cli, db, read_docs):
     for h in HEADERS:
         assert h in lines[0]
     assert len(lines) == 1 + len(exp) + 1
-    for row, line in zip(exp, lines[1:-1]):
+    for row, line in zip(exp, lines[1:-1], strict=True):
         cells = line.split()
         assert cells[0] == row["id"]
         word = STATE_WORDS[row["state"]]
@@ -171,7 +172,7 @@ def test_csv_explicit_path_content(cli, db, read_docs, tmp_path):
     ids = read_docs["read"] + [read_docs["failed"]]
     exp = all_expected(db, ids)
     assert len(rows) == 1 + len(exp) + 1
-    for row, got in zip(exp, rows[1:-1]):
+    for row, got in zip(exp, rows[1:-1], strict=True):
         assert got == [
             row["id"], row["name"], str(row["pages"]), str(row["read"]),
             *(str(row["flags"][c]) for c in CODES), str(row["tables"]), STATE_WORDS[row["state"]],

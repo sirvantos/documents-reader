@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from docreader.errors import UserError
-import json
-
 from docreader.textview import find_phrase, load_document_text, load_page
 
 SHA = "a" * 64
@@ -233,7 +233,10 @@ def test_cli_find_text_and_json(db, cli) -> None:
 
     text = cli("text", "D-0001", "--find", "Срок")
     assert text.exit_code == 0
-    assert text.stdout.strip() == "стр. 1, строка 1, body: …Договор аренды Срок 12 месяцев Договор аренды…"
+    assert (
+        text.stdout.strip()
+        == "стр. 1, строка 1, body: …Договор аренды Срок 12 месяцев Договор аренды…"
+    )
 
     as_json = cli("text", "D-0001", "--find", "Колонтитул", "--json")
     data = json.loads(as_json.stdout)

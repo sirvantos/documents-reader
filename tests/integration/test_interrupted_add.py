@@ -21,7 +21,7 @@ def _sha256(path: Path) -> str:
 
 
 def _count(db, table: str) -> int:
-    return db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # noqa: S608
+    return db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
 
 
 def _files_by_name(result_stdout: str) -> dict[str, dict]:

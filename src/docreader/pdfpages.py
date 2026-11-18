@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Protocol
 
@@ -54,8 +55,12 @@ class PageMetrics:
 
 
 class Thresholds(Protocol):
-    text_min_chars: int
-    full_image_coverage: float
+    # Read-only properties: a frozen dataclass such as Settings satisfies them.
+    @property
+    def text_min_chars(self) -> int: ...
+
+    @property
+    def full_image_coverage(self) -> float: ...
 
 
 # --- geometry ------------------------------------------------------------------------
@@ -75,17 +80,17 @@ def union_area(rects: Iterable[Rect], clip: Rect) -> float:
 
     xs = sorted({x for r in clipped for x in (r[0], r[2])})
     area = 0.0
-    for x0, x1 in zip(xs, xs[1:]):
+    for x0, x1 in pairwise(xs):
         spans = sorted((r[1], r[3]) for r in clipped if r[0] <= x0 and r[2] >= x1)
-        covered, cur_lo, cur_hi = 0.0, None, None
-        for lo, hi in spans:
-            if cur_hi is None or lo > cur_hi:
-                if cur_hi is not None:
+        covered = 0.0
+        if spans:
+            cur_lo, cur_hi = spans[0]
+            for lo, hi in spans[1:]:
+                if lo > cur_hi:
                     covered += cur_hi - cur_lo
-                cur_lo, cur_hi = lo, hi
-            else:
-                cur_hi = max(cur_hi, hi)
-        if cur_hi is not None:
+                    cur_lo, cur_hi = lo, hi
+                else:
+                    cur_hi = max(cur_hi, hi)
             covered += cur_hi - cur_lo
         area += covered * (x1 - x0)
     return area
