@@ -60,7 +60,7 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 - Never read, open, print or copy real contracts, gold data or run results.
   They live outside the repository in the data folder. Do not ask the user
   to paste them.
-- Debug and test only on synthetic files in `tests/fixtures/`.
+- Debug and test only on synthetic files made by the generators in `tests/synthetic/`.
 - Never send document content to any external service. All models run locally.
 - Code, identifiers, commit messages and code comments are in English.
   Specs and project docs are in Russian.
