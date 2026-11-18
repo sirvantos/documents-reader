@@ -41,7 +41,7 @@ docker compose run --rm tests
 | US1-5, US1-6, FR-015 | реквизиты в две колонки (без линеек и таблицей) → вся левая колонка, затем вся правая; продолжение на следующей странице — в своей колонке; флага нет |
 | US1-7, FR-016 | лист электронной подписи — в основном тексте, не колонтитул |
 | US1-8, FR-012 | изменённый текст (подмена через настройку колонтитулов) → `structure`…`indexing` = `pending`, причина «текст изменён» |
-| US2-1…8, FR-006, FR-008 | изображение → `scan_unread`; картинка с невидимым текстом → `ocr_text`; мусорный слой → `unreadable`; 3 казахские буквы → `maybe_not_russian`; одна буква и латиница (`b55183f5`, «CKAВ») → нет флага; пустая → `empty`, состояние `done`; любой другой флаг → `needs_review` с перечнем |
+| US2-1…8, FR-006, FR-008 | изображение → `scan_unread`; картинка с невидимым текстом → `ocr_text`; мусорный слой → `unreadable`; 3 казахские буквы → `maybe_not_russian`; одна буква и латиница (`b55183f5`, «CKAВ») → нет флага; пустая страница в документе с прочитанными страницами → `empty`, состояние `done`; документ из одной пустой страницы → `empty` и `needs_review` «нет прочитанного текста»; любой другой флаг → `needs_review` с перечнем |
 | US3-1…5, FR-003…FR-005 | колонтитул с номером договора и номера страниц не в тексте, но находятся `text --find`; «мон-»/«тажные» → «монтажные»; «строительно-»/«монтажные» → «строительно-монтажные»; «123/45-У» не тронут; фраза через границу страниц цела |
 | US4-1, FR-007 | таблица с линейками → `has_table`, ячейки одной строки рядом |
 | US5-1/2, FR-011 | `read-report` и `--csv`: числа совпадают с флагами; CSV открывается с BOM и `;` |
@@ -54,22 +54,64 @@ docker compose run --rm tests
 ### Ручной прогон на синтетике
 
 > С ИИ-агентом — только в одноразовой папке данных и отдельной базе
-> (`DOCREADER_DATA_DIR=/tmp/docreader-demo-data`, `docreader_demo`).
+> (`DOCREADER_DATA_DIR=/tmp/docreader-demo-data`, `docreader_demo`; в базе
+> `createdb docreader_demo` до прогона и `dropdb docreader_demo` после).
+
+`python -m tests.synthetic.make_pdfs` пишет только демонстрационный набор фичи 01
+(`digital`, `mixed`, `contract_ru` и др.). Файлы для чтения (колонтитулы, переносы,
+колонки, таблица, поворот, казахские буквы, лист подписи, мусорный слой, пустая
+страница) добавляются отдельными генераторами из того же модуля:
 
 ```
+export DOCREADER_DATA_DIR=/tmp/docreader-demo-data
+export DOCREADER_DATABASE_URL=postgresql:///docreader_demo
 uv run python -m tests.synthetic.make_pdfs /tmp/docreader-demo
-uv run docreader add /tmp/docreader-demo
+uv run python - <<'PY'
+from tests.synthetic import make_pdfs as m
+for n in ["headers_ru", "hyphens_ru", "requisites_columns_ru", "price_table_ru",
+          "rotated_text_ru", "kazakh_ru", "signature_sheet_ru", "unreadable_ru",
+          "typography_ru"]:
+    getattr(m, "make_" + n)(f"/tmp/docreader-demo/{n}.pdf")
+m.make_blank_page("/tmp/docreader-demo/blank.pdf")
+PY
+uv run docreader migrate
+uv run docreader add /tmp/docreader-demo    # D-0001 blank, D-0004 headers_ru, D-0005 hyphens_ru, ...
 uv run docreader read
 uv run docreader read                       # второй раз: «Нечего читать…»
-uv run docreader text D-0001 --page 1
-uv run docreader text D-0001 --find "Договор №"
-uv run docreader read-report --csv
+uv run docreader read D-0004                # один документ, в любом состоянии
 uv run docreader read --all                 # повторное чтение: текст не изменился
+uv run docreader read D-0002 D-0008 --json
+uv run docreader text D-0004                # очищенный текст, без колонтитулов
+uv run docreader text D-0004 --page 1
+uv run docreader text D-0004 --find "№ 123/45-У"
+uv run docreader text D-0005                # «мон-»/«тажные» склеены
+uv run docreader read-report
+uv run docreader read-report --csv
 ```
 
-Ожидается: состояния и флаги — как в таблице выше; второй `read` ничего не читает;
-`--find` находит номер договора в колонтитулах всех страниц с ролью `header`;
-`read --all` не сбрасывает следующие этапы.
+Идентификаторы выдаются по порядку обработки файлов (имена по алфавиту, затем
+вложенная папка `nested/`), поэтому свериться стоит по `docreader list`; ниже — как
+в прогоне на 2026-11-18.
+
+Ожидается:
+
+- первый `read`: 17 документов, «готово 10, требует просмотра 7, ошибка 0»;
+  требуют просмотра `blank` («нет прочитанного текста»), `image_only` («нет прочитанного
+  текста; стр. 1, 2: скан, не прочитана»), `image_with_invisible_text` («текст получен
+  распознаванием»), `kazakh_ru` («возможно, не русский текст»), `mixed` («стр. 4: скан,
+  не прочитана»), `rotated_text_ru` («порядок чтения не определён»), `unreadable_ru`
+  («текст не читается»);
+- второй `read` ничего не читает: «Нечего читать: все документы прочитаны
+  (перечитать: docreader read --all)»;
+- `read D-0004` и `read --all` не сбрасывают следующие этапы и не печатают строку
+  «Текст изменился…» (список `docreader list` — «ожидает» в этапах после «Чтение»);
+- `text D-0004 --page 1`: строка 0 — `колонтитул` «Договор подряда № 123/45-У», последняя —
+  `номер стр.` «- 1 -», между ними `текст`; в `text D-0004` их нет;
+- `--find "№ 123/45-У"` находит номер договора в колонтитулах всех 5 страниц с ролью
+  `header` (фраза «Договор №» не находится: в колонтитуле «Договор подряда № …»);
+- `read-report`: итоговая строка `Итого 35 31 3 2 1 1 1 1 1`
+  (стр., прочит., скан, распозн., нечит., не рус., пустые, порядок, таблицы);
+  `--csv` печатает `Отчёт сохранён: <DATA_DIR>/reports/reading-ГГГГММДД-ЧЧММСС.csv`.
 
 ---
 

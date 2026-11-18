@@ -147,11 +147,6 @@ def test_line_bbox_is_union_of_chars() -> None:
     assert build_lines(chars)[0].bbox == (10.0, 100.0, 110.0, 115.0)
 
 
-def test_unicode_hyphen_marker_is_kept_in_text() -> None:
-    chars = word("ab", 0) + [Char("￾", (10.0, 100.0, 15.0, 110.0))]
-    assert build_lines(chars)[0].text == "ab￾"
-
-
 def test_line_text_is_normalized_and_empty_lines_are_dropped() -> None:
     top = word("a\u00a0b\u2011c", 0, bottom=200.0)
     blank = word("\u00a0", 0, bottom=150.0)
@@ -287,3 +282,10 @@ def test_fake_bold_pdf_lines_have_no_doubled_text(tmp_path: Path) -> None:
     finally:
         pdf.close()
     assert [ln.text for ln in lines] == list(FAKE_BOLD_RU_LINES)
+
+
+def test_pdfium_line_end_hyphen_mark_is_stored_as_hyphen() -> None:
+    box = lambda x: (x, 700.0, x + 6.0, 711.0)  # noqa: E731
+    chars = [Char(ch, box(72 + 6 * i)) for i, ch in enumerate("мон￾")]
+    (line,) = build_lines(chars)
+    assert line.text == "мон-"

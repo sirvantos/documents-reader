@@ -73,6 +73,14 @@ class Line:
         }
 
 
+def _line_text(raw: str) -> str:
+    """Stored line text: R-5 normalization, PDFium's line-end hyphen mark shown as «-».
+
+    The PDF shows a hyphen there; hyphenation (cleanup.py) treats both forms alike.
+    """
+    return normalize_chars(raw).replace(HYPHEN_MARKER, "-")
+
+
 def _height(box: Box) -> float:
     return box[3] - box[1]
 
@@ -174,7 +182,7 @@ def build_lines(chars: Sequence[Char]) -> list[Line]:
     lines: list[Line] = []
     for k in order:
         members = tuple(sorted(groups[k], key=lambda s: s.bbox[0]))
-        text = normalize_chars(" ".join(s.text for s in members))
+        text = _line_text(" ".join(s.text for s in members))
         if not text:
             continue
         lines.append(
@@ -576,7 +584,7 @@ def _column_areas(
 
 def _column_part(line: Line, side: int, to_pdf) -> Line | None:  # noqa: ANN001
     segment = line.segments[side]
-    text = normalize_chars(segment.text)
+    text = _line_text(segment.text)
     if not text:
         return None
     return Line(
@@ -601,7 +609,7 @@ def _table_lines(members: Sequence[Line], t: int, table: _Table, to_pdf) -> list
             parts.setdefault((row, cell, order), []).append(seg)
     result: list[Line] = []
     for (row, cell, _order), segs in sorted(parts.items()):
-        text = normalize_chars(" ".join(s.text for s in segs))
+        text = _line_text(" ".join(s.text for s in segs))
         if not text:
             continue
         box = segs[0].bbox

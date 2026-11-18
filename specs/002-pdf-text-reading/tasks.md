@@ -248,9 +248,9 @@ US2-1, US2-7, US2-8 (частично).
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T053 Validate quickstart.md part A on the development server with a throwaway setup: `DOCREADER_DATA_DIR=<session scratchpad>/demo-data` and a separate database `docreader_demo` (`createdb docreader_demo`, `dropdb docreader_demo` afterwards); never use `~/docreader-data` or the `docreader` database. Run «Ручной прогон на синтетике»; correct `specs/002-pdf-text-reading/quickstart.md` and `contracts/cli.md` where the actual output differs — executor: sonnet
+- [X] T053 Validate quickstart.md part A on the development server with a throwaway setup: `DOCREADER_DATA_DIR=<session scratchpad>/demo-data` and a separate database `docreader_demo` (`createdb docreader_demo`, `dropdb docreader_demo` afterwards); never use `~/docreader-data` or the `docreader` database. Run «Ручной прогон на синтетике»; correct `specs/002-pdf-text-reading/quickstart.md` and `contracts/cli.md` where the actual output differs — executor: sonnet
 - [X] T054 Update `docs/tech-context.md`: remove the **[проверить]** marks resolved by this feature (pymorphy3 on Linux and Docker from T001; macOS after T056 is reported); keep «текст с координатами на реальных договорах» marked until T057; check that the reading data model and the «Договорённости между этапами» entries (reset on text change, availability rule) match the code — executor: sonnet
-- [ ] T055 Run the full suite: `DOCREADER_TEST_DATABASE_URL=postgresql:///postgres uv run pytest`, then `docker compose build tests` and `docker compose run --rm tests`; both green; report failures with output — executor: opus
+- [X] T055 Run the full suite: `DOCREADER_TEST_DATABASE_URL=postgresql:///postgres uv run pytest`, then `docker compose build tests` and `docker compose run --rm tests`; both green; report failures with output — executor: opus
 
 ---
 

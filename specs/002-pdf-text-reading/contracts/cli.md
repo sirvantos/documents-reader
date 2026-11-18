@@ -65,7 +65,8 @@ D-0003   3 стр.  ошибка: файл копии не найден — пр
 Код 0, если команда выполнена (документы с ошибкой видны в выводе, как у `add`).
 
 JSON (`--json`): `{run_id, documents: [{id, pages, state, reason, text_changed,
-flags: {code: [страницы]}}], totals: {done, needs_review, failed}}`.
+flags: {code: [страницы]}}], totals: {done, needs_review, failed}, interrupted}`
+(`interrupted` — `true` после Ctrl-C; `reason` — `null` для «готово»).
 
 ## `docreader text <ID> [--page N] [--find ФРАЗА] [--json]`
 
@@ -73,17 +74,26 @@ flags: {code: [страницы]}}], totals: {done, needs_review, failed}}`.
 «Документ D-0001 ещё не прочитан — выполните docreader read D-0001», код 1.
 
 - без ключей — очищенный текст документа; перед каждой страницей строка
-  `── стр. N ──` и её флаги;
-- `--page N` — строки страницы N по порядку: номер строки, роль, колонка/ячейка,
-  текст; флаги с причинами; признак таблицы. Номер вне диапазона — код 1;
+  `── стр. N ──`, затем её флаги (`! <флаг>: <причина>`) и текст. Страница без строк —
+  `(нет текста)`;
+- `--page N` — заголовок `<ID>, стр. N`, строка `Флаги: нет` или по строке
+  `! <флаг>: <причина>`, при таблице `Таблица: есть`, затем строки по порядку:
+  номер строки, роль (`текст`, `колонтитул`, `нижний колонтитул`, `номер стр.`),
+  колонка/ячейка (`кол. 2`, `табл. 1 стр. 2 яч. 3`), текст. Строка показана как
+  в файле: перенос в конце строки остаётся дефисом, склейка делается только в
+  очищенном тексте. Номер вне диапазона — «В документе D-0004 нет страницы 9
+  (страниц: 5)», код 1;
 - `--find ФРАЗА` — все вхождения фразы (после приведения знаков R-5) в очищенном
-  тексте и в вынесенных элементах: позиция в тексте, страница, номер строки,
-  прямоугольник, роль (`body` или `header`/`footer`/`page_number`). Ничего не найдено —
-  «Не найдено», код 0.
+  тексте и в вынесенных элементах; по строке на вхождение:
+  `стр. 1, строка 0, header: …контекст…`; роль — `body` или
+  `header`/`footer`/`page_number`. Ничего не найдено — «Не найдено», код 0;
+- `--page` и `--find` вместе — «Укажите либо --page, либо --find», код 1.
 
-JSON: `{id, pages: [{page, rotation, has_table, flags: [{code, reason}],
-lines: [...]}]}` для `--page`; `{id, phrase, matches: [{start, end, page, line,
-bbox, role}]}` для `--find`.
+JSON: без ключей `{id, read_pages, pages: [...]}`; для `--page` `{id, pages: [{page,
+rotation, has_table, flags: [{code, reason}], lines: [{i, bbox, role, text, table:
+{t, row, cell} | null, column: N | null}]}]}`; для `--find` `{id, phrase, matches:
+[{start, end, page, line, bbox, role}]}` (`start`/`end` — смещения вхождения, роль —
+`body|header|footer|page_number`).
 
 ## `docreader read-report [--csv [ПУТЬ]] [--json]`
 
@@ -100,9 +110,14 @@ D-0002  dogovor_02.pdf     12       11     1         0       0        1       0 
 «Прочит.» — страницы, давшие хотя бы одну строку; остальные столбцы — число страниц
 с флагом. Страница с несколькими флагами считается в каждом.
 
-`--csv` — то же в CSV (UTF-8 с BOM, разделитель `;`, research R-11); без пути —
-`$DOCREADER_DATA_DIR/reports/reading-<дата-время>.csv`; печатается путь к файлу.
-Текст договоров в отчёт не попадает.
+`--csv` — то же в CSV (UTF-8 с BOM, разделитель `;`, research R-11, последняя строка
+`Итого;…`); без пути — `$DOCREADER_DATA_DIR/reports/reading-ГГГГММДД-ЧЧММСС.csv`;
+печатается `Отчёт сохранён: <путь>` (таблица при этом не печатается). Текст договоров
+в отчёт не попадает.
+
+JSON (`--json`): `{documents: [{id, name, pages, read, flags: {scan_unread, ocr_text,
+unreadable, maybe_not_russian, empty, reading_order_unknown}, tables, state}],
+totals: {pages, read, flags: {…}, tables}}`; `state` — `done|needs_review|failed`.
 
 ## Изменения в существующих подкомандах
 
