@@ -186,6 +186,40 @@ def content_flags(
     return flags
 
 
+# --- reading order (step 4) ------------------------------------------------------------
+
+# Lines with two or more segments outside columns and tables that make the order
+# of the page doubtful (R-3, p. 6).
+UNRESOLVED_MIN_LINES = 3
+
+
+def _lines_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "строка"
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return "строки"
+    return "строк"
+
+
+def layout_flag(*, rotated_lines: int, unresolved_lines: int) -> Flag | None:
+    """`reading_order_unknown` from the layout result of a page (R-3, p. 6).
+
+    Only text turned inside the page counts as rotated: a page rotated in its
+    properties is read in the normal order before this rule (FR-018).
+    """
+    parts = []
+    if rotated_lines > 0:
+        parts.append(f"{rotated_lines} {_lines_word(rotated_lines)} повёрнутого текста")
+    if unresolved_lines >= UNRESOLVED_MIN_LINES:
+        parts.append(
+            f"{unresolved_lines} {_lines_word(unresolved_lines)} из нескольких частей "
+            "вне колонок и таблиц"
+        )
+    if not parts:
+        return None
+    return Flag("reading_order_unknown", "; ".join(parts))
+
+
 # --- document state ----------------------------------------------------------------------
 
 

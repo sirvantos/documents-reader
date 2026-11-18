@@ -249,3 +249,45 @@ def test_not_russian_threshold_comes_from_settings() -> None:
 def test_flags_follow_fr006_order() -> None:
     text = "бвгд жзкл мнпр стфх цчшщ Қ Ә Ұ бвгд жзкл"
     assert codes(text, kind="scan_with_text") == ["ocr_text", "unreadable", "maybe_not_russian"]
+
+
+# --- reading order (step 4, task T041) --------------------------------------------------
+
+from docreader.quality import UNRESOLVED_MIN_LINES, layout_flag  # noqa: E402
+
+
+def test_plain_layout_has_no_flag() -> None:
+    assert layout_flag(rotated_lines=0, unresolved_lines=0) is None
+
+
+def test_rotated_text_inside_the_page_is_flagged() -> None:
+    flag = layout_flag(rotated_lines=3, unresolved_lines=0)
+    assert flag is not None
+    assert flag.code == "reading_order_unknown"
+    assert "3" in flag.reason and "повёрнут" in flag.reason
+
+
+def test_few_unresolved_multi_segment_lines_are_tolerated() -> None:
+    assert UNRESOLVED_MIN_LINES == 3
+    assert layout_flag(rotated_lines=0, unresolved_lines=2) is None
+
+
+def test_many_unresolved_multi_segment_lines_are_flagged() -> None:
+    flag = layout_flag(rotated_lines=0, unresolved_lines=4)
+    assert flag is not None
+    assert flag.code == "reading_order_unknown"
+    assert "4" in flag.reason
+
+
+def test_both_causes_are_in_one_reason() -> None:
+    flag = layout_flag(rotated_lines=1, unresolved_lines=5)
+    assert flag is not None
+    assert "повёрнут" in flag.reason and "5" in flag.reason
+
+
+def test_page_rotation_is_not_an_input() -> None:
+    # The rule takes only the layout result: a page rotated in its properties is
+    # read in the normal order and gives no rotated lines (FR-018).
+    import inspect
+
+    assert set(inspect.signature(layout_flag).parameters) == {"rotated_lines", "unresolved_lines"}
