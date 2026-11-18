@@ -13,6 +13,8 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   add tests that need one. Auto-tests use fake models: hand-written stubs and answers
   recorded from the real model on synthetic contracts (test levels and rules:
   "Модели в автотестах" in `docs/tech-context.md`).
+- The scan recognition engine (OCR, feature 13) counts as a model: never install its
+  language data or weights or run it here; tests replace it through its interface.
 - A test that needs a real model belongs only in the `real_model` pytest group,
   which is excluded by default and run by the analyst on the Mac.
 - Never hand-edit or fabricate recordings in `tests/recordings/` to make a test pass.
