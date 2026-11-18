@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import psycopg
@@ -35,12 +35,30 @@ REPO_ROOT = _find_git_root(Path(__file__).resolve().parent)
 
 
 @dataclass(frozen=True)
+class ReadingSettings:
+    """Thresholds of the [reading] section (data-model «Настройки», research R-13)."""
+
+    header_band: float = 0.1
+    header_min_share: float = 0.5
+    header_min_pages: int = 3
+    non_russian_min_letters: int = 3
+    unreadable_min_letter_share: float = 0.6
+    unreadable_max_bad_share: float = 0.05
+    unreadable_max_vowelless_share: float = 0.4
+    column_min_lines: int = 3
+    column_min_gap: float = 20.0
+    column_gap_tolerance: float = 15.0
+    rotated_min_angle: float = 5.0
+
+
+@dataclass(frozen=True)
 class Settings:
     data_dir: Path
     database_url: str
     text_min_chars: int = 20
     full_image_coverage: float = 0.85
     large_file_pages: int = 200
+    reading: ReadingSettings = field(default_factory=ReadingSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -58,6 +76,7 @@ class Settings:
                 "full_image_coverage": self.full_image_coverage,
             },
             "intake": {"large_file_pages": self.large_file_pages},
+            "reading": asdict(self.reading),
         }
 
 
@@ -148,7 +167,47 @@ _SCHEMA = {
     "intake": {
         "large_file_pages": ("large_file_pages", int, lambda v: v >= 1, "целое ≥ 1"),
     },
+    # Keys of [reading] map one-to-one to ReadingSettings fields.
+    "reading": {
+        "header_band": ("header_band", float, lambda v: 0 < v <= 1, "число в (0, 1]"),
+        "header_min_share": ("header_min_share", float, lambda v: 0 < v <= 1, "число в (0, 1]"),
+        "header_min_pages": ("header_min_pages", int, lambda v: v >= 1, "целое ≥ 1"),
+        "non_russian_min_letters": (
+            "non_russian_min_letters",
+            int,
+            lambda v: v >= 1,
+            "целое ≥ 1",
+        ),
+        "unreadable_min_letter_share": (
+            "unreadable_min_letter_share",
+            float,
+            lambda v: 0 < v <= 1,
+            "число в (0, 1]",
+        ),
+        "unreadable_max_bad_share": (
+            "unreadable_max_bad_share",
+            float,
+            lambda v: 0 < v <= 1,
+            "число в (0, 1]",
+        ),
+        "unreadable_max_vowelless_share": (
+            "unreadable_max_vowelless_share",
+            float,
+            lambda v: 0 < v <= 1,
+            "число в (0, 1]",
+        ),
+        "column_min_lines": ("column_min_lines", int, lambda v: v >= 2, "целое ≥ 2"),
+        "column_min_gap": ("column_min_gap", float, lambda v: v >= 0, "число ≥ 0"),
+        "column_gap_tolerance": ("column_gap_tolerance", float, lambda v: v >= 0, "число ≥ 0"),
+        "rotated_min_angle": (
+            "rotated_min_angle",
+            float,
+            lambda v: 0 <= v < 90,
+            "число в [0, 90)",
+        ),
+    },
 }
+READING_TABLE = "reading"
 
 
 def _read_settings_file(data_dir: Path) -> dict:
@@ -165,11 +224,13 @@ def _read_settings_file(data_dir: Path) -> dict:
         raise bad(f"файл не разобран — {exc}") from exc
 
     values: dict = {}
+    reading_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
         if not isinstance(entries, dict):
             raise bad(f"«{table}» должен быть разделом [{table}]")
+        target = reading_values if table == READING_TABLE else values
         for key, value in entries.items():
             if key not in _SCHEMA[table]:
                 raise bad(f"неизвестный ключ {table}.{key}")
@@ -179,5 +240,7 @@ def _read_settings_file(data_dir: Path) -> dict:
             value = kind(value)
             if not valid(value):
                 raise bad(f"{table}.{key} = {value!r}: нужно {allowed}")
-            values[field] = value
+            target[field] = value
+    if READING_TABLE in doc:
+        values["reading"] = ReadingSettings(**reading_values)
     return values

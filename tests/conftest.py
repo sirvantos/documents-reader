@@ -30,7 +30,18 @@ from docreader.config import _check_local_database
 
 TEST_DB_ENV = "DOCREADER_TEST_DATABASE_URL"
 INTEGRATION_DIR = Path(__file__).resolve().parent / "integration"
-REGISTRY_TABLES = ("run", "document", "page", "stage_status", "deletion_log")
+REGISTRY_TABLES = (
+    "run",
+    "document",
+    "page",
+    "stage_status",
+    "deletion_log",
+    # feature 03 (reading); TRUNCATE … CASCADE handles the FK order
+    "page_text",
+    "page_flag",
+    "document_text",
+    "text_span",
+)
 LIBPQ_ENV = ("PGHOST", "PGHOSTADDR", "PGSERVICE", "PGDATABASE")
 
 

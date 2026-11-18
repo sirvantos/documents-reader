@@ -211,4 +211,17 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
     assert json.loads(json.dumps(resolved)) == {
         "page_kinds": {"text_min_chars": 7, "full_image_coverage": 0.85},
         "intake": {"large_file_pages": 200},
+        "reading": {
+            "header_band": 0.1,
+            "header_min_share": 0.5,
+            "header_min_pages": 3,
+            "non_russian_min_letters": 3,
+            "unreadable_min_letter_share": 0.6,
+            "unreadable_max_bad_share": 0.05,
+            "unreadable_max_vowelless_share": 0.4,
+            "column_min_lines": 3,
+            "column_min_gap": 20.0,
+            "column_gap_tolerance": 15.0,
+            "rotated_min_angle": 5.0,
+        },
     }
