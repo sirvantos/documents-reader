@@ -1,43 +1,28 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.1.0 → 2.0.0 (MAJOR)
-  Rationale: the first-stage limit «Две стороны договора» is redefined (генеральный подрядчик
-  и субподрядчик → «Заказчик» и «Подрядчик»); the language limit is redefined to cover
-  Russian contracts with Russian party identifiers. Redefinition of a limit is MAJOR under
-  the versioning policy below. Source: docs/source/constitution-input.md (text after ---).
+Version change: 2.0.0 → 2.1.0 (MINOR)
+  Rationale: material expansion of a rule — the definition of done in «Порядок работы»
+  now also requires passing automated code checks (tests, linter, type checker).
+  Source: architecture review of 2026-11-18 (two independent reviews found no automated
+  quality gate; type checker reported 18 errors).
 
-Modified principles:
-  I. Данные не покидают машину — rule unchanged; only the «Почему» rationale replaced
-     (personal data, bank details and commercial terms; legal basis still unconfirmed).
-  II–VIII — unchanged. Principles I and III are unchanged in substance.
+Modified principles: none.
 
 Modified sections:
-  - О проекте: scope narrowed to договоры подряда ОАО «РЖД» (СМР и ПИР).
-  - Ограничения первого этапа:
-      «Только русский язык» → «Российские договоры на русском языке» (ИНН, КПП, ОГРН; рубли;
-        non-Russian letters, e.g. Kazakh, are flagged for manual review);
-      «Две стороны договора» → «Заказчик» и «Подрядчик»;
-      «Договоры не связаны между собой» + data moved to supplementary agreements
-        (e.g. календарный график работ) is treated as absent.
-  - Что считается готовым PoC: «37 основных полей» → «поля первой очереди каталога полей».
-  - Изменение конституции: Spec Kit additions kept (priority, versioning, compliance review).
+  - Порядок работы: «Фича считается законченной» + «проходят автоматические проверки
+    кода (тесты, линтер, проверка типов)».
 
 Added sections: none
 Removed sections: none
 
-Templates: not modified (scope of this command is the constitution only).
+Templates: not modified (no template references the definition of done).
 
-Files that referenced генподрядчик / субподрядчик / БИН / Казахстан — updated in the
-follow-up commit to «Заказчик»/«Подрядчик», ИНН/КПП/ОГРН, ООО/АО:
-  ✅ docs/tech-context.md (assumptions table)
-  ✅ docs/features/05-field-extraction.md (assumptions)
-  ✅ docs/features/06-rule-checks-and-statuses.md (БИН rules → ИНН/КПП/ОГРН, defers to
-      «Правила проверки» in docs/field-catalog.md)
-  ✅ docs/features/10-table-answers.md, 11-routing.md, 02-evaluation-set-and-results.md
-  ✅ docs/field-catalog.md — already aligned
-  ✅ .specify/ — no other hits
-  (docs/research/ — background only, not binding; left as is)
+Follow-up files:
+  ✅ docs/tech-context.md — new section «Правила кода» (commands, transactions, stage
+      states, typed results, nothing dropped silently, errors) and two stage agreements
+      (source_text_sha256, one quote-locating function)
+  ✅ CLAUDE.md, .claude/agents/implementer.md — check commands and the gate before [X]
 
 Deferred TODOs: none
 -->
@@ -163,7 +148,8 @@ Deferred TODOs: none
 ## Порядок работы
 
 - Одна фича — одна спецификация — одна ветка.
-- Фича считается законченной, когда её критерии приёмки выполнены и результат записан
+- Фича считается законченной, когда её критерии приёмки выполнены, проходят
+  автоматические проверки кода (тесты, линтер, проверка типов) и результат записан
   в таблицу результатов (для фич, влияющих на качество).
 - Отступление от принципа допускается только с записью: что нарушено, почему, и что
   должно произойти, чтобы отступление было снято.
@@ -213,4 +199,4 @@ Deferred TODOs: none
   проектирования и после него; найденные отступления оформляются по правилу из раздела
   «Порядок работы».
 
-**Версия:** 2.0.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-17
+**Версия:** 2.1.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-18

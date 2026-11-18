@@ -39,7 +39,7 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   `/speckit.constitution`.
 - During `/speckit.implement` the main session coordinates and delegates the work.
   It reads `tasks.md`, hands each task (or a small group of tightly related tasks)
-  to the `implementer` subagent, reviews the result, runs the tests, then marks the
+  to the `implementer` subagent, reviews the result, runs the tests, ruff and mypy, then marks the
   task `[X]`.
   - Default: `implementer` on its own model (Sonnet).
   - Mechanical tasks: pass `model: "haiku"`. These are project scaffolding and config,
@@ -77,6 +77,9 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   end (`docker compose run --rm tests -k note -x`); `docker compose down` stops the database.
   After changing dependencies, rebuild with `docker compose build tests`.
 - `uv run pytest tests/unit` — unit tests only; no database needed.
+- `uv run ruff check .` and `uv run mypy` — linter and type checker; both must pass
+  before a task is marked `[X]` (constitution «Порядок работы», «Правила кода» in
+  `docs/tech-context.md`). `docker compose run --rm lint` runs both in a container.
 - `uv run docreader --help` — the CLI. It needs `DOCREADER_DATA_DIR` (outside the
   repository) and optionally `DOCREADER_DATABASE_URL` (default `postgresql:///docreader`,
   local only).
