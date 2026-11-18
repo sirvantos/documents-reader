@@ -313,3 +313,94 @@ def test_sentence_split_by_page_break_has_no_header_between():
     mark_page_furniture(pages, ReadingSettings())
     result = build_document_text([(p.page_number, p.lines) for p in pages])
     assert result.text == "Поставщик обязуется передать\nтовар Покупателю.\nКонец."
+
+
+# --- place measured from the page edges; page numbers by their sequence -------------
+
+PORTRAIT = (595.3, 841.9)
+LANDSCAPE = (841.9, 595.3)
+
+
+def sized_page(n: int, size: tuple[float, float], lines: list[Line]) -> PageLines:
+    width, height = size
+    body = fline(0, f"Текст страницы {n}", (50.0, 400.0, 300.0, 415.0))
+    return PageLines(n, height, [body, *lines], width)
+
+
+def right_footer(width: float) -> Line:
+    # right-aligned with a 14 pt margin, 30 pt above the bottom edge
+    return fline(5, "Договор № 15 от 01.02.2024", (width - 180.0, 30.0, width - 14.0, 38.0))
+
+
+def test_footer_on_landscape_page_keeps_its_margins():
+    pages = [sized_page(n, PORTRAIT, [right_footer(PORTRAIT[0])]) for n in range(1, 5)]
+    pages.append(sized_page(5, LANDSCAPE, [right_footer(LANDSCAPE[0])]))
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "footer"] for p in pages)
+
+
+def test_header_on_landscape_page_is_measured_from_the_top_edge():
+    def top_line(size):
+        _width, height = size
+        return fline(5, "ДОГОВОР № 15", (50.0, height - 50.0, 200.0, height - 38.0))
+
+    pages = [sized_page(n, PORTRAIT, [top_line(PORTRAIT)]) for n in range(1, 5)]
+    pages.append(sized_page(5, LANDSCAPE, [top_line(LANDSCAPE)]))
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "header"] for p in pages)
+
+
+def test_moved_footer_text_on_same_size_page_stays_body():
+    pages = [sized_page(n, PORTRAIT, [right_footer(PORTRAIT[0])]) for n in range(1, 5)]
+    pages.append(sized_page(5, PORTRAIT, [fline(5, "Договор № 15 от 01.02.2024",
+                                                (50.0, 30.0, 216.0, 38.0))]))
+    mark_page_furniture(pages, ReadingSettings())
+    assert roles(pages[-1]) == ["body", "body"]
+
+
+def top_number(n: int, x: float, height: float = PORTRAIT[1], printed: int | None = None):
+    text = str(n if printed is None else printed)
+    return fline(4, text, (x, height - 46.8, x + 6.0 * len(text), height - 38.5))
+
+
+def test_page_number_moving_between_sections_is_one_page_number():
+    # the top number stands at x 306 in one part and at x 288 in another, each part
+    # on half of the pages; the numbers follow the PDF pages, at one distance from the top
+    pages = [sized_page(n, PORTRAIT, [top_number(n, 306.0 if n <= 4 else 288.0)])
+             for n in range(1, 9)]
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "page_number"] for p in pages)
+
+
+def test_page_number_on_landscape_page_follows_the_sequence():
+    pages = [sized_page(n, PORTRAIT, [top_number(n, 306.0)]) for n in range(1, 5)]
+    pages.append(sized_page(5, LANDSCAPE, [top_number(5, 415.0, LANDSCAPE[1])]))
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "page_number"] for p in pages)
+
+
+def test_page_numbers_with_constant_offset_are_grouped():
+    # unnumbered cover page: printed number = PDF page - 1, moving between two places
+    pages = [sized_page(n, PORTRAIT, [top_number(n, 306.0 if n % 2 else 288.0, printed=n - 1)])
+             for n in range(2, 8)]
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "page_number"] for p in pages)
+
+
+def test_numbers_off_the_sequence_at_moving_places_stay_body():
+    # numbers in the top band that do not follow the pages (clause numbers, amounts)
+    pages = [sized_page(n, PORTRAIT, [top_number(n, 50.0 + 40.0 * n, printed=7 * n + 3)])
+             for n in range(1, 7)]
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "body"] for p in pages)
+
+
+def test_sequence_numbers_at_different_levels_stay_body():
+    # the sequence alone is not enough: the numbers must keep one distance from the edge
+    pages = [
+        sized_page(n, PORTRAIT, [fline(4, str(n), (50.0 + 40.0 * n, 841.9 - 46.8 - 9.0 * n,
+                                                    56.0 + 40.0 * n, 841.9 - 38.5 - 9.0 * n))])
+        for n in range(1, 7)
+    ]
+    mark_page_furniture(pages, ReadingSettings())
+    assert all(roles(p) == ["body", "body"] for p in pages)

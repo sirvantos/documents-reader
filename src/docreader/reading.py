@@ -296,6 +296,7 @@ def clean_document_text(
                 p.number,
                 p.height if p.display_height is None else p.display_height,
                 p.lines,
+                p.height if p.rotation in (90, 270) else p.width,
             )
             for p in pages
         ], settings.reading

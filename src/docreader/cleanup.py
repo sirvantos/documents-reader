@@ -53,6 +53,8 @@ class PageLines:
     page_number: int
     height: float  # page height in pt (display space)
     lines: list[Line]
+    # page width in pt (display space); None: compare left/right edges as they are
+    width: float | None = None
 
 
 def _furniture_key(text: str) -> str:
@@ -68,28 +70,72 @@ def _band(box: Box, page_height: float, share: float) -> str | None:
     return None
 
 
-def _same_place(a: Box, b: Box) -> bool:
-    """Same top and the same left, right or centre: «9» and «10» differ in width."""
-    if abs(a[3] - b[3]) > POSITION_TOLERANCE:
+class _Place(NamedTuple):
+    """Where a line stands, measured from the page edges (display space, pt).
+
+    Measuring from the edges keeps a footer «at the same place» on a landscape page of
+    a portrait document: it keeps its margins, not its absolute x and y.
+    """
+
+    edge: float  # header: from the top edge to the line top; footer: line top from bottom
+    left: float  # from the left edge
+    right: float  # from the right edge
+    centre: float  # line centre from the page centre
+
+
+def _place(box: Box, page: PageLines, band: str) -> _Place:
+    width = page.width if page.width is not None else 0.0
+    edge = page.height - box[3] if band == "header" else box[3]
+    return _Place(
+        edge=edge,
+        left=box[0],
+        right=width - box[2],
+        centre=(box[0] + box[2]) / 2 - width / 2,
+    )
+
+
+def _same_place(a: _Place, b: _Place) -> bool:
+    """Same distance to the band edge and the same left, right or centre.
+
+    «9» and «10» differ in width, so one of the three horizontal anchors is enough.
+    """
+    if abs(a.edge - b.edge) > POSITION_TOLERANCE:
         return False
     return (
-        abs(a[0] - b[0]) <= POSITION_TOLERANCE
-        or abs(a[2] - b[2]) <= POSITION_TOLERANCE
-        or abs((a[0] + a[2]) - (b[0] + b[2])) / 2 <= POSITION_TOLERANCE
+        abs(a.left - b.left) <= POSITION_TOLERANCE
+        or abs(a.right - b.right) <= POSITION_TOLERANCE
+        or abs(a.centre - b.centre) <= POSITION_TOLERANCE
     )
+
+
+class _Entry(NamedTuple):
+    page: int
+    place: _Place
+    line: Line
+
+
+def _page_number_offset(text: str, page_number: int) -> int | None:
+    """Printed number minus the PDF page number («Страница 62 из 71» on page 62 → 0)."""
+    found = _DIGITS.search(text)
+    return None if found is None else int(found.group()) - page_number
 
 
 def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -> None:
     """Set role header/footer/page_number on repeated lines of the top/bottom band (R-4).
 
     A line is furniture only when the same text (digits aside) stands at the same place
-    on more than `header_min_share` of the pages (FR-004: «повторяющиеся»). This holds
-    for page numbers too, so a lone number near the page edge stays in the text.
+    on more than `header_min_share` of the pages (FR-004: «повторяющиеся»). The place
+    is measured from the page edges, so pages of another size or orientation match.
+    A page number is also furniture when the printed numbers follow the PDF page
+    numbers with one offset at the same distance from the band edge on more than
+    `header_min_share` of the pages: a document may move its number left or right
+    between sections. A lone number near the page edge stays in the text.
     Table cells are never furniture: they are contract data (amounts, totals).
     """
     if len(pages) < settings.header_min_pages:
         return
-    groups: dict[tuple[str, str], list[tuple[int, Box, Line]]] = defaultdict(list)
+    groups: dict[tuple[str, str], list[_Entry]] = defaultdict(list)
+    numbered: dict[tuple[str, int], list[_Entry]] = defaultdict(list)
     for page in pages:
         for line in page.lines:
             if line.role != "body" or line.table is not None or not line.text.strip():
@@ -98,16 +144,31 @@ def mark_page_furniture(pages: Sequence[PageLines], settings: ReadingSettings) -
             band = _band(box, page.height, settings.header_band)
             if band is None:
                 continue
+            entry = _Entry(page.page_number, _place(box, page, band), line)
             # page numbers form one group whatever their form («- 3 -» / «Стр. 4»)
             text = line.text.strip()
-            key = _PAGE_NUMBER_KEY if _PAGE_NUMBER.match(text) else _furniture_key(text)
-            groups[(band, key)].append((page.page_number, box, line))
+            if _PAGE_NUMBER.match(text):
+                groups[(band, _PAGE_NUMBER_KEY)].append(entry)
+                offset = _page_number_offset(text, page.page_number)
+                if offset is not None:
+                    numbered[(band, offset)].append(entry)
+            else:
+                groups[(band, _furniture_key(text))].append(entry)
     total = len(pages)
     for (band, _key), entries in groups.items():
-        for _page, box, line in entries:
-            near_pages = {p for p, other, _ in entries if _same_place(box, other)}
+        for entry in entries:
+            near_pages = {e.page for e in entries if _same_place(entry.place, e.place)}
             if len(near_pages) / total > settings.header_min_share:
-                line.role = "page_number" if _PAGE_NUMBER.match(line.text.strip()) else band
+                entry.line.role = "page_number" if _key == _PAGE_NUMBER_KEY else band
+    for entries in numbered.values():
+        for entry in entries:
+            level_pages = {
+                e.page
+                for e in entries
+                if abs(entry.place.edge - e.place.edge) <= POSITION_TOLERANCE
+            }
+            if len(level_pages) / total > settings.header_min_share:
+                entry.line.role = "page_number"
 
 
 def _hyphen_word(a: str, b: str) -> str | None:
