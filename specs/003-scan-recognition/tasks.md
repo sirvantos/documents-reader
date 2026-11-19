@@ -292,7 +292,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 - на Mac: проходит `pytest -m real_model`.
 
 - [ ] T035 [P] Add the remaining variants to `tests/synthetic/make_scans.py`: `rotated_90` and `rotated_180` (image content turned, page `/Rotate 0`), `skew_3deg`, `table` (a three-column price list with ruling lines drawn into the image), `stamp_over_text` (a round blue «печать» over the requisites), `stamp_only`, `blank` (white page with a few noise pixels below `blank_max_ink_share`); bump `SCAN_GENERATOR_VERSION` to 2; extend `tests/unit/test_make_scans.py` (scan kind; truth present, empty for `stamp_only` and `blank`; deterministic) — executor: haiku
-- [ ] T036 Write `tests/synthetic/record_recognition.py` and `tests/integration/test_record_guard.py` (research R-13; critical: privacy guard in code) — executor: opus
+- [X] T036 Write `tests/synthetic/record_recognition.py` and `tests/integration/test_record_guard.py` (research R-13; critical: privacy guard in code) — executor: opus
   - `python -m tests.synthetic.record_recognition [ПУТЬ...]`; without paths it generates all variants into `tests/synthetic/out/`
   - every given path, after `resolve()` (symlinks resolved), must lie inside `<repo>/tests/synthetic/`; otherwise exit 1 «записываются только синтетические файлы из tests/synthetic/», before any engine is loaded
   - the engine comes from `ocr_engines.load_engine` with the current `[recognition]` settings (on this server it stops on the forbid guard)
@@ -303,7 +303,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
   - `clean`: char accuracy vs `truth.json` ≥ 0.95, and every truth box overlaps a recognised line box
   - `requisites_two_columns`: left column before right; `faded_noisy`: `quality` lower than on `clean`; `stamp_over_text`: `quality` lower than on `clean`, and the truth lines outside the stamp area are found with char accuracy ≥ 0.9; `blank`: `empty`; `rotated_180`: `turn = 180` (after T043)
   - a recording whose `(engine, engine_version, dpi, generator_version)` differs from the settings and `SCAN_GENERATOR_VERSION`, or a missing recording, **fails** with «запись устарела (или отсутствует) — перезапишите её на ноутбуке: uv run python -m tests.synthetic.record_recognition (quickstart Б3)»; never `skip` or `xfail`
-- [ ] T038 Write `tests/real_model/__init__.py` and `tests/real_model/test_ocr_engine.py`, marked `real_model` (research R-13, level 3); locally only check that it is collected and excluded by default (`uv run pytest --collect-only -m real_model` lists it, plain `pytest` does not run it) — executor: opus
+- [X] T038 Write `tests/real_model/__init__.py` and `tests/real_model/test_ocr_engine.py`, marked `real_model` (research R-13, level 3); locally only check that it is collected and excluded by default (`uv run pytest --collect-only -m real_model` lists it, plain `pytest` does not run it) — executor: opus
   - the configured engine loads; on `clean` it returns lines inside the image, confidence in `[0, 1]`, and char accuracy ≥ 0.95 vs `truth.json`
   - during load and recognition `socket.socket.connect` and `socket.create_connection` are replaced by a trap that fails the test
   - with `model_dir` pointing to an empty folder → `EnvironmentProblem`
