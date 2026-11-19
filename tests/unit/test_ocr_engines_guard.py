@@ -12,7 +12,12 @@ from docreader.config import RecognitionSettings
 from docreader.errors import EnvironmentProblem
 
 FORBID = "DOCREADER_FORBID_MODELS"
-OFFLINE_VARS = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY", "DISABLE_TELEMETRY")
+OFFLINE_VARS = (
+    "HF_HUB_OFFLINE",
+    "TRANSFORMERS_OFFLINE",
+    "HF_HUB_DISABLE_TELEMETRY",
+    "DISABLE_TELEMETRY",
+)
 
 
 class _Spy:
