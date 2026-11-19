@@ -289,6 +289,13 @@ def _counted(text: str) -> bool:
     return any(ch.isalnum() for ch in text)
 
 
+ORIENTATION_UNKNOWN = "ориентация не определена: 0°, 90°, 180°, 270° ниже порога"
+
+
+def _percent(share: float) -> str:
+    return f"{share * 100:.1f}%".replace(".", ",")
+
+
 def recognition_flags(
     lines: Sequence[Mapping],
     quality: float | None,
@@ -300,21 +307,27 @@ def recognition_flags(
 
     `lines` are `page_recognition.lines` elements (`text`, `confidence`). The rule is the
     same for reading, `recognize` and `recognize-report`, so a changed threshold needs
-    only a re-read (FR-005).
+    only a re-read (FR-005). A page without scored lines is judged by its dark-pixel
+    share: a blank sheet is `empty` (neutral), anything else `scan_no_text` (R-8, R-10).
     """
-    flags: list[Flag] = []
     counted = [line for line in lines if _counted(str(line["text"]))]
+    if not counted:
+        if ink_share is None:
+            return []
+        if ink_share < settings.blank_max_ink_share:
+            return [Flag("empty", f"скан без текста, тёмных точек {_percent(ink_share)}")]
+        return [Flag("scan_no_text", f"строк нет, тёмных точек {_percent(ink_share)}")]
     parts: list[str] = []
     if quality is not None and quality < settings.page_min_quality:
         parts.append(f"оценка {_decimal(quality)} < {_decimal(settings.page_min_quality)}")
-    if counted:
-        low = sum(1 for line in counted if line["confidence"] < settings.line_min_confidence)
-        if low / len(counted) > settings.max_low_line_share:
-            parts.append(
-                f"{low} из {len(counted)} {_of_lines_word(len(counted))} с уверенностью "
-                f"< {_decimal(settings.line_min_confidence)}"
-            )
-    if parts:
-        flags.append(Flag(LOW_QUALITY, "; ".join(parts)))
-    return flags
-
+    low = sum(1 for line in counted if line["confidence"] < settings.line_min_confidence)
+    if low / len(counted) > settings.max_low_line_share:
+        parts.append(
+            f"{low} из {len(counted)} {_of_lines_word(len(counted))} с уверенностью "
+            f"< {_decimal(settings.line_min_confidence)}"
+        )
+    if not parts:
+        return []
+    if orientation_unknown:
+        parts.append(ORIENTATION_UNKNOWN)
+    return [Flag(LOW_QUALITY, "; ".join(parts))]

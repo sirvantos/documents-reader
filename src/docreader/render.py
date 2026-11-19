@@ -671,6 +671,15 @@ def render_recognize_eval_text(data: dict, report_path: str, *, with_diff: bool 
     lines.append(
         f"Пропущено строк: {totals['missing_lines']}; повторено строк: {totals['repeated_lines']}"
     )
+    flags = data.get("flags")
+    if flags is None:
+        lines.append("Флаг «низкое качество»: нет (нет файла flags.csv или он пуст)")
+    else:
+        lines.append(
+            f"Флаг «низкое качество»: верен в {_percent(flags['accuracy'])} "
+            f"(ложных {flags['false_positive']}, "
+            f"пропущено {flags['false_negative']} из {flags['checked']})"
+        )
     not_recognized = data["not_recognized"]
     if not_recognized:
         listed = ", ".join(f"{item['id']} стр. {item['page']}" for item in not_recognized)

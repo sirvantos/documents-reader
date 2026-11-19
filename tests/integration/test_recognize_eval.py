@@ -11,8 +11,8 @@ import json
 from pathlib import Path
 
 import pytest
-from docreader.recognition_eval import char_accuracy
 
+from docreader.recognition_eval import char_accuracy
 from tests.fakes.ocr import TruthEngine
 from tests.integration.test_recognize import add, truth_of
 from tests.synthetic import make_scans
@@ -157,3 +157,38 @@ def test_page_without_recognition_is_listed_not_counted(cli, db, evaluated) -> N
 
     assert data["not_recognized"] == [{"id": evaluated["clean"], "page": 2}]
     assert data["totals"]["pages"] == 2
+
+
+# --- SC-007: manual check of the low-quality flag (task T041) ----------------------------------
+
+
+def test_flag_check_from_flags_csv(cli, evaluated) -> None:
+    clean, req = evaluated["clean"], evaluated["req"]
+    (evaluated["folder"] / "flags.csv").write_text(
+        "документ;страница;плохая\n"
+        f"{clean};1;нет\n"
+        f"{clean};2;да\n"
+        f"{req};1;нет\n",
+        encoding="utf-8",
+    )
+
+    result = _run(cli, evaluated["folder"], "--json")
+    data = json.loads(result.stdout)
+
+    assert data["flags"] == {
+        "checked": 3,
+        "accuracy": pytest.approx(2 / 3),
+        "false_positive": 0,
+        "false_negative": 1,
+    }
+    text = _run(cli, evaluated["folder"]).stdout
+    assert "Флаг «низкое качество»: верен в 66,7% (ложных 0, пропущено 1 из 3)" in text
+
+
+def test_bad_flags_row_names_file_and_line(cli, evaluated) -> None:
+    (evaluated["folder"] / "flags.csv").write_text(
+        "документ;страница;плохая\nD-0001;1;может быть\n", encoding="utf-8"
+    )
+    result = _run(cli, evaluated["folder"])
+    assert result.exit_code == 1
+    assert "flags.csv" in result.stderr and "строка 2" in result.stderr

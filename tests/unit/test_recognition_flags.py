@@ -87,7 +87,8 @@ def test_reason_counts_only_counted_lines() -> None:
 
 def test_page_with_only_blank_lines_gets_no_low_quality_flag() -> None:
     lines = _lines(("__________", 0.1), ("«___» ________", 0.2))
-    assert _flags(lines, None) == []
+    codes = [f.code for f in _flags(lines, None)]
+    assert "low_recognition_quality" not in codes  # judged by ink instead (T041)
 
 
 def test_no_lines_gives_no_low_quality_flag() -> None:
@@ -121,3 +122,48 @@ def test_scan_unread_reasons() -> None:
     assert recognition_error_flag("RuntimeError: engine failed") == Flag(
         "scan_unread", "ошибка распознавания: RuntimeError: engine failed"
     )
+
+
+# --- pages without text, orientation (task T041, research R-8, R-10, R-6) -------------------
+
+
+def test_no_lines_and_ink_is_scan_without_text() -> None:
+    assert _flags([], None, ink=0.041) == [Flag("scan_no_text", "строк нет, тёмных точек 4,1%")]
+
+
+def test_no_lines_and_almost_no_ink_is_a_blank_sheet() -> None:
+    assert _flags([], None, ink=0.002) == [Flag("empty", "скан без текста, тёмных точек 0,2%")]
+
+
+def test_only_blank_lines_are_judged_by_ink() -> None:
+    lines = _lines(("__________", 0.3))
+    assert [f.code for f in _flags(lines, None, ink=0.05)] == ["scan_no_text"]
+
+
+def test_ink_threshold_comes_from_the_settings() -> None:
+    strict = RecognitionSettings(blank_max_ink_share=0.05)
+    assert [f.code for f in _flags([], None, ink=0.041, settings=strict)] == ["empty"]
+
+
+def test_unknown_ink_gives_no_flag() -> None:
+    assert _flags([], None, ink=None) == []
+
+
+def test_lines_with_text_never_give_the_ink_flags() -> None:
+    assert _flags(_lines(GOOD), 0.95, ink=0.0001) == []
+
+
+def test_blank_sheet_is_neutral_but_scan_without_text_needs_review() -> None:
+    blank = Flag("empty", "скан без текста, тёмных точек 0,2%")
+    no_text = Flag("scan_no_text", "строк нет, тёмных точек 4,1%")
+    assert document_state({1: [], 2: [blank]}, read_pages=1) == (State.DONE, None)
+    assert document_state({1: [], 2: [no_text]}, read_pages=1) == (
+        State.NEEDS_REVIEW,
+        "стр. 2: текст на скане не найден",
+    )
+
+
+def test_unknown_orientation_is_named_in_the_reason() -> None:
+    (flag,) = _flags(_lines(("Пдрдчк", 0.3)), 0.3, orientation_unknown=True)
+    assert flag.code == "low_recognition_quality"
+    assert flag.reason.endswith("; ориентация не определена: 0°, 90°, 180°, 270° ниже порога")

@@ -330,7 +330,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ### Tests for Шаг 4 ⚠️
 
-- [ ] T041 [P] [US4] Write failing tests — executor: opus
+- [X] T041 [P] [US4] Write failing tests — executor: opus
   - `tests/unit/test_recognition_flags.py`: no lines and `ink_share >= blank_max_ink_share` → `scan_no_text` «строк нет, тёмных точек 4,1%»; no lines and below the threshold → `empty` «скан без текста, тёмных точек 0,2%»; `empty` stays neutral, `scan_no_text` gives `needs_review`; `orientation_unknown = true` with a low quality → the `low_recognition_quality` reason ends with «; ориентация не определена: 0°, 90°, 180°, 270° ниже порога»
   - `tests/integration/test_recognize_reading.py`: US4-1 — `stamp_only` and `blank` with an engine returning no lines → flags as above; the `blank` page does not send the document to review. US4-2 — change `page_min_quality` in `settings.toml`, `read --all` → `low_recognition_quality` appears or disappears, the engine factory spy is not called, `page_recognition` rows unchanged
   - `tests/integration/test_recognize.py` (R-6): the engine reports `orientation = 180` → the second call gets the turned image, `turn = 180`, boxes equal the truth within 1 pt; no `orientation`, `try_rotations = true`, `ScriptedEngine` low at 0° and high at 90° → at most 4 calls, `turn = 90`; all four low → `turn = 0`, `orientation_unknown = true`; `try_rotations = false` → one call, `turn = 0`, `orientation_unknown = false`; `seconds` covers all attempts
@@ -338,9 +338,9 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ### Implementation for Шаг 4
 
-- [ ] T042 [US4] Make the `recognition_flags` part of T041 pass in `src/docreader/quality.py` (`scan_no_text` and `empty` by `ink_share`, the orientation part of the reason) and pass `orientation_unknown` from `page_recognition` in `src/docreader/reading.py` — executor: opus
-- [ ] T043 [US4] Implement turning in `src/docreader/recognition.py` per research R-6 to make the R-6 part of T041 pass: `orientation` from the engine first, otherwise the trial with `orientation_score`; store `turn` and `orientation_unknown`; coordinates via `image_box_to_pdf(..., turn=...)` — executor: sonnet
-- [ ] T044 [US5] Add `flags.csv` to `src/docreader/recognition_eval.py` and its output line to `src/docreader/render.py` to make the SC-007 part of T041 pass — executor: sonnet
+- [X] T042 [US4] Make the `recognition_flags` part of T041 pass in `src/docreader/quality.py` (`scan_no_text` and `empty` by `ink_share`, the orientation part of the reason) and pass `orientation_unknown` from `page_recognition` in `src/docreader/reading.py` — executor: opus
+- [X] T043 [US4] Implement turning in `src/docreader/recognition.py` per research R-6 to make the R-6 part of T041 pass: `orientation` from the engine first, otherwise the trial with `orientation_score`; store `turn` and `orientation_unknown`; coordinates via `image_box_to_pdf(..., turn=...)` — executor: sonnet
+- [X] T044 [US5] Add `flags.csv` to `src/docreader/recognition_eval.py` and its output line to `src/docreader/render.py` to make the SC-007 part of T041 pass — executor: sonnet
 - [ ] T045 [US4] Re-run `tests/integration/test_recognize_recorded.py` with the new variants. If the `rotated_180`, `blank` or `stamp_only` recordings are missing or stale (T035 came after T039), ask the analyst to re-record (quickstart Б4); do not edit recordings — executor: opus
 
 ---
@@ -364,7 +364,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ### Implementation for Шаг 5
 
-- [ ] T047 [US7] Implement the report and review queries in `src/docreader/textview.py` (one query per report over `page`, `page_recognition` and `stage_status`; flags through `quality.recognition_flags` on the stored values), returning dataclasses — executor: sonnet
+- [X] T047 [US7] Implement the report and review queries in `src/docreader/textview.py` (one query per report over `page`, `page_recognition` and `stage_status`; flags through `quality.recognition_flags` on the stored values), returning dataclasses — executor: sonnet
 - [ ] T048 [P] [US7] Add `recognize-report [--review] [--csv [ПУТЬ]] [--json]` to `src/docreader/cli.py`, the table, CSV and JSON rendering in `src/docreader/render.py`, the «Распозн.» column in `list` and the two `read-report` columns, with tests in `tests/unit/test_render_recognition.py` — executor: haiku
 - [ ] T049 [US7] Make `tests/integration/test_recognize_report.py` pass end to end — executor: sonnet
 

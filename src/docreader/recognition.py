@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import psycopg
+from PIL import Image
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
@@ -28,6 +29,7 @@ from docreader.ocr import (
     RecognitionEngine,
     image_box_to_pdf,
     ink_share,
+    orientation_score,
     page_quality,
     render_page,
     result_sha256,
@@ -250,7 +252,21 @@ def _error_text(exc: Exception) -> str:
     return (f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__)[:_MAX_ERROR_LEN]
 
 
-def _recognize_page(pdf, number: int, engine: RecognitionEngine, dpi: int) -> _PageResult:
+def _clockwise(image: Image.Image, turn: int) -> Image.Image:
+    """The image turned `turn` degrees clockwise (0, 90, 180 or 270)."""
+    if turn == 0:
+        return image
+    method = {
+        90: Image.Transpose.ROTATE_270,
+        180: Image.Transpose.ROTATE_180,
+        270: Image.Transpose.ROTATE_90,
+    }[turn]
+    return image.transpose(method)
+
+
+def _recognize_page(
+    pdf, number: int, engine: RecognitionEngine, dpi: int, settings: RecognitionSettings
+) -> _PageResult:
     started = time.monotonic()
     page = pdf[number - 1]
     try:
@@ -262,6 +278,31 @@ def _recognize_page(pdf, number: int, engine: RecognitionEngine, dpi: int) -> _P
     share = ink_share(image)
     try:
         output = engine.recognize(image)
+        turn = 0
+        orientation_unknown = False
+        if output.orientation in (90, 180, 270):
+            turn = (360 - output.orientation) % 360
+            output = engine.recognize(_clockwise(image, turn))
+        elif settings.try_rotations:
+            first_quality = page_quality(output.lines)
+            # a page without scored lines is judged by ink (blank or no text), not turned
+            if first_quality is not None and first_quality < settings.page_min_quality:
+                attempts = [(0, output)]
+                for trial in (90, 180, 270):
+                    attempts.append((trial, engine.recognize(_clockwise(image, trial))))
+                turn, output = attempts[0]
+                best = orientation_score(output.lines)
+                for trial, candidate in attempts[1:]:
+                    score = orientation_score(candidate.lines)
+                    if score > best:
+                        turn, output, best = trial, candidate, score
+                reached = any(
+                    (q := page_quality(o.lines)) is not None and q >= settings.page_min_quality
+                    for _, o in attempts
+                )
+                if not reached:
+                    turn, output = attempts[0]
+                    orientation_unknown = True
     except (KeyboardInterrupt, EnvironmentProblem):
         raise
     except Exception as exc:  # one page must not stop the others (FR-016)
@@ -274,7 +315,7 @@ def _recognize_page(pdf, number: int, engine: RecognitionEngine, dpi: int) -> _P
             "bbox": [
                 round(v, 2)
                 for v in image_box_to_pdf(
-                    line.box, scale=scale, turn=0, rotation=rotation, crop=crop
+                    line.box, scale=scale, turn=turn, rotation=rotation, crop=crop
                 )
             ],
             "confidence": round(float(line.confidence), 4),
@@ -283,8 +324,8 @@ def _recognize_page(pdf, number: int, engine: RecognitionEngine, dpi: int) -> _P
     ]
     return _PageResult(
         lines=lines,
-        turn=0,
-        orientation_unknown=False,
+        turn=turn,
+        orientation_unknown=orientation_unknown,
         quality=page_quality(output.lines),
         ink_share=share,
         seconds=time.monotonic() - started,
@@ -454,7 +495,7 @@ def _recognize_document(run: _Run, plan: _Plan, progress: Progress | None) -> Do
                 )
             engine = run.get_engine()
             for number in plan.todo:
-                result = _recognize_page(pdf, number, engine, dpi)
+                result = _recognize_page(pdf, number, engine, dpi, settings.recognition)
                 changed, reset = _write_page(
                     conn, run.run_id, plan.id, number, engine, dpi, result
                 )

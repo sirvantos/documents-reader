@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from dataclasses import asdict, dataclass, field
 
 import psycopg
 from psycopg.rows import dict_row
 
+from docreader.config import Settings
 from docreader.db import fetch_row
 from docreader.errors import UserError
 from docreader.ids import format_document_id
-from docreader.quality import FLAG_ORDER
+from docreader.quality import FLAG_ORDER, recognition_flags
 from docreader.registry import _not_found, find_document
 from docreader.stages import Stage, State
 from docreader.textnorm import is_empty_phrase, locate, normalize_chars
@@ -274,3 +276,141 @@ def reading_report(conn: psycopg.Connection) -> dict:
         "tables": sum(d["tables"] for d in documents),
     }
     return {"documents": documents, "totals": totals}
+
+
+# --- recognition report (feature 13, US7, FR-018; task T047) -------------------------------
+
+REPORT_FLAGS: tuple[str, ...] = ("low_recognition_quality", "scan_no_text", "empty")
+ERROR_CODE = "recognition_error"
+
+
+def _zero_flags() -> dict[str, int]:
+    return dict.fromkeys(REPORT_FLAGS, 0)
+
+
+@dataclass
+class RecognitionDocument:
+    id: str
+    name: str
+    scan_pages: int
+    recognized: int
+    errors: int
+    flags: dict[str, int]
+    mean_quality: float | None
+    seconds: float
+    state: str
+
+
+@dataclass
+class RecognitionTotals:
+    scan_pages: int
+    recognized: int
+    errors: int
+    flags: dict[str, int]
+    mean_quality: float | None
+    seconds: float
+
+
+@dataclass
+class RecognitionReport:
+    documents: list[RecognitionDocument] = field(default_factory=list)
+    totals: RecognitionTotals = field(
+        default_factory=lambda: RecognitionTotals(0, 0, 0, _zero_flags(), None, 0.0)
+    )
+
+    def to_json(self) -> dict:
+        return {"documents": [asdict(d) for d in self.documents], "totals": asdict(self.totals)}
+
+
+@dataclass(frozen=True)
+class ReviewPage:
+    id: str
+    page: int
+    code: str
+    reason: str
+    quality: float | None
+
+
+_SCAN_PAGE_ROWS = (
+    "SELECT d.id, d.original_name, p.page_number, pr.lines, pr.quality, pr.ink_share,"
+    " pr.orientation_unknown, pr.seconds, pr.error, s.state"
+    " FROM document d"
+    " JOIN page p ON p.document_id = d.id AND p.kind = 'scan' AND p.image_coverage > 0"
+    " LEFT JOIN page_recognition pr"
+    "   ON pr.document_id = p.document_id AND pr.page_number = p.page_number"
+    " LEFT JOIN stage_status s ON s.document_id = d.id AND s.stage = %s"
+    " ORDER BY d.seq, p.page_number"
+)
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def recognition_report(conn: psycopg.Connection, settings: Settings) -> RecognitionReport:
+    """Per-document recognition counts over documents with scan pages (US7, FR-018).
+
+    Flags are recomputed from the stored values with the current thresholds. Pages
+    without a recognition row count as scan pages only. No text, only numbers.
+    """
+    rows = conn.execute(_SCAN_PAGE_ROWS, (Stage.RECOGNITION,)).fetchall()
+    documents: list[RecognitionDocument] = []
+    qualities: dict[str, list[float]] = {}
+    total_flags = _zero_flags()
+    by_doc: dict[str, RecognitionDocument] = {}
+    for doc_id, name, _page, lines, quality, ink, unknown, seconds, error, state in rows:
+        doc = by_doc.get(doc_id)
+        if doc is None:
+            doc = RecognitionDocument(
+                doc_id, name, 0, 0, 0, _zero_flags(), None, 0.0, state or State.PENDING.value
+            )
+            by_doc[doc_id] = doc
+            documents.append(doc)
+        doc.scan_pages += 1
+        if lines is None:
+            continue  # not recognised yet
+        doc.seconds += seconds
+        if error is not None:
+            doc.errors += 1
+            continue
+        doc.recognized += 1
+        if quality is not None:
+            qualities.setdefault(doc_id, []).append(quality)
+        for flag in recognition_flags(lines, quality, ink, unknown, settings.recognition):
+            if flag.code in doc.flags:
+                doc.flags[flag.code] += 1
+                total_flags[flag.code] += 1
+    for doc in documents:
+        doc.mean_quality = _mean(qualities.get(doc.id, []))
+        doc.seconds = round(doc.seconds, 1)
+    all_qualities = [q for values in qualities.values() for q in values]
+    totals = RecognitionTotals(
+        scan_pages=sum(d.scan_pages for d in documents),
+        recognized=sum(d.recognized for d in documents),
+        errors=sum(d.errors for d in documents),
+        flags=total_flags,
+        mean_quality=_mean(all_qualities),
+        seconds=round(sum(d.seconds for d in documents), 1),
+    )
+    return RecognitionReport(documents, totals)
+
+
+def recognition_review(conn: psycopg.Connection, settings: Settings) -> list[ReviewPage]:
+    """Pages to look at: engine errors first, then low quality / no text, worst first."""
+    errors: list[ReviewPage] = []
+    others: list[tuple[float, ReviewPage]] = []
+    for doc_id, _name, page, lines, quality, ink, unknown, _sec, error, _state in conn.execute(
+        _SCAN_PAGE_ROWS, (Stage.RECOGNITION,)
+    ):
+        if lines is None:
+            continue
+        if error is not None:
+            errors.append(ReviewPage(doc_id, page, ERROR_CODE, error, None))
+            continue
+        for flag in recognition_flags(lines, quality, ink, unknown, settings.recognition):
+            if flag.code in ("low_recognition_quality", "scan_no_text"):
+                key = -1.0 if quality is None else float(quality)
+                others.append((key, ReviewPage(doc_id, page, flag.code, flag.reason, quality)))
+    # the query is ordered by document seq and page; the sort is stable
+    others.sort(key=lambda item: item[0])
+    return errors + [page for _key, page in others]

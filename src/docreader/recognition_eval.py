@@ -25,6 +25,7 @@ import psycopg
 
 from docreader.config import Settings
 from docreader.errors import UserError
+from docreader.quality import LOW_QUALITY, recognition_flags
 from docreader.textnorm import locate, normalize_chars
 
 # --- pure calculations ---------------------------------------------------------------
@@ -374,6 +375,84 @@ def _read_control(conn: psycopg.Connection, folder: Path) -> list[tuple[str, str
     return rows
 
 
+_FLAG_VALUES = {"да": True, "нет": False}
+
+
+def _read_flags(conn: psycopg.Connection, folder: Path) -> list[tuple[str, int, bool]]:
+    """Rows of the optional `flags.csv` as `(document, page, marked bad)`."""
+    path = folder / "flags.csv"
+    if not path.is_file():
+        return []
+    reader = csv.reader(io.StringIO(_read_text(path, "flags.csv")), delimiter=";")
+    rows: list[tuple[str, int, bool]] = []
+    header_seen = False
+    for row in reader:
+        number = reader.line_num
+        if not header_seen:
+            header_seen = True
+            continue
+        if not any(cell.strip() for cell in row):
+            continue
+        if len(row) != 3:
+            raise UserError(
+                f"flags.csv, строка {number}: нужно три поля «документ;страница;плохая», "
+                f"найдено {len(row)}"
+            )
+        doc_id, page_text, mark = (cell.strip() for cell in row)
+        if mark not in _FLAG_VALUES:
+            raise UserError(
+                f"flags.csv, строка {number}: значение «{mark}» не распознано "
+                "(допустимо: да, нет)"
+            )
+        if not page_text.isdigit() or int(page_text) < 1:
+            raise UserError(f"flags.csv, строка {number}: номер страницы «{page_text}» неверен")
+        page = int(page_text)
+        known = conn.execute(
+            "SELECT 1 FROM page WHERE document_id = %s AND page_number = %s", (doc_id, page)
+        ).fetchone()
+        if known is None:
+            raise UserError(
+                f"flags.csv, строка {number}: в реестре нет страницы {page} документа {doc_id}"
+            )
+        rows.append((doc_id, page, _FLAG_VALUES[mark]))
+    return rows
+
+
+def _page_flagged(conn: psycopg.Connection, settings: Settings, doc_id: str, page: int) -> bool:
+    row = conn.execute(
+        "SELECT lines, quality, ink_share, orientation_unknown FROM page_recognition "
+        "WHERE document_id = %s AND page_number = %s AND error IS NULL",
+        (doc_id, page),
+    ).fetchone()
+    if row is None:
+        return False
+    lines, quality, ink_share, orientation_unknown = row
+    flags = recognition_flags(lines, quality, ink_share, orientation_unknown, settings.recognition)
+    return any(flag.code == LOW_QUALITY for flag in flags)
+
+
+def _evaluate_flags(
+    conn: psycopg.Connection, settings: Settings, rows: list[tuple[str, int, bool]]
+) -> dict | None:
+    if not rows:
+        return None
+    correct = false_positive = false_negative = 0
+    for doc_id, page, bad in rows:
+        flagged = _page_flagged(conn, settings, doc_id, page)
+        if flagged == bad:
+            correct += 1
+        elif flagged:
+            false_positive += 1
+        else:
+            false_negative += 1
+    return {
+        "checked": len(rows),
+        "accuracy": correct / len(rows),
+        "false_positive": false_positive,
+        "false_negative": false_negative,
+    }
+
+
 # --- evaluation ------------------------------------------------------------------------
 
 
@@ -480,6 +559,7 @@ def run_eval(
 
     verified = _read_verified_pages(conn, root)
     control_rows = _read_control(conn, root)
+    flag_rows = _read_flags(conn, root)
 
     pages: list[PageEval] = []
     not_recognized: list[tuple[str, int]] = []
@@ -507,7 +587,7 @@ def run_eval(
         not_recognized=not_recognized,
         control_kinds=kinds,
         control_missing=missing,
-        flags=None,  # flags.csv is read once the flag rule is measured (T044)
+        flags=_evaluate_flags(conn, settings, flag_rows),
     )
     return _save(settings, result, now or datetime.now())
 

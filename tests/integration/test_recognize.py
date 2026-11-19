@@ -558,3 +558,130 @@ def test_pages_errors(cli, db, tmp_path, use_engine, args, message) -> None:
     assert message.format(doc=doc) in result.stderr
     assert engine.calls == 0
     assert rows(db, doc) == []
+
+
+# --- R-6: orientation (task T041) ----------------------------------------------------------
+
+GOOD_TEXT = "Подрядчик обязуется выполнить работы по договору"
+BAD_TEXT = "Пдрдчк бзтс вплнть рбт"
+
+
+class OrientedEngine:
+    """Says the text is turned on the first call; then answers for the turned image."""
+
+    name, version = "oriented", "1"
+
+    def __init__(self, truth: dict, orientation: int) -> None:
+        self.truth = truth
+        self.orientation = orientation
+        self.calls = 0
+        self.image_sizes: list[tuple[int, int]] = []
+
+    def recognize(self, image):
+        from docreader.ocr import EngineLine, EngineOutput
+        from tests.fakes.ocr import pdf_box_to_image
+
+        self.calls += 1
+        self.image_sizes.append(image.size)
+        if self.calls == 1:
+            return EngineOutput(lines=(), orientation=self.orientation)
+        width, height = image.size  # 180°: the turned image has the upright size
+        lines = []
+        for line in self.truth["pages"][0]["lines"]:
+            left, top, right, bottom = pdf_box_to_image(
+                line["bbox"], image_size=image.size, rotation=0
+            )
+            turned = (width - right, height - bottom, width - left, height - top)
+            lines.append(EngineLine(line["text"], turned, 0.95))
+        return EngineOutput(lines=tuple(lines))
+
+
+def _line(text: str, conf: float):
+    from docreader.ocr import EngineLine
+
+    return EngineLine(text, (100, 100, 900, 140), conf)
+
+
+def _output(text: str, conf: float):
+    from docreader.ocr import EngineOutput
+
+    return EngineOutput(lines=(_line(text, conf),))
+
+
+def test_orientation_reported_by_the_engine_turns_the_image(cli, db, tmp_path, use_engine) -> None:
+    (doc,), (pdf,) = add(cli, tmp_path / "in", lambda p: make_scans.make_scan_clean(p, pages=1))
+    truth = truth_of(pdf)
+    engine = OrientedEngine(truth, orientation=180)
+    use_engine(engine)
+
+    recognize(cli)
+
+    assert engine.calls == 2
+    (row,) = rows(db, doc)
+    assert row["turn"] == 180 and row["orientation_unknown"] is False
+    for got, want in zip(row["lines"], truth["pages"][0]["lines"], strict=True):
+        assert got["bbox"] == pytest.approx(want["bbox"], abs=1.0)
+
+
+def test_rotation_trial_keeps_the_most_plausible_turn(cli, db, tmp_path, use_engine) -> None:
+    (doc,), _ = add(cli, tmp_path / "in", lambda p: make_scans.make_scan_clean(p, pages=1))
+    engine = ScriptedEngine(
+        [
+            _output(BAD_TEXT, 0.4),
+            _output(GOOD_TEXT, 0.9),
+            _output(BAD_TEXT, 0.5),
+            _output(BAD_TEXT, 0.3),
+        ]
+    )
+    use_engine(engine)
+
+    recognize(cli)
+
+    assert engine.calls == 4
+    (row,) = rows(db, doc)
+    assert row["turn"] == 90 and row["orientation_unknown"] is False
+    assert [ln["text"] for ln in row["lines"]] == [GOOD_TEXT]
+    w, h = engine.image_sizes[0]
+    assert engine.image_sizes[1] == (h, w)  # the 90° attempt got the turned image
+
+
+def test_no_good_turn_marks_the_orientation_unknown(cli, db, tmp_path, use_engine) -> None:
+    (doc,), _ = add(cli, tmp_path / "in", lambda p: make_scans.make_scan_clean(p, pages=1))
+    use_engine(ScriptedEngine([_output(BAD_TEXT, 0.4)]))
+
+    recognize(cli)
+
+    (row,) = rows(db, doc)
+    assert row["turn"] == 0 and row["orientation_unknown"] is True
+    assert cli("read", doc).exit_code == 0
+    (reason,) = db.execute(
+        "SELECT reason FROM page_flag WHERE document_id = %s AND code = 'low_recognition_quality'",
+        (doc,),
+    ).fetchone()
+    assert reason.endswith("ориентация не определена: 0°, 90°, 180°, 270° ниже порога")
+
+
+def test_rotation_trial_can_be_switched_off(cli, db, data_dir, tmp_path, use_engine) -> None:
+    (doc,), _ = add(cli, tmp_path / "in", lambda p: make_scans.make_scan_clean(p, pages=1))
+    (data_dir / "settings.toml").write_text(
+        "[recognition]\ntry_rotations = false\n", encoding="utf-8"
+    )
+    engine = ScriptedEngine([_output(BAD_TEXT, 0.4)])
+    use_engine(engine)
+
+    recognize(cli)
+
+    assert engine.calls == 1
+    (row,) = rows(db, doc)
+    assert row["turn"] == 0 and row["orientation_unknown"] is False
+
+
+def test_good_first_attempt_is_not_turned(cli, db, tmp_path, use_engine) -> None:
+    (doc,), _ = add(cli, tmp_path / "in", lambda p: make_scans.make_scan_clean(p, pages=1))
+    engine = ScriptedEngine([_output(GOOD_TEXT, 0.95)])
+    use_engine(engine)
+
+    recognize(cli)
+
+    assert engine.calls == 1
+    assert rows(db, doc)[0]["turn"] == 0

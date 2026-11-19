@@ -296,3 +296,52 @@ def test_text_pdfs_are_still_read_from_the_text_layer(cli, db, tmp_path) -> None
     text = document_text(db, doc)
     for page in make_pdfs.CONTRACT_RU_PAGES:
         assert page[0] in text
+
+
+# --- US4: pages without text and recomputed flags (task T041) ---------------------------------
+
+
+def test_stamp_only_page_and_blank_sheet(cli, db, tmp_path, use_engine) -> None:
+    (stamp, blank), _ = add(
+        cli, tmp_path / "in", make_scans.make_scan_stamp_only, make_scans.make_scan_blank
+    )
+    use_engine(TruthEngine({"pages": [{"page": 1, "kind": "scan", "lines": []}]}))
+    assert cli("recognize", stamp).exit_code == 0
+    use_engine(TruthEngine({"pages": [{"page": 1, "kind": "scan", "lines": []}]}))
+    assert cli("recognize", blank).exit_code == 0
+
+    read(cli)
+
+    (stamp_flag,) = flags(db, stamp)[1].items()
+    assert stamp_flag[0] == "scan_no_text" and stamp_flag[1].startswith("строк нет, тёмных точек")
+    assert stage(db, stamp, "reading")[0] == "needs_review"
+    assert set(flags(db, blank)[1]) == {"empty"}
+    assert stage(db, blank, "reading")[0] == "needs_review"  # no read text at all
+    assert "нет прочитанного текста" in stage(db, blank, "reading")[1]
+    assert "текст на скане не найден" not in stage(db, blank, "reading")[1]
+
+
+def test_changed_threshold_needs_only_a_reread(cli, db, data_dir, tmp_path, use_engine) -> None:
+    (doc,), (pdf,) = add(cli, tmp_path / "in", make_scans.make_scan_clean)
+    use_engine(TruthEngine(truth_of(pdf), confidence=0.9))
+    cli("recognize")
+    read(cli, doc)
+    assert flags(db, doc) == {}
+    saved = rows(db, doc)
+    factory = use_engine(TruthEngine(truth_of(pdf)))
+
+    (data_dir / "settings.toml").write_text(
+        "[recognition]\npage_min_quality = 0.95\n", encoding="utf-8"
+    )
+    read(cli, "--all")
+
+    assert {page: set(codes) for page, codes in flags(db, doc).items()} == {
+        1: {"low_recognition_quality"},
+        2: {"low_recognition_quality"},
+    }
+    assert factory.calls == 0
+    assert rows(db, doc) == saved
+
+    (data_dir / "settings.toml").write_text("", encoding="utf-8")
+    read(cli, "--all")
+    assert flags(db, doc) == {}

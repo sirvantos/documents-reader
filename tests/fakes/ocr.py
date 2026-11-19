@@ -114,7 +114,8 @@ class TruthEngine:
 
     `truth` is a parsed `<name>.truth.json` of `tests/synthetic/make_scans.py`. Call k
     answers for page `pages[k - 1]`; by default the scan pages of the truth, in order.
-    A run that resumes in the middle of a document needs its own `pages`. A truth line
+    A run that resumes in the middle of a document needs its own `pages`; calls beyond
+    them (the turn trial of a weak page) answer the last page again. A truth line
     may carry its own `confidence`; otherwise `confidence` applies.
     """
 
@@ -135,7 +136,8 @@ class TruthEngine:
     def recognize(self, image: Image.Image) -> EngineOutput:
         self.calls += 1
         self.image_sizes.append(image.size)
-        number = self._page_order()[self.calls - 1]
+        order = self._page_order()
+        number = order[min(self.calls, len(order)) - 1]  # extra calls (turn trial): last page
         page = next(p for p in self.truth["pages"] if p["page"] == number)
         rotation = self.rotations.get(number, 0)
         return EngineOutput(
