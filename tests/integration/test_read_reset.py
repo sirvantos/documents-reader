@@ -188,4 +188,4 @@ def test_reset_does_not_delete_other_rows(cli, db, read_doc) -> None:
     # Results of later stages do not exist yet (features 04+); the stage rows stay.
     assert db.execute(
         "SELECT count(*) FROM stage_status WHERE document_id = %s", (read_doc,)
-    ).fetchone()[0] == 5
+    ).fetchone()[0] == 6

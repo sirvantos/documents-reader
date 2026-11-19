@@ -1,7 +1,7 @@
 """Document processing stages and their states, in one place (tech-context «Правила кода»).
 
 `Stage` and `State` must equal the CHECKs on `stage_status` in
-`migrations/0001_intake.sql` (tests/unit/test_stages.py checks it). Every update of
+the latest migration that sets them (tests/unit/test_stages.py checks it). Every update of
 `stage_status` goes through the functions below, not through SQL of its own.
 """
 
@@ -16,6 +16,7 @@ import psycopg
 class Stage(StrEnum):
     """A document processing stage, in pipeline order (FR-008)."""
 
+    RECOGNITION = "recognition"  # feature 13: scan pages, before reading
     READING = "reading"
     STRUCTURE = "structure"
     EXTRACTION = "extraction"
@@ -37,6 +38,7 @@ class RunStage(StrEnum):
 
     INTAKE = "intake"  # add, reclassify
     READING = "reading"
+    RECOGNITION = "recognition"
 
 
 STAGES: tuple[Stage, ...] = tuple(Stage)
@@ -93,6 +95,21 @@ def reset_later(
         "UPDATE stage_status SET state = %s, reason = %s, run_id = %s, updated_at = now()"
         " WHERE document_id = %s AND stage = ANY(%s) AND state <> %s",
         (State.PENDING, reason, run_id, doc_id, list(later_stages(stage)), State.PENDING),
+    )
+
+
+def reset_stage(
+    conn: psycopg.Connection, doc_id: str, stage: Stage, reason: str, run_id: int
+) -> None:
+    """One stage back to `pending` with `reason`; a stage already `pending` is kept as is.
+
+    Recognition uses it for `reading` only: later stages are reset by reading itself
+    when the text changes (research R-11 of feature 13).
+    """
+    conn.execute(
+        "UPDATE stage_status SET state = %s, reason = %s, run_id = %s, updated_at = now()"
+        " WHERE document_id = %s AND stage = %s AND state <> %s",
+        (State.PENDING, reason, run_id, doc_id, stage, State.PENDING),
     )
 
 

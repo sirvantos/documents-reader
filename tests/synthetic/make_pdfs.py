@@ -170,8 +170,16 @@ def _ru_page(
     """Draws one line per drawString call at known positions; no wrapping."""
     _register_cyrillic_font()
     c.setFont(_CYRILLIC_FONT, size)
-    for i, line in enumerate(lines):
-        c.drawString(x, y_top - i * leading, line)
+    baselines = ru_line_baselines(len(lines), y_top=y_top, leading=leading)
+    for line, baseline in zip(lines, baselines, strict=True):
+        c.drawString(x, baseline, line)
+
+
+def ru_line_baselines(
+    count: int, *, y_top: float = PAGE_H - 72, leading: float = 16
+) -> list[float]:
+    """Baseline y of each of `count` lines drawn by `_ru_page` with the same arguments."""
+    return [y_top - i * leading for i in range(count)]
 
 
 # --- PDF ---------------------------------------------------------------------

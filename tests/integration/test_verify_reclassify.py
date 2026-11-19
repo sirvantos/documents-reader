@@ -13,7 +13,7 @@ import pytest
 
 from tests.synthetic import make_pdfs as mk
 
-STAGES = ("reading", "structure", "extraction", "checks", "indexing")
+STAGES = ("recognition", "reading", "structure", "extraction", "checks", "indexing")
 KINDS = ("text", "scan", "scan_with_text")
 
 

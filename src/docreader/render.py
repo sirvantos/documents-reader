@@ -193,6 +193,7 @@ KIND_LABELS = {
     "scan_with_text": "скан со встроенным текстом",
 }
 _STAGE_NAMES = {
+    Stage.RECOGNITION: "Распознавание",
     Stage.READING: "Чтение",
     Stage.STRUCTURE: "Структура",
     Stage.EXTRACTION: "Извлечение",
@@ -201,7 +202,7 @@ _STAGE_NAMES = {
 }
 _LIST_HEADER = [
     "ID", "Имя", "Стр.", "Текст", "Скан", "Скан+т",
-    "Чтение", "Структура", "Извлеч.", "Проверки", "Индекс.",
+    "Распозн.", "Чтение", "Структура", "Извлеч.", "Проверки", "Индекс.",
 ]
 _LIST_NUMERIC_COLUMNS = {2, 3, 4, 5}
 _LIST_NAME_LIMIT = 40

@@ -11,10 +11,10 @@ from pathlib import Path
 
 from tests.synthetic import make_pdfs as mk
 
-STAGES = ["reading", "structure", "extraction", "checks", "indexing"]
+STAGES = ["recognition", "reading", "structure", "extraction", "checks", "indexing"]
 HEADER_WORDS = [
     "ID", "Имя", "Стр.", "Текст", "Скан", "Скан+т",
-    "Чтение", "Структура", "Извлеч.", "Проверки", "Индекс.",
+    "Распозн.", "Чтение", "Структура", "Извлеч.", "Проверки", "Индекс.",
 ]
 KIND_LABELS = {
     "text": "готовый текст",
@@ -85,7 +85,7 @@ def test_list_text_has_header_and_row_per_document(cli, tmp_path):
         tokens = row_of(result.stdout, doc_id).split()
         assert tokens[1] == name
         assert tokens[2:6] == counts
-        assert tokens[6:] == ["ожидает"] * 5
+        assert tokens[6:] == ["ожидает"] * 6
 
 
 def test_list_truncates_long_name_in_text_but_not_in_json(cli, tmp_path):

@@ -41,6 +41,8 @@ REGISTRY_TABLES = (
     "page_flag",
     "document_text",
     "text_span",
+    # feature 13 (recognition)
+    "page_recognition",
 )
 LIBPQ_ENV = ("PGHOST", "PGHOSTADDR", "PGSERVICE", "PGDATABASE")
 

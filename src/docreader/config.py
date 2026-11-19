@@ -54,6 +54,20 @@ class ReadingSettings:
 
 
 @dataclass(frozen=True)
+class RecognitionSettings:
+    """Values of the [recognition] section (data-model «Настройки», research R-2, R-6, R-9)."""
+
+    engine: str = ""
+    dpi: int = 300
+    try_rotations: bool = True
+    page_min_quality: float = 0.80
+    line_min_confidence: float = 0.60
+    max_low_line_share: float = 0.20
+    blank_max_ink_share: float = 0.003
+    model_dir: str = ""
+
+
+@dataclass(frozen=True)
 class Settings:
     data_dir: Path
     database_url: str
@@ -61,6 +75,7 @@ class Settings:
     full_image_coverage: float = 0.85
     large_file_pages: int = 200
     reading: ReadingSettings = field(default_factory=ReadingSettings)
+    recognition: RecognitionSettings = field(default_factory=RecognitionSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -79,6 +94,7 @@ class Settings:
             },
             "intake": {"large_file_pages": self.large_file_pages},
             "reading": asdict(self.reading),
+            "recognition": asdict(self.recognition),
         }
 
 
@@ -156,6 +172,10 @@ def _check_local_database(url: str, env: Mapping[str, str]) -> None:
 
 # --- settings.toml ---------------------------------------------------------------
 
+def _in_unit_interval(v: Any) -> bool:
+    return 0 <= v <= 1
+
+
 # table -> key -> (field name, type, validator, description of the allowed range)
 _SCHEMA: dict[str, dict[str, tuple[str, type, Callable[[Any], bool], str]]] = {
     "page_kinds": {
@@ -210,8 +230,32 @@ _SCHEMA: dict[str, dict[str, tuple[str, type, Callable[[Any], bool], str]]] = {
             "число в [0, 90)",
         ),
     },
+    # Keys of [recognition] map one-to-one to RecognitionSettings fields.
+    # engine is deliberately not checked against the engine table here (T010 does it).
+    "recognition": {
+        "engine": ("engine", str, lambda v: True, "строка"),
+        "dpi": ("dpi", int, lambda v: 72 <= v <= 1200, "целое от 72 до 1200"),
+        "try_rotations": ("try_rotations", bool, lambda v: True, "true или false"),
+        "page_min_quality": ("page_min_quality", float, _in_unit_interval, "число в [0, 1]"),
+        "line_min_confidence": ("line_min_confidence", float, _in_unit_interval, "число в [0, 1]"),
+        "max_low_line_share": ("max_low_line_share", float, _in_unit_interval, "число в [0, 1]"),
+        "blank_max_ink_share": ("blank_max_ink_share", float, _in_unit_interval, "число в [0, 1]"),
+        "model_dir": ("model_dir", str, lambda v: True, "строка"),
+    },
 }
 READING_TABLE = "reading"
+RECOGNITION_TABLE = "recognition"
+
+
+def _type_matches(kind: type, value: Any) -> bool:
+    # bool is a subclass of int in Python, so numbers and booleans are told apart explicitly.
+    if kind is bool:
+        return isinstance(value, bool)
+    if kind is str:
+        return isinstance(value, str)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return kind is float or isinstance(value, int)
 
 
 def _read_settings_file(data_dir: Path) -> dict:
@@ -229,18 +273,23 @@ def _read_settings_file(data_dir: Path) -> dict:
 
     values: dict = {}
     reading_values: dict = {}
+    recognition_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
         if not isinstance(entries, dict):
             raise bad(f"«{table}» должен быть разделом [{table}]")
-        target = reading_values if table == READING_TABLE else values
+        if table == READING_TABLE:
+            target = reading_values
+        elif table == RECOGNITION_TABLE:
+            target = recognition_values
+        else:
+            target = values
         for key, value in entries.items():
             if key not in _SCHEMA[table]:
                 raise bad(f"неизвестный ключ {table}.{key}")
             field, kind, valid, allowed = _SCHEMA[table][key]
-            expected = (int, float) if kind is float else int
-            if isinstance(value, bool) or not isinstance(value, expected):
+            if not _type_matches(kind, value):
                 raise bad(f"{table}.{key} = {value!r}: нужно {allowed}")
             value = kind(value)
             if not valid(value):
@@ -248,4 +297,6 @@ def _read_settings_file(data_dir: Path) -> dict:
             target[field] = value
     if READING_TABLE in doc:
         values["reading"] = ReadingSettings(**reading_values)
+    if RECOGNITION_TABLE in doc:
+        values["recognition"] = RecognitionSettings(**recognition_values)
     return values

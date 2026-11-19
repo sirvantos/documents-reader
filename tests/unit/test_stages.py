@@ -5,14 +5,18 @@ from __future__ import annotations
 import re
 
 from docreader.db import MIGRATIONS_DIR
-from docreader.stages import STAGES, Stage, State, later_stages
+from docreader.stages import STAGES, RunStage, Stage, State, later_stages
 
 
 def _check_values(column: str) -> list[str]:
-    sql = (MIGRATIONS_DIR / "0001_intake.sql").read_text(encoding="utf-8")
-    match = re.search(rf"CHECK \({column} IN \(([^)]*)\)\)", sql)
-    assert match, f"no CHECK on {column}"
-    return re.findall(r"'([a-z_]+)'", match.group(1))
+    """Values of the latest `CHECK (column IN (...))` across the migrations, in order."""
+    found: list[str] | None = None
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        sql = path.read_text(encoding="utf-8")
+        for match in re.finditer(rf"CHECK \({column} IN \(([^)]*)\)\)", sql):
+            found = re.findall(r"'([a-z_]+)'", match.group(1))
+    assert found, f"no CHECK on {column}"
+    return found
 
 
 def test_stages_equal_the_schema_check_in_order():
@@ -36,3 +40,17 @@ def test_later_stages():
 def test_enum_members_are_plain_strings_for_sql_and_json():
     assert Stage.READING == "reading"
     assert {State.NEEDS_REVIEW: 1}["needs_review"] == 1
+
+
+def test_recognition_is_the_first_stage():
+    assert STAGES[0] is Stage.RECOGNITION
+    assert Stage.RECOGNITION == "recognition"
+    assert RunStage.RECOGNITION == "recognition"
+    assert [s.value for s in STAGES] == [
+        "recognition",
+        "reading",
+        "structure",
+        "extraction",
+        "checks",
+        "indexing",
+    ]

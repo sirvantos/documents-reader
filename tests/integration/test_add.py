@@ -15,7 +15,7 @@ import pytest
 
 from tests.synthetic import make_pdfs as mk
 
-STAGES = {"reading", "structure", "extraction", "checks", "indexing"}
+STAGES = {"recognition", "reading", "structure", "extraction", "checks", "indexing"}
 
 
 def sha256(path: Path) -> str:
@@ -85,7 +85,7 @@ def test_folder_with_subfolder_adds_five_documents_in_sorted_order(cli, db, tmp_
         stages = db.execute(
             "SELECT stage, state FROM stage_status WHERE document_id = %s", (doc_id,)
         ).fetchall()
-        assert len(stages) == 5
+        assert len(stages) == 6
         assert {s for s, _ in stages} == STAGES
         assert {st for _, st in stages} == {"pending"}
         page_rows = db.execute(

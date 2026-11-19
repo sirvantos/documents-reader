@@ -54,7 +54,7 @@ def assert_unchanged(db, data_dir, before_doc, before_runs):
 
 def test_remove_with_yes_deletes_everything_but_keeps_log(cli, db, data_dir, two_docs):
     (name, sha, copy_path, _), pages, stages = snapshot(db, "D-0001")
-    assert pages == 2 and stages == 5
+    assert pages == 2 and stages == 6
     other_before = snapshot(db, "D-0002")
     runs_before = count(db, "run")
     assert (data_dir / copy_path).is_file()
