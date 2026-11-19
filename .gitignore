@@ -1,6 +1,8 @@
 # Данные проекта никогда не коммитятся (принцип I конституции)
 *.pdf
 .env
+.env.*
+!.env.example
 data/
 
 # Python and editor/OS artifacts

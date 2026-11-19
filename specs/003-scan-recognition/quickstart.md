@@ -105,25 +105,37 @@ dropdb docreader_demo && rm -rf /tmp/docreader-demo-data /tmp/docreader-demo-in
 
 ### Б0. Установка движка
 
+Нужен родной (arm64) Homebrew в `/opt/homebrew` и arm64-Python: `tesserocr` —
+C-расширение, оно не загрузится, если Python и `libtesseract` собраны под разные
+процессоры. Проверка: `uv run python -c "import platform; print(platform.machine())"`
+печатает `arm64`.
+
 ```
-git pull && uv sync --group ocr
+git pull
 brew install tesseract tesseract-lang        # для кандидата tesseract
-uv run docreader migrate
+PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig uv sync --group ocr --no-binary-package tesserocr
+uv run python -c "import tesserocr; print(tesserocr.get_languages()[0])"   # /opt/homebrew/share/tessdata/
+cp .env.example .env                         # рабочий набор: ~/docreader-data, база docreader
+cp .env.example .env.bench                   # замер: ~/docreader-ocrbench, база docreader_ocrbench
 ```
 
-`DOCREADER_FORBID_MODELS` на ноутбуке не задаётся. Проверить, что сеть
-не нужна: выключить Wi-Fi на время Б1–Б3.
+Значения переменных окружения задаются в `.env` и `.env.bench` (они не коммитятся,
+описание — в `.env.example`). Команды раздела Б подключают их флагом `--env-file`;
+сокращения `dr` и `drb` — в `.env.example`. `DOCREADER_FORBID_MODELS` на ноутбуке
+не задаётся совсем: любое непустое значение, даже `0`, запрещает движок. Проверить,
+что сеть не нужна: выключить Wi-Fi на время Б1–Б3.
 
 ### Б1. Замер кандидатов (research R-2) — до выбора движка
 
 1. Отдельная папка данных и база замера:
 
    ```
-   export DOCREADER_DATA_DIR=~/docreader-ocrbench
-   export DOCREADER_DATABASE_URL=postgresql:///docreader_ocrbench
-   createdb docreader_ocrbench && uv run docreader migrate
-   uv run docreader add <5–10 договоров со страницами замера>
+   createdb docreader_ocrbench && drb migrate     # drb = uv run --env-file .env.bench docreader
+   drb add <5–10 договоров со страницами замера>
    ```
+
+   Дальше в Б1 команды `docreader` запускаются через `drb`. Псевдоним раскрывается только
+   первым словом, поэтому после `/usr/bin/time` пишется полная форма.
 
 2. Положить проверенные тексты страниц в `~/docreader-ocrbench/ocr-eval/pages/`
    и контрольные строки в `control.csv` (формат: research R-12).
@@ -132,11 +144,11 @@ uv run docreader migrate
    `~/docreader-ocrbench/settings.toml`, затем:
 
    ```
-   /usr/bin/time -l uv run docreader recognize --all --force --label "tesseract 300"
-   uv run docreader read --all
-   uv run docreader recognize-eval ~/docreader-ocrbench/ocr-eval --label "tesseract 300"
-   uv run docreader recognize --all --force --json > /dev/null   # повтор для воспроизводимости:
-   uv run docreader recognize-report --json                      # сравнить result_sha256 (R-2, п. 4)
+   /usr/bin/time -l uv run --env-file .env.bench docreader recognize --all --force --label "tesseract 300"
+   drb read --all
+   drb recognize-eval ~/docreader-ocrbench/ocr-eval --label "tesseract 300"
+   drb recognize --all --force --json > /dev/null   # повтор для воспроизводимости:
+   drb recognize-report --json                      # сравнить result_sha256 (R-2, п. 4)
    ```
 
 4. На 3 страницах сравнить `docreader text D-… --page N --json` (`bbox`)
@@ -155,7 +167,7 @@ uv run docreader migrate
 ### Б2. Тест уровня 3
 
 ```
-uv run pytest -m real_model tests/real_model/test_ocr_engine.py
+uv run --env-file .env pytest -m real_model tests/real_model/test_ocr_engine.py
 ```
 
 Ожидаемо: движок загружается, на синтетике `clean` доля знаков не ниже 95%, сетевых
@@ -164,7 +176,7 @@ uv run pytest -m real_model tests/real_model/test_ocr_engine.py
 ### Б3. Записи уровня 2
 
 ```
-uv run python -m tests.synthetic.record_recognition
+uv run --env-file .env python -m tests.synthetic.record_recognition
 git add tests/recordings/13-scan-recognition && git commit -m "test(recognition): record <engine> <version> on synthetic scans"
 git push
 ```
@@ -180,16 +192,16 @@ git push
 
 ### Б5. Рабочий прогон набора (SC-001, SC-006, SC-008, SC-009)
 
+Команды `docreader` в Б5–Б6 запускаются через `dr` (`uv run --env-file .env docreader`).
+
 ```
-export DOCREADER_DATA_DIR=~/docreader-data
-export DOCREADER_DATABASE_URL=postgresql:///docreader
-uv run docreader migrate
-caffeinate -i /usr/bin/time -l uv run docreader recognize --label "набор, <движок> <dpi>"
+dr migrate
+caffeinate -i /usr/bin/time -l uv run --env-file .env docreader recognize --label "набор, <движок> <dpi>"
 # прервано — тот же вызов продолжит с первой несохранённой страницы
-time uv run docreader read                  # SC-008: не более 10 минут
-uv run docreader recognize                  # SC-008: «Нечего распознавать»
-uv run docreader recognize-report --csv
-uv run docreader read-report
+time dr read                  # SC-008: не более 10 минут
+dr recognize                  # SC-008: «Нечего распознавать»
+dr recognize-report --csv
+dr read-report
 ```
 
 Языковую модель на время прогона не запускать, память общая. Записать общее
@@ -207,7 +219,7 @@ uv run docreader read-report
 3. Запустить замер:
 
    ```
-   uv run docreader recognize-eval ~/docreader-data/ocr-eval --label "SC-002…007"
+   dr recognize-eval ~/docreader-data/ocr-eval --label "SC-002…007"
    ```
 
 4. Если флаг верен меньше чем в 80% случаев (SC-007), подобрать пороги

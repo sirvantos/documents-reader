@@ -100,7 +100,10 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   `docs/tech-context.md`). `docker compose run --rm lint` runs both in a container.
 - `uv run docreader --help` — the CLI. It needs `DOCREADER_DATA_DIR` (outside the
   repository) and optionally `DOCREADER_DATABASE_URL` (default `postgresql:///docreader`,
-  local only).
+  local only). All variables are described in `.env.example`; each machine keeps its
+  values in its own git-ignored `.env` (and `.env.bench` on the Mac), passed per command
+  with `uv run --env-file .env docreader ...`. Never load them globally (no `UV_ENV_FILE`):
+  pytest must not see a real data dir.
 - `uv run docreader recognize` — scan recognition (feature 13). The engine runs only on
   the Mac (`uv sync --group ocr`); on this server `DOCREADER_FORBID_MODELS=1` must be
   set (it is in `compose.yaml` and the test fixtures) and the command stops with exit 2

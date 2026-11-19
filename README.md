@@ -42,10 +42,19 @@
 
 ```
 uv sync
-export DOCREADER_DATA_DIR=~/docreader-data        # папка вне репозитория
-export DOCREADER_DATABASE_URL=postgresql:///docreader   # по умолчанию такое же значение
+cp .env.example .env              # поправить значения под эту машину
 createdb docreader
-uv run docreader migrate
+uv run --env-file .env docreader migrate
+```
+
+Переменные окружения описаны в [.env.example](.env.example). Значения для каждой
+машины лежат в её собственном `.env` (и `.env.bench` для замера движка); эти файлы
+не коммитятся. Они подключаются к каждой команде флагом `--env-file`, а не глобально,
+поэтому автотесты их не видят. Сокращения для `~/.zprofile`:
+
+```
+alias dr='uv run --env-file .env docreader'
+alias drb='uv run --env-file .env.bench docreader'
 ```
 
 Пороги определения вида страниц и предупреждений можно задать в
