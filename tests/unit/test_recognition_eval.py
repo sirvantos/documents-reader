@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from docreader.recognition_eval import (
     char_accuracy,
     extract_values,
