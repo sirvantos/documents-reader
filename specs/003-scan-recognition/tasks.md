@@ -372,7 +372,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T050 Update the project docs with the decisions of this plan (items 5–7 of plan.md «Что записать…») — executor: opus
+- [X] T050 Update the project docs with the decisions of this plan (items 5–7 of plan.md «Что записать…») — executor: opus
   - `docs/tech-context.md`: the data model sketch (`page_recognition`, stage `recognition` first, `page_text.source`, `confidence`, the new flags, `ocr_text` only for scans with embedded text); «Договорённости между этапами» (the reset rule; thresholds applied by reading); «Оборудование» and «Модели в автотестах» (the `ocr` group darwin-only, `DOCREADER_FORBID_MODELS`, the recording command, the staleness key)
   - `docs/features/03-pdf-text-reading.md` and `specs/002-pdf-text-reading/spec.md`: change the wording «скан помечается и не обрабатывается» to point to feature 13
   - `CLAUDE.md` «Commands»: `docreader recognize` and `DOCREADER_FORBID_MODELS`

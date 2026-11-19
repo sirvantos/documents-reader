@@ -107,6 +107,8 @@ JSON (`--json`):
 
 Отчёт о распознавании (US7, FR-018). В отчёт входят только документы
 со страницами-сканами. Флаги считаются по сохранённым оценкам и текущим порогам.
+Таких документов нет — «Нет документов со страницами-сканами», код 0; пустой список
+на просмотр — «Нет страниц на просмотр».
 
 ```
 ID      Имя             Сканы  Распозн.  Ошибки  Низк. кач.  Без текста  Пустые  Ср. оценка  Время, с  Состояние
@@ -132,7 +134,8 @@ D-0005  dog_05.pdf         52        51       1           0           0       0 
   `recognition-review-…`). Команда печатает «Отчёт сохранён: <путь>».
 - JSON: `{documents: [{id, name, scan_pages, recognized, errors, flags: {…},
   mean_quality, seconds, state}], totals: {…}}`; с `--review` —
-  `{pages: [{id, page, code, reason, quality}]}`.
+  `{pages: [{id, page, code, reason, quality}]}`; `code` — `recognition_error`
+  (`reason` — текст ошибки), `low_recognition_quality` или `scan_no_text`.
 
 Текста договоров в отчёте нет. Имя файла выводится так же, как в `read-report`.
 
@@ -165,10 +168,15 @@ D-0005  dog_05.pdf         52        51       1           0           0       0 
   ожидалось, что распознано. Только для терминала аналитика.
 - JSON: `{label, engine, engine_version, dpi, settings, pages: [{id, page,
   recognition_run_id, reading_run_id, chars, char_accuracy, values: {kind: [found,
-  total]}, missing_lines, repeated_lines}], totals: {…}, control: {kind: [found,
-  total]}, flags: {accuracy, false_positive, false_negative} | null}`. Список
-  ненайденных контрольных строк сохраняется только в файл отчёта, в JSON на stdout
-  его нет.
+  total]}, missing_lines, repeated_lines}], totals: {pages, documents, chars,
+  char_accuracy, values: {kind: [found, total]}, values_share, missing_lines,
+  repeated_lines}, control: {kinds: {kind: [found, total]}, found, total, share},
+  flags: {checked, accuracy, false_positive, false_negative} | null,
+  not_recognized: [{id, page}]}`; с `--diff` — ещё `diffs`. Список ненайденных
+  контрольных строк (`control.missing`) и расхождения сохраняются в файл отчёта
+  всегда, в JSON на stdout списка ненайденных нет.
+- Без `flags.csv` строка флага: «Флаг «низкое качество»: нет (нет файла flags.csv
+  или он пуст)».
 
 ## Изменения в существующих подкомандах
 

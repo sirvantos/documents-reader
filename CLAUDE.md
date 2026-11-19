@@ -101,5 +101,10 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 - `uv run docreader --help` — the CLI. It needs `DOCREADER_DATA_DIR` (outside the
   repository) and optionally `DOCREADER_DATABASE_URL` (default `postgresql:///docreader`,
   local only).
+- `uv run docreader recognize` — scan recognition (feature 13). The engine runs only on
+  the Mac (`uv sync --group ocr`); on this server `DOCREADER_FORBID_MODELS=1` must be
+  set (it is in `compose.yaml` and the test fixtures) and the command stops with exit 2
+  at the first scan page. Recordings: `uv run python -m tests.synthetic.record_recognition`
+  on the Mac only.
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).
