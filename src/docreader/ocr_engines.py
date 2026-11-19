@@ -86,7 +86,12 @@ class _Tesseract:
         import tesserocr  # lazy: optional group `ocr`
 
         self._tesserocr = tesserocr
-        path, languages = tesserocr.get_languages(settings.model_dir or None)
+        # tesserocr's `path` defaults to its built-in tessdata path; an explicit None is a
+        # TypeError there, so the argument is passed only when model_dir is set.
+        if settings.model_dir:
+            path, languages = tesserocr.get_languages(settings.model_dir)
+        else:
+            path, languages = tesserocr.get_languages()
         if "rus" not in languages:
             raise EnvironmentProblem(
                 f"Движок tesseract: нет языковых данных rus в {path} — на ноутбуке: "
