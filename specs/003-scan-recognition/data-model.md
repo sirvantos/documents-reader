@@ -22,8 +22,9 @@
 | `engine_version` | text | NOT NULL, не пустой | версия движка и модели, как её отдаёт адаптер |
 | `dpi` | smallint | `BETWEEN 72 AND 1200` | разрешение отрисовки |
 | `turn` | smallint | `IN (0, 90, 180, 270)` | доворот изображения перед распознаванием (research R-6) |
+| `orientation_unknown` | boolean | NOT NULL, `DEFAULT false` | перебор доворотов не нашёл варианта выше порога (R-6, п. 4); чтение называет это в причине флага |
 | `lines` | jsonb | NOT NULL, массив | распознанные строки (см. ниже) |
-| `quality` | real | NULL или `[0, 1]` | средняя уверенность, взвешенная по длине строк; `NULL`, если строк нет или ошибка (R-9) |
+| `quality` | real | NULL или `[0, 1]` | средняя уверенность строк с хотя бы одной буквой или цифрой, взвешенная по их длине; строки из одних `_`, тире и точек не учитываются; `NULL`, если таких строк нет или ошибка (R-9) |
 | `ink_share` | real | NULL или `[0, 1]` | доля тёмных точек изображения (R-10); `NULL` при ошибке до отрисовки |
 | `result_sha256` | char(64) | NOT NULL, hex | отпечаток результата (R-11): по нему видно, изменился ли результат |
 | `seconds` | real | NOT NULL, `>= 0` | время распознавания страницы, включая перебор доворотов |
@@ -143,7 +144,7 @@ done | needs_review | failed ──recognize ID [--force] [--pages]──▶ don
    приведение знаков, сборка фрагментов в строки по высоте, колонки;
    `has_table = false`; `source = 'recognized'`. Флаги: `content_flags`
    (без `ocr_text`, `map_errors = 0`), `layout_flag`
-   и `recognition_flags(lines, quality, ink_share, settings.recognition)`;
+   и `recognition_flags(lines, quality, ink_share, orientation_unknown, settings.recognition)`;
 2. результата нет → `scan_unread`, причина «распознавание не выполнено —
    docreader recognize D-…»;
 3. результат с ошибкой → `scan_unread`, причина «ошибка распознавания: <error>».

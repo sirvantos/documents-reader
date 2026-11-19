@@ -191,16 +191,24 @@ tests/
 ├── recordings/
 │   └── 13-scan-recognition/   # записи — после выбора движка, их делает аналитик
 ├── unit/
+│   ├── test_forbid_models_fixture.py  # фикстура запрета движка в conftest
+│   ├── test_ocr_fakes.py      # сами подмены: ScriptedEngine, TruthEngine, …
 │   ├── test_ocr_coords.py     # 4 /Rotate × 4 доворота, CropBox
 │   ├── test_ocr_quality.py    # оценка, доля тёмных точек, отпечаток
+│   ├── test_ocr_adapters.py   # перевод выхода движков в EngineLine (без импорта движков)
+│   ├── test_ocr_engines_guard.py  # запрет, пустой engine, неизвестное имя, ImportError
+│   ├── test_make_scans.py     # генератор синтетических сканов
 │   ├── test_recognition_flags.py
 │   ├── test_recognized_layout.py  # сборка фрагментов, колонки реквизитов, таблица
-│   ├── test_ocr_engines_guard.py  # запрет, пустой engine, неизвестное имя, ImportError
 │   ├── test_recognition_eval.py   # Левенштейн, поиск реквизитов
+│   ├── test_render_recognition.py # вывод recognize и recognize-report
+│   ├── test_cli_pages.py      # разбор --pages
 │   └── test_config_recognition.py
 ├── integration/
 │   ├── test_recognize.py          # US1, US6: выбор, продолжение, --force, --pages, ошибки
 │   ├── test_recognize_reading.py  # US2, US3, US4: чтение распознанных, сброс, флаги, пересчёт
+│   ├── test_recognize_show.py     # US1-4: show и text --page
+│   ├── test_recognize_recorded.py # уровень 2: записи реального движка
 │   ├── test_recognize_report.py   # US7
 │   ├── test_recognize_eval.py     # US5 на синтетике
 │   ├── test_render_scan.py        # отрисовка и координаты на настоящем PDFium, без движка
