@@ -600,3 +600,89 @@ def render_recognize_text(data: dict) -> str:
         )
     lines.append(total_line)
     return "\n".join(lines)
+
+
+# --- recognize-eval (contracts/cli.md) -----------------------------------------------
+
+_EVAL_VALUE_LABELS = (
+    ("inn", "ИНН"),
+    ("kpp", "КПП"),
+    ("ogrn", "ОГРН"),
+    ("amount", "суммы"),
+    ("date", "даты"),
+    ("clause", "пункты"),
+)
+
+
+def _pages_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "страница"
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return "страницы"
+    return "страниц"
+
+
+def render_recognize_eval_text(data: dict, report_path: str, *, with_diff: bool = False) -> str:
+    """Numbers of `recognize-eval`; the contract text appears only with `with_diff`."""
+    totals = data["totals"]
+    lines = []
+    head = (
+        f"Замер распознавания: {totals['pages']} {_pages_word(totals['pages'])} "
+        f"из {totals['documents']} {_documents_word(totals['documents'])}"
+    )
+    if data["engine"] is not None:
+        head += f"; {data['engine']} {data['engine_version']}, {data['dpi']} dpi"
+    lines.append(head)
+
+    if totals["char_accuracy"] is None:
+        lines.append("Верных знаков: нет распознанных страниц")
+    else:
+        per_page = sorted(p["char_accuracy"] for p in data["pages"])
+        middle = len(per_page) // 2
+        median = per_page[middle] if len(per_page) % 2 else (
+            (per_page[middle - 1] + per_page[middle]) / 2
+        )
+        lines.append(
+            f"Верных знаков: {_percent(totals['char_accuracy'])} "
+            f"(по страницам: мин. {_percent(per_page[0])}, медиана {_percent(median)})"
+        )
+
+    if totals["values_share"] is None:
+        lines.append("Реквизиты и числа без ошибок: в проверенных текстах значений нет")
+    else:
+        parts = [
+            f"{label} {totals['values'][kind][0]}/{totals['values'][kind][1]}"
+            for kind, label in _EVAL_VALUE_LABELS
+            if kind in totals["values"]
+        ]
+        lines.append(
+            f"Реквизиты и числа без ошибок: {_percent(totals['values_share'])} "
+            f"({', '.join(parts)})"
+        )
+
+    control = data["control"]
+    if control["share"] is None:
+        lines.append("Контрольные строки: нет (нет файла control.csv или он пуст)")
+    else:
+        lines.append(
+            f"Контрольные строки: {_percent(control['share'])} "
+            f"({control['found']} из {control['total']})"
+        )
+    lines.append(
+        f"Пропущено строк: {totals['missing_lines']}; повторено строк: {totals['repeated_lines']}"
+    )
+    not_recognized = data["not_recognized"]
+    if not_recognized:
+        listed = ", ".join(f"{item['id']} стр. {item['page']}" for item in not_recognized)
+        lines.append(f"Не распознаны: {listed}")
+    else:
+        lines.append("Не распознаны: нет")
+    lines.append(f"Результат сохранён: {report_path}")
+
+    if with_diff:
+        lines.append("")
+        lines.append("Расхождения (страница; ожидалось; распознано):")
+        for item in data["diffs"]:
+            got = item["recognised"] if item["recognised"] is not None else "(строки нет)"
+            lines.append(f"{item['id']} стр. {item['page']}; {item['expected']}; {got}")
+    return "\n".join(lines)

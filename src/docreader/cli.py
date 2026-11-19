@@ -9,7 +9,7 @@ from pathlib import Path
 
 import psycopg
 
-from docreader import db, reading, recognition, registry, textview
+from docreader import db, reading, recognition, recognition_eval, registry, textview
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
 from docreader.ids import format_document_id, parse_document_id
@@ -27,6 +27,7 @@ from docreader.render import (
     render_read_report_text,
     render_read_text,
     render_reclassify_text,
+    render_recognize_eval_text,
     render_recognize_progress,
     render_recognize_text,
     render_show_text,
@@ -117,6 +118,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="ПУТЬ",
         help="сохранить отчёт в CSV (без пути — в папку reports каталога данных)",
     )
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("recognize-eval", help="замер качества распознавания")
+    p.add_argument("folder", metavar="ПАПКА", help="папка проверенных текстов в папке данных")
+    p.add_argument("--label", metavar="МЕТКА", help="метка замера")
+    p.add_argument("--diff", action="store_true", help="напечатать список расхождений с текстом")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     return parser
@@ -329,6 +336,20 @@ def _cmd_read_report(
     return 0
 
 
+def _cmd_recognize_eval(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    result = recognition_eval.run_eval(
+        conn, settings, args.folder, label=args.label, diff=args.diff
+    )
+    data = result.to_json(with_diffs=args.diff)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        print(render_recognize_eval_text(data, str(result.report_path), with_diff=args.diff))
+    return 0
+
+
 _Handler = Callable[[argparse.Namespace, Settings, psycopg.Connection], int]
 
 _HANDLERS: dict[str, _Handler] = {
@@ -344,6 +365,7 @@ _HANDLERS: dict[str, _Handler] = {
     "recognize": _cmd_recognize,
     "text": _cmd_text,
     "read-report": _cmd_read_report,
+    "recognize-eval": _cmd_recognize_eval,
 }
 
 
