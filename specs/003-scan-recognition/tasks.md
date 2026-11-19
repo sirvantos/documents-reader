@@ -291,7 +291,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
   проходят;
 - на Mac: проходит `pytest -m real_model`.
 
-- [ ] T035 [P] Add the remaining variants to `tests/synthetic/make_scans.py`: `rotated_90` and `rotated_180` (image content turned, page `/Rotate 0`), `skew_3deg`, `table` (a three-column price list with ruling lines drawn into the image), `stamp_over_text` (a round blue «печать» over the requisites), `stamp_only`, `blank` (white page with a few noise pixels below `blank_max_ink_share`); bump `SCAN_GENERATOR_VERSION` to 2; extend `tests/unit/test_make_scans.py` (scan kind; truth present, empty for `stamp_only` and `blank`; deterministic) — executor: haiku
+- [X] T035 [P] Add the remaining variants to `tests/synthetic/make_scans.py`: `rotated_90` and `rotated_180` (image content turned, page `/Rotate 0`), `skew_3deg`, `table` (a three-column price list with ruling lines drawn into the image), `stamp_over_text` (a round blue «печать» over the requisites), `stamp_only`, `blank` (white page with a few noise pixels below `blank_max_ink_share`); bump `SCAN_GENERATOR_VERSION` to 2; extend `tests/unit/test_make_scans.py` (scan kind; truth present, empty for `stamp_only` and `blank`; deterministic) — executor: haiku
 - [X] T036 Write `tests/synthetic/record_recognition.py` and `tests/integration/test_record_guard.py` (research R-13; critical: privacy guard in code) — executor: opus
   - `python -m tests.synthetic.record_recognition [ПУТЬ...]`; without paths it generates all variants into `tests/synthetic/out/`
   - every given path, after `resolve()` (symlinks resolved), must lie inside `<repo>/tests/synthetic/`; otherwise exit 1 «записываются только синтетические файлы из tests/synthetic/», before any engine is loaded

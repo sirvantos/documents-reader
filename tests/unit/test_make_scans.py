@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pypdfium2 as pdfium
 import pytest
 
+from docreader.ocr import ink_share, render_page
 from docreader.pdfpages import analyse_pdf, classify
 from tests.synthetic import make_scans as ms
 from tests.synthetic.make_pdfs import CONTRACT_RU_PAGES
@@ -30,7 +31,25 @@ VARIANTS: dict[str, tuple[Callable[[Path], Path], str]] = {
         ms.make_scan_requisites_two_columns,
         "scan_requisites_two_columns.pdf",
     ),
+    "rotated_90": (ms.make_scan_rotated_90, "scan_rotated_90.pdf"),
+    "rotated_180": (ms.make_scan_rotated_180, "scan_rotated_180.pdf"),
+    "skew_3deg": (ms.make_scan_skew_3deg, "scan_skew_3deg.pdf"),
+    "table": (ms.make_scan_table, "scan_table.pdf"),
+    "stamp_over_text": (ms.make_scan_stamp_over_text, "scan_stamp_over_text.pdf"),
+    "stamp_only": (ms.make_scan_stamp_only, "scan_stamp_only.pdf"),
+    "blank": (ms.make_scan_blank, "scan_blank.pdf"),
 }
+NEW_VARIANTS = (
+    "rotated_90",
+    "rotated_180",
+    "skew_3deg",
+    "table",
+    "stamp_over_text",
+    "stamp_only",
+    "blank",
+)
+EMPTY_TRUTH = ("stamp_only", "blank")  # pages without any text to recognise
+BLANK_MAX_INK_SHARE = 0.003  # docreader.ocr.ink_share limit of a blank page (research R-10)
 
 
 def _truth(pdf: Path) -> dict:
@@ -55,7 +74,7 @@ def test_writes_pdf_and_truth_with_version(name, generated):
     pdf = generated[name]
     assert pdf.exists() and pdf.read_bytes().startswith(b"%PDF-")
     truth = _truth(pdf)
-    assert truth["generator_version"] == ms.SCAN_GENERATOR_VERSION == 1
+    assert truth["generator_version"] == ms.SCAN_GENERATOR_VERSION == 2
     assert truth["variant"] == name
     assert [p["page"] for p in truth["pages"]] == list(range(1, len(truth["pages"]) + 1))
     assert all(p["kind"] in ("scan", "text") for p in truth["pages"])
@@ -87,7 +106,8 @@ def test_mixed_alternates_text_and_scan(generated):
 def test_truth_boxes_lie_inside_the_page(name, generated):
     left0, bottom0, right0, top0 = PAGE_BOX
     for page in _truth(generated[name])["pages"]:
-        assert page["lines"], page["page"]
+        if name not in EMPTY_TRUTH:
+            assert page["lines"], page["page"]
         for line in page["lines"]:
             left, bottom, right, top = line["bbox"]
             assert left0 <= left < right <= right0, line
@@ -143,19 +163,81 @@ def test_requisites_read_left_column_first(generated):
     assert texts == [ms._REQ_HEADING, *ms._REQ_CUSTOMER, *ms._REQ_CONTRACTOR]
 
 
+@pytest.mark.parametrize("name", NEW_VARIANTS)
+def test_new_variants_are_scans(name, generated):
+    assert {p["kind"] for p in _truth(generated[name])["pages"]} == {"scan"}
+    assert {classify(m, DEFAULT) for m in analyse_pdf(generated[name])} == {"scan"}
+
+
+@pytest.mark.parametrize("name", EMPTY_TRUTH)
+def test_empty_truth_for_stamp_only_and_blank(name, generated):
+    pages = _truth(generated[name])["pages"]
+    assert len(pages) == 1
+    assert pages[0]["lines"] == []
+
+
+def test_stamp_over_text_has_the_requisites_truth(generated):
+    assert (
+        _truth(generated["stamp_over_text"])["pages"]
+        == _truth(generated["requisites_two_columns"])["pages"]
+    )
+
+
+def test_table_truth_is_row_by_row_cell_by_cell(generated):
+    lines = _truth(generated["table"])["pages"][0]["lines"]
+    assert [line["text"] for line in lines] == [cell for row in ms._TABLE_ROWS for cell in row]
+    # the cells of one row share their top and bottom, and the amounts end at the right edge
+    for row_index in range(len(ms._TABLE_ROWS)):
+        row = lines[row_index * 3 : row_index * 3 + 3]
+        assert len({line["bbox"][1] for line in row}) == 1
+        assert len({line["bbox"][3] for line in row}) == 1
+
+
+def test_turned_pages_store_the_turn_and_keep_truth_upright(generated):
+    for name, turn in (("rotated_90", 90), ("rotated_180", 180)):
+        pdf = generated[name]
+        page = _truth(pdf)["pages"][0]
+        assert page["turned"] == turn
+        # the upright first line sits near the top of the page as drawn
+        _, _, _, top = page["lines"][0]["bbox"]
+        assert top > PAGE_BOX[3] - 100
+    document = pdfium.PdfDocument(generated["rotated_90"].read_bytes())
+    try:
+        width, height = document[0].get_size()
+        assert document[0].get_rotation() == 0
+        assert width > height  # landscape A4: the turned picture fills it
+    finally:
+        document.close()
+    document = pdfium.PdfDocument(generated["rotated_180"].read_bytes())
+    try:
+        width, height = document[0].get_size()
+        assert width < height
+    finally:
+        document.close()
+    assert "turned" not in _truth(generated["clean"])["pages"][0]
+
+
+def _ink_share_at_100_dpi(pdf: Path) -> float:
+    document = pdfium.PdfDocument(pdf.read_bytes())
+    try:
+        return ink_share(render_page(document[0], 100))
+    finally:
+        document.close()
+
+
+def test_blank_page_has_little_ink(generated):
+    assert _ink_share_at_100_dpi(generated["blank"]) < BLANK_MAX_INK_SHARE
+
+
+def test_stamp_only_page_has_more_ink_than_a_blank_page(generated):
+    assert _ink_share_at_100_dpi(generated["stamp_only"]) > BLANK_MAX_INK_SHARE
+
+
 def test_main_writes_all_variants_and_contract(tmp_path):
     assert ms.main([str(tmp_path)]) == 0
-    expected = {
-        "scan_clean.pdf",
-        "scan_clean.truth.json",
-        "scan_mixed.pdf",
-        "scan_mixed.truth.json",
-        "scan_faded_noisy.pdf",
-        "scan_faded_noisy.truth.json",
-        "scan_page_rotate_90.pdf",
-        "scan_page_rotate_90.truth.json",
-        "scan_requisites_two_columns.pdf",
-        "scan_requisites_two_columns.truth.json",
-        "contract_ru.pdf",
-    }
+    expected = {"contract_ru.pdf"}
+    for name in VARIANTS:
+        filename = VARIANTS[name][1]
+        expected.add(filename)
+        expected.add(filename.replace(".pdf", ".truth.json"))
     assert {p.name for p in tmp_path.iterdir()} == expected

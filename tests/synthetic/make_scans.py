@@ -9,6 +9,12 @@ it it writes `<stem>.truth.json`: for every page its kind ("scan" or "text"), th
 texts in reading order and each line's box `[left, bottom, right, top]` in PDF page
 coordinates of the drawn text (unrotated page space, as in `page_text.lines[].bbox`).
 
+Turned pages (`rotated_90`, `rotated_180`): the picture itself is turned clockwise by 90 or
+180 degrees, the PDF page keeps `/Rotate 0`. A 90-degree page is landscape (842 x 595 pt) so
+that the turned picture fills it. The truth boxes are those of the upright page, as they
+were drawn before turning; such a page has `"turned": 90` (or 180) in its truth entry.
+Other pages have no `turned` key.
+
 Output is deterministic: the same arguments give byte-identical PDF and truth files.
 Bump SCAN_GENERATOR_VERSION on any change of the generator; older recordings go stale.
 
@@ -44,7 +50,7 @@ from tests.synthetic.make_pdfs import (
     ru_line_baselines,
 )
 
-SCAN_GENERATOR_VERSION = 1
+SCAN_GENERATOR_VERSION = 2
 SCAN_DPI = 200
 
 _TEXT_SIZE = 11  # same size and leading as the defaults of make_pdfs._ru_page
@@ -56,6 +62,31 @@ _ASCENT = 0.8  # box top = baseline + 0.8 * size
 _FADE = 0.45  # contrast factor of the faded variant: 1.0 keeps the page as drawn
 _NOISE_SCALE = 0.25  # spread of the noise around mid grey
 _NOISE_SEED = 1307  # page n of a noisy variant uses random.Random(_NOISE_SEED + n)
+
+_SKEW_DEGREES = 3  # counter-clockwise, as Pillow rotates; the page is not enlarged
+_TURN = {90: Image.Transpose.ROTATE_270, 180: Image.Transpose.ROTATE_180}  # clockwise
+
+_TABLE_X = 72
+_TABLE_WIDTHS = (260, 70, 140)  # pt; the table ends at x = 542 on the A4 page
+_TABLE_ROW_H = 24
+_CELL_PAD = 4
+_TABLE_ROWS = (
+    ("Наименование работ", "Ед.", "Стоимость, руб."),
+    ("Демонтаж перегородок", "м2", "12 500,00"),
+    ("Устройство стяжки", "м2", "100 000,00"),
+    ("Монтаж окон ПВХ", "шт.", "245 000,00"),
+    ("Вывоз строительного мусора", "рейс", "18 750,50"),
+)
+
+_STAMP_BLUE = (0.10, 0.25, 0.75)
+_STAMP_X, _STAMP_Y, _STAMP_R = 130, 658, 46  # over the customer column of the requisites
+_STAMP_ONLY_X, _STAMP_ONLY_Y, _STAMP_ONLY_R = 220, 560, 60
+
+_SIGNATURE_SEED = 2207
+_SIGNATURE_X, _SIGNATURE_Y, _SIGNATURE_W, _SIGNATURE_H = 330, 430, 190, 60
+_SIGNATURE_POINTS = 60
+
+_SPECKS = 200  # dark pixels on a blank page: about 0.02% of an A4 page at 100 dpi
 
 _REQ_LEFT_X = 50
 _REQ_RIGHT_X = 320
@@ -98,6 +129,7 @@ class _Page:
     scan: bool
     alter: Callable[[Image.Image, random.Random], Image.Image] | None = None
     rotate: int = 0  # /Rotate of the page as a whole; 0 leaves it out
+    turned: int = 0  # the picture is turned clockwise by 90 or 180; 0 leaves it upright
 
 
 # --- geometry and drawing ---------------------------------------------------------
@@ -146,6 +178,77 @@ def _requisites_page(c: canvas.Canvas) -> list[TruthLine]:
     return truth
 
 
+def _table_page(c: canvas.Canvas) -> list[TruthLine]:
+    """Price list: ruling lines of every cell, then the cell texts row by row."""
+    _register_cyrillic_font()
+    edges_x = [_TABLE_X]
+    for width in _TABLE_WIDTHS:
+        edges_x.append(edges_x[-1] + width)
+    top = PAGE_H - 72
+    edges_y = [top - i * _TABLE_ROW_H for i in range(len(_TABLE_ROWS) + 1)]
+    c.setLineWidth(0.8)
+    c.grid(edges_x, edges_y)
+    c.setFont(_CYRILLIC_FONT, _TEXT_SIZE)
+    last = len(_TABLE_WIDTHS) - 1
+    truth: list[TruthLine] = []
+    for row_index, row in enumerate(_TABLE_ROWS):
+        baseline = edges_y[row_index] - 16  # 16 pt below the top of the row
+        for column, text in enumerate(row):
+            if column == last:  # amounts are right-aligned
+                x = edges_x[column + 1] - _CELL_PAD - stringWidth(text, _CYRILLIC_FONT, _TEXT_SIZE)
+            else:
+                x = edges_x[column] + _CELL_PAD
+            c.drawString(x, baseline, text)
+            truth.append(TruthLine(text, _text_box(text, x, baseline)))
+    return truth
+
+
+def _stamp(c: canvas.Canvas, x: float, y: float, radius: float) -> None:
+    """Round blue stamp: two circles and a few letters, drawn in the page's colour."""
+    _register_cyrillic_font()
+    c.saveState()
+    c.setStrokeColorRGB(*_STAMP_BLUE)
+    c.setFillColorRGB(*_STAMP_BLUE)
+    c.setLineWidth(2.5)
+    c.circle(x, y, radius, stroke=1, fill=0)
+    c.circle(x, y, radius * 0.66, stroke=1, fill=0)
+    c.setFont(_CYRILLIC_FONT, 9)
+    c.drawCentredString(x, y + 2, "АЛЬФА")
+    c.setFont(_CYRILLIC_FONT, 7)
+    c.drawCentredString(x, y - 9, "ООО")
+    c.restoreState()
+
+
+def _requisites_with_stamp(c: canvas.Canvas) -> list[TruthLine]:
+    """The requisites page with a stamp over part of the customer column; truth unchanged."""
+    truth = _requisites_page(c)
+    _stamp(c, _STAMP_X, _STAMP_Y, _STAMP_R)
+    return truth
+
+
+def _stamp_only_page(c: canvas.Canvas) -> list[TruthLine]:
+    """A stamp and a scribble signature, no text: nothing to recognise."""
+    _stamp(c, _STAMP_ONLY_X, _STAMP_ONLY_Y, _STAMP_ONLY_R)
+    rng = random.Random(_SIGNATURE_SEED)
+    path = c.beginPath()
+    path.moveTo(_SIGNATURE_X, _SIGNATURE_Y)
+    for i in range(1, _SIGNATURE_POINTS):
+        x = _SIGNATURE_X + _SIGNATURE_W * i / (_SIGNATURE_POINTS - 1)
+        y = _SIGNATURE_Y + rng.uniform(-_SIGNATURE_H / 2, _SIGNATURE_H / 2)
+        path.lineTo(x, y)
+    c.saveState()
+    c.setStrokeColorRGB(0.05, 0.05, 0.2)
+    c.setLineWidth(1.5)
+    c.drawPath(path, stroke=1, fill=0)
+    c.restoreState()
+    return []
+
+
+def _blank_page(c: canvas.Canvas) -> list[TruthLine]:
+    """Nothing is drawn; the noise is added to the picture by `_speckle`."""
+    return []
+
+
 # --- scan pipeline ----------------------------------------------------------------
 
 
@@ -187,6 +290,21 @@ def _faded_noisy(image: Image.Image, rng: random.Random) -> Image.Image:
     return ImageChops.add(faded, _gaussian_noise(image.size, rng), scale=1, offset=-128)
 
 
+def _skewed(image: Image.Image, rng: random.Random) -> Image.Image:
+    """Turned by _SKEW_DEGREES around the centre; the corners are filled with white."""
+    del rng  # the skew is fixed; the argument keeps the alter signature
+    return image.rotate(_SKEW_DEGREES, resample=Image.Resampling.BICUBIC, fillcolor=255)
+
+
+def _speckle(image: Image.Image, rng: random.Random) -> Image.Image:
+    """Adds _SPECKS dark pixels at seeded random places; the rest stays white."""
+    out = image.copy()
+    width, height = image.size
+    for _ in range(_SPECKS):
+        out.putpixel((rng.randrange(width), rng.randrange(height)), 0)
+    return out
+
+
 def _write_truth(path: Path, variant: str, pages: list[dict[str, object]]) -> None:
     payload = {
         "generator_version": SCAN_GENERATOR_VERSION,
@@ -204,12 +322,16 @@ def _build(path: str | Path, variant: str, pages: list[_Page]) -> Path:
 
     def draw_document(c: canvas.Canvas) -> None:
         for number, spec in enumerate(pages, start=1):
+            page_w, page_h = (PAGE_H, PAGE_W) if spec.turned == 90 else (PAGE_W, PAGE_H)
+            c.setPageSize((page_w, page_h))
             if spec.scan:
                 source, lines = _source_pdf(spec.draw)
                 image = _render(source)
                 if spec.alter is not None:
                     image = spec.alter(image, random.Random(_NOISE_SEED + number))
-                c.drawImage(ImageReader(image), 0, 0, width=PAGE_W, height=PAGE_H)
+                if spec.turned:
+                    image = image.transpose(_TURN[spec.turned])
+                c.drawImage(ImageReader(image), 0, 0, width=page_w, height=page_h)
                 kind = "scan"
             else:
                 lines = spec.draw(c)
@@ -217,13 +339,14 @@ def _build(path: str | Path, variant: str, pages: list[_Page]) -> Path:
             if spec.rotate:
                 c.setPageRotation(spec.rotate)
             c.showPage()
-            truth_pages.append(
-                {
-                    "page": number,
-                    "kind": kind,
-                    "lines": [{"text": line.text, "bbox": list(line.bbox)} for line in lines],
-                }
-            )
+            truth_page: dict[str, object] = {
+                "page": number,
+                "kind": kind,
+                "lines": [{"text": line.text, "bbox": list(line.bbox)} for line in lines],
+            }
+            if spec.turned:
+                truth_page["turned"] = spec.turned
+            truth_pages.append(truth_page)
 
     target.write_bytes(_pdf(draw_document))
     _write_truth(target, variant, truth_pages)
@@ -274,6 +397,48 @@ def make_scan_requisites_two_columns(path: str | Path) -> Path:
     return _build(path, "requisites_two_columns", specs)
 
 
+def make_scan_rotated_90(path: str | Path) -> Path:
+    """One scanned contract page turned 90 degrees clockwise; truth is the upright page."""
+    specs = [_Page(_contract_page(0), scan=True, turned=90)]
+    return _build(path, "rotated_90", specs)
+
+
+def make_scan_rotated_180(path: str | Path) -> Path:
+    """One scanned contract page turned 180 degrees; truth is the upright page."""
+    specs = [_Page(_contract_page(0), scan=True, turned=180)]
+    return _build(path, "rotated_180", specs)
+
+
+def make_scan_skew_3deg(path: str | Path) -> Path:
+    """One scanned contract page turned 3 degrees counter-clockwise, corners white."""
+    specs = [_Page(_contract_page(0), scan=True, alter=_skewed)]
+    return _build(path, "skew_3deg", specs)
+
+
+def make_scan_table(path: str | Path) -> Path:
+    """One scanned price list with ruling lines; truth is row by row, cell by cell."""
+    specs = [_Page(_table_page, scan=True)]
+    return _build(path, "table", specs)
+
+
+def make_scan_stamp_over_text(path: str | Path) -> Path:
+    """The requisites page with a blue stamp over part of the customer column."""
+    specs = [_Page(_requisites_with_stamp, scan=True)]
+    return _build(path, "stamp_over_text", specs)
+
+
+def make_scan_stamp_only(path: str | Path) -> Path:
+    """A stamp and a scribble signature on an otherwise empty page; no truth lines."""
+    specs = [_Page(_stamp_only_page, scan=True)]
+    return _build(path, "stamp_only", specs)
+
+
+def make_scan_blank(path: str | Path) -> Path:
+    """A white page with a few dark noise pixels; no truth lines."""
+    specs = [_Page(_blank_page, scan=True, alter=_speckle)]
+    return _build(path, "blank", specs)
+
+
 # --- command line -----------------------------------------------------------------
 
 
@@ -286,6 +451,13 @@ def make_all(directory: str | Path) -> list[Path]:
         make_scan_faded_noisy(root / "scan_faded_noisy.pdf"),
         make_scan_page_rotate_90(root / "scan_page_rotate_90.pdf"),
         make_scan_requisites_two_columns(root / "scan_requisites_two_columns.pdf"),
+        make_scan_rotated_90(root / "scan_rotated_90.pdf"),
+        make_scan_rotated_180(root / "scan_rotated_180.pdf"),
+        make_scan_skew_3deg(root / "scan_skew_3deg.pdf"),
+        make_scan_table(root / "scan_table.pdf"),
+        make_scan_stamp_over_text(root / "scan_stamp_over_text.pdf"),
+        make_scan_stamp_only(root / "scan_stamp_only.pdf"),
+        make_scan_blank(root / "scan_blank.pdf"),
         make_contract_ru(root / "contract_ru.pdf"),
     ]
 
