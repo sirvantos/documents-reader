@@ -100,17 +100,18 @@ def reset_later(
 
 def reset_stage(
     conn: psycopg.Connection, doc_id: str, stage: Stage, reason: str, run_id: int
-) -> None:
+) -> bool:
     """One stage back to `pending` with `reason`; a stage already `pending` is kept as is.
 
     Recognition uses it for `reading` only: later stages are reset by reading itself
-    when the text changes (research R-11 of feature 13).
+    when the text changes (research R-11 of feature 13). True if the stage was reset.
     """
-    conn.execute(
+    cur = conn.execute(
         "UPDATE stage_status SET state = %s, reason = %s, run_id = %s, updated_at = now()"
         " WHERE document_id = %s AND stage = %s AND state <> %s",
         (State.PENDING, reason, run_id, doc_id, stage, State.PENDING),
     )
+    return cur.rowcount > 0
 
 
 def reset_all(conn: psycopg.Connection, doc_ids: Sequence[str]) -> None:

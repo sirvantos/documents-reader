@@ -49,6 +49,8 @@ class Segment:
 
     text: str
     bbox: Box
+    # Recognition confidence (scans only); None for PDF text.
+    confidence: float | None = field(default=None, compare=False)
 
 
 # Identity sentinel: "display_bbox was not passed" (NaN never equals a real box).
@@ -69,13 +71,15 @@ class Line:
     # Box in display space (after /Rotate); `bbox` stays in unrotated PDF space.
     # When not given, it starts equal to `bbox` (see __post_init__).
     display_bbox: Box = field(default=_NO_BOX, compare=False)
+    # Weakest recognition confidence of the line; None for PDF text.
+    confidence: float | None = None
 
     def __post_init__(self) -> None:
         if self.display_bbox is _NO_BOX:
             self.display_bbox = self.bbox
 
     def to_json(self) -> dict:
-        return {
+        data = {
             "i": self.index,
             "text": self.text,
             "bbox": [round(v, 2) for v in self.bbox],
@@ -83,6 +87,9 @@ class Line:
             "column": self.column,
             "table": self.table,
         }
+        if self.confidence is not None:
+            data["confidence"] = self.confidence
+        return data
 
 
 def _line_text(raw: str) -> str:
@@ -183,7 +190,19 @@ def build_lines(chars: Sequence[Char]) -> list[Line]:
 
     Line text is normalized (R-5); a line that is empty afterwards is dropped.
     """
-    segments = _build_segments(_drop_duplicate_chars(chars))
+    return _group_lines(_build_segments(_drop_duplicate_chars(chars)))
+
+
+def _min_confidence(segments: Sequence[Segment]) -> float | None:
+    values = [s.confidence for s in segments if s.confidence is not None]
+    return min(values) if values else None
+
+
+def _group_lines(segments: Sequence[Segment]) -> list[Line]:
+    """Segments → lines by vertical overlap, top to bottom, segments left to right.
+
+    Shared by PDF chars and recognised fragments. Empty lines are dropped.
+    """
     groups: list[list[Segment]] = []
     boxes: list[Box] = []
     for seg in sorted(segments, key=lambda s: (-s.bbox[3], s.bbox[0])):
@@ -208,6 +227,7 @@ def build_lines(chars: Sequence[Char]) -> list[Line]:
                 text=text,
                 bbox=boxes[k],
                 segments=members,
+                confidence=_min_confidence(members),
             )
         )
     return lines
@@ -520,6 +540,34 @@ def layout_page(
         cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
         table_of.append(next((k for k, t in enumerate(tables) if t.contains(cx, cy)), None))
 
+    ordered, unresolved, ends_in_columns = _arrange(
+        lines, table_of, tables, disp_h, settings, continues_columns, to_pdf
+    )
+
+    ordered.extend(turned)
+    for n, line in enumerate(ordered):
+        line.index = n
+    return PageLayout(
+        lines=ordered,
+        rotated_lines=len(turned),
+        unresolved_lines=unresolved,
+        has_table=bool(tables),
+        ends_in_columns=ends_in_columns,
+    )
+
+
+def _arrange(
+    lines: Sequence[Line],
+    table_of: Sequence[int | None],
+    tables: Sequence[_Table],
+    disp_h: float,
+    settings: ReadingSettings,
+    continues_columns: bool,
+    to_pdf,
+) -> tuple[list[Line], int, bool]:
+    """Lines in display order → reading order (columns, table cells), the count of
+    lines with several parts left unresolved, and whether the page ends in columns.
+    Shared by PDF text and recognised text."""
     areas = _column_areas(lines, table_of, disp_h, settings, continues_columns)
     area_at = {start: (end, anchor) for start, end, anchor in areas}
     in_area = {i for start, end, _anchor in areas for i in range(start, end)}
@@ -559,15 +607,51 @@ def layout_page(
     while last > 0 and lines[last].display_bbox[1] <= band and last not in in_area:
         last -= 1
     ends_in_columns = last in in_area
+    return ordered, unresolved, ends_in_columns
 
-    ordered.extend(turned)
+
+def lines_from_recognized(
+    lines: Sequence[dict],
+    *,
+    rotation: int,
+    width: float,
+    height: float,
+    settings: ReadingSettings,
+    continues_columns: bool = False,
+) -> PageLayout:
+    """Stored recognition lines (`text`, `bbox` in unrotated PDF space, `confidence`)
+    → lines in reading order, the same column rules as PDF text (R-7). No rules are
+    read from a scan, so there are no tables.
+    """
+
+    def to_pdf(box: Box) -> Box:
+        return _map_box(box, lambda x, y: pdf_point(x, y, rotation, width, height))
+
+    disp_h = width if rotation in (90, 270) else height
+    segments: list[Segment] = []
+    for item in lines:
+        text = _line_text(_collapse_spaces(item["text"]))
+        if not text:
+            continue
+        left, bottom, right, top = item["bbox"]
+        box = _map_box(
+            (left, bottom, right, top),
+            lambda x, y: display_point(x, y, rotation, width, height),
+        )
+        segments.append(Segment(text, box, confidence=item.get("confidence")))
+    display_lines = _group_lines(segments)
+    for line in display_lines:
+        line.display_bbox = line.bbox
+        line.bbox = to_pdf(line.bbox)
+    ordered, unresolved, ends_in_columns = _arrange(
+        display_lines, [None] * len(display_lines), [], disp_h, settings, continues_columns, to_pdf
+    )
     for n, line in enumerate(ordered):
         line.index = n
     return PageLayout(
         lines=ordered,
-        rotated_lines=len(turned),
         unresolved_lines=unresolved,
-        has_table=bool(tables),
+        has_table=False,
         ends_in_columns=ends_in_columns,
     )
 
@@ -717,6 +801,7 @@ def _column_part(
         column=side + 1,
         segments=part,
         display_bbox=box,
+        confidence=_min_confidence(part),
     )
 
 

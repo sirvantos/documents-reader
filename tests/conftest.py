@@ -103,6 +103,20 @@ def _forbid_models(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPat
         monkeypatch.setenv(FORBID_MODELS_ENV, "1")
 
 
+@pytest.fixture
+def use_engine(monkeypatch: pytest.MonkeyPatch):
+    """`use_engine(fake, ...)` replaces `ocr_engines.load_engine` with a factory spy."""
+    from docreader import ocr_engines
+    from tests.fakes.ocr import EngineFactorySpy
+
+    def install(*engines: object) -> EngineFactorySpy:
+        factory = EngineFactorySpy(*engines)
+        monkeypatch.setattr(ocr_engines, "load_engine", factory)
+        return factory
+
+    return install
+
+
 # --- database --------------------------------------------------------------------
 
 

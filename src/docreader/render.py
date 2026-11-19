@@ -482,3 +482,91 @@ def render_read_report_csv(report: dict) -> str:
     buffer = io.StringIO()
     csv.writer(buffer, delimiter=";").writerows(_report_rows(report))
     return buffer.getvalue()
+
+
+# --- recognize (contracts/cli.md) ------------------------------------------------------
+
+_RECOGNIZE_FLAG_LABELS = (
+    ("low_recognition_quality", "низкое качество"),
+    ("scan_no_text", "без текста"),
+    ("empty", "пустых"),
+)
+
+
+def _scans_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "скан"
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return "скана"
+    return "сканов"
+
+
+def _decimal(value: float) -> str:
+    """One decimal place with a decimal comma: 3.8 → «3,8»."""
+    return f"{value:.1f}".replace(".", ",")
+
+
+def render_recognize_progress(doc_id: str, page: int, total: int, seconds: float) -> str:
+    """One stderr line per recognised page: `D-0003 стр. 5/42  3,8 с`."""
+    return f"{doc_id} стр. {page}/{total}  {_decimal(seconds)} с"
+
+
+def _recognize_head(doc: dict) -> str:
+    """Document id, scan count and, when there are scans, the statistics."""
+    head = f"{doc['id']}  {doc['scan_pages']:>2} {_scans_word(doc['scan_pages'])}"
+    if not doc["scan_pages"]:
+        return head
+    flags = doc["flags"]
+    parts = [
+        f"распознано {doc['recognized']}",
+        f"ошибок {doc['errors']}",
+        *(f"{label} {len(flags.get(code, []))}" for code, label in _RECOGNIZE_FLAG_LABELS),
+        f"{round(doc['seconds'])} с",
+    ]
+    return "  ".join([head, *parts])
+
+
+def render_recognize_text(data: dict) -> str:
+    documents = data["documents"]
+    count = len(documents)
+    run = f"запуск {data['run_id']}"
+    if data["engine"] is None:
+        header = f"Распознавание, {run}"
+    else:
+        engine = f"{data['engine']} {data['engine_version']}, {data['dpi']} dpi"
+        header = f"Распознавание, {run} ({engine})"
+    lines = [f"{header}: {count} {_documents_word(count)}"]
+
+    heads = [_recognize_head(doc) for doc in documents]
+    # rows without scans are padded so that their state lines up with the others
+    width = max(
+        (len(head) for doc, head in zip(documents, heads, strict=True) if doc["scan_pages"]),
+        default=0,
+    )
+    for doc, head in zip(documents, heads, strict=True):
+        state = STATE_LABELS.get(doc["state"], doc["state"])
+        if doc["reason"]:
+            state += f": {doc['reason']}"
+        padded = head if doc["scan_pages"] else head.ljust(width)
+        lines.append(f"{padded}  {state}")
+
+    reset = [doc["id"] for doc in documents if doc["reading_reset"]]
+    if reset:
+        lines.append(
+            "Чтение сброшено (распознанный текст изменён): "
+            f"{', '.join(reset)} — выполните docreader read"
+        )
+
+    totals = data["totals"]
+    total_line = (
+        f"Итого: страниц {totals['pages']}, распознано {totals['recognized']}, "
+        f"ошибок {totals['errors']}, "
+        f"низкое качество {totals['flags'].get('low_recognition_quality', 0)}"
+    )
+    if totals["pages"]:
+        average = totals["seconds"] / totals["pages"]
+        total_line += (
+            f"; {round(totals['seconds'])} с, в среднем {_decimal(average)} с/стр."
+        )
+    lines.append(total_line)
+    return "\n".join(lines)

@@ -114,7 +114,8 @@ class TruthEngine:
 
     `truth` is a parsed `<name>.truth.json` of `tests/synthetic/make_scans.py`. Call k
     answers for page `pages[k - 1]`; by default the scan pages of the truth, in order.
-    A run that resumes in the middle of a document needs its own `pages`.
+    A run that resumes in the middle of a document needs its own `pages`. A truth line
+    may carry its own `confidence`; otherwise `confidence` applies.
     """
 
     truth: Mapping[str, Any]
@@ -142,8 +143,23 @@ class TruthEngine:
                 EngineLine(
                     text=line["text"],
                     box=pdf_box_to_image(line["bbox"], image_size=image.size, rotation=rotation),
-                    confidence=self.confidence,
+                    confidence=line.get("confidence", self.confidence),
                 )
                 for line in page["lines"]
             )
         )
+
+
+# --- engine factory spy -------------------------------------------------------------------
+
+
+class EngineFactorySpy:
+    """Stands in for `ocr_engines.load_engine`: hands out the given engines, one per call."""
+
+    def __init__(self, *engines: Any) -> None:
+        self.engines = list(engines)
+        self.calls = 0
+
+    def __call__(self, settings: Any, data_dir: Any) -> Any:
+        self.calls += 1
+        return self.engines[min(self.calls, len(self.engines)) - 1]

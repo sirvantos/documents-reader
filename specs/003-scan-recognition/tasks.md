@@ -160,7 +160,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 > Пишутся первыми и должны падать до реализации
 
-- [ ] T014 [P] [US1] Write failing integration tests in `tests/integration/test_recognize.py` (call `recognition.recognize_documents(conn, settings, seqs, ..., engine_factory=...)`; for exit codes and output use `cli.main`) — executor: opus
+- [X] T014 [P] [US1] Write failing integration tests in `tests/integration/test_recognize.py` (call `recognition.recognize_documents(conn, settings, seqs, ..., engine_factory=...)`; for exit codes and output use `cli.main`) — executor: opus
   - US1-1, FR-001…FR-003: an all-scan `clean` document with `TruthEngine` → one `page_recognition` row per page, `error IS NULL`, `lines` with `i`, `text`, `bbox` inside the page and `confidence`; `quality` set; `engine`, `engine_version`, `dpi`, `turn = 0`, `seconds >= 0` and `run_id` filled
   - US1-2: `mixed` → rows only for scan pages; the engine got exactly as many images as there are scan pages
   - US1-3: text-only document → state `done`, `engine_factory` never called (spy), exit 0
@@ -174,7 +174,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
   - environment: `engine_factory` raising `EnvironmentProblem` → exit 2 with its message; pages saved before stay
   - FR-015: one `run` per command with `stage = 'recognition'`, `model = '<name> <version>'`, `settings.recognition` including `engine_version` and the platform; `--label` stored; `model IS NULL` when no page needed the engine
   - selection: `--all` with IDs → exit 1; unknown ID → exit 1 and nothing recognised
-- [ ] T015 [P] [US2] Write failing unit tests in `tests/unit/test_recognized_layout.py` for `pagetext.lines_from_recognized(lines, *, rotation, width, height, crop, settings)` (research R-7) — executor: opus
+- [X] T015 [P] [US2] Write failing unit tests in `tests/unit/test_recognized_layout.py` for `pagetext.lines_from_recognized(lines, *, rotation, width, height, settings, continues_columns=False)` (no `crop`: the boxes are in the same space as PDF chars) (research R-7) — executor: opus
   - fragments whose vertical extents overlap by at least half the smaller height become one `Line` with the fragments as segments, left to right; lines go top to bottom in display space
   - input like `requisites_two_columns` (two fragments per row with a steady x gap) → all left-column lines, then all right-column lines, `column` 1 and 2
   - three-cell table rows → the cells of one row are adjacent in one line, `table` is null; more than `UNRESOLVED_MIN_LINES` such rows outside a column area → counted in `unresolved_lines`
@@ -208,7 +208,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ### Implementation for Шаг 1
 
-- [ ] T019 [US1] Implement `src/docreader/recognition.py` to make T014 pass (research R-11, data-model «Порядок записи»; critical: transaction and reset rule) — executor: opus
+- [X] T019 [US1] Implement `src/docreader/recognition.py` to make T014 pass (research R-11, data-model «Порядок записи»; critical: transaction and reset rule) — executor: opus
   - `recognize_documents(conn, settings, seqs, *, all_documents=False, force=False, pages=None, label=None, engine_factory=ocr_engines.load_engine, progress=None) -> RecognizeResult` (dataclasses, not dicts — tech-context «Правила кода»); the `pages` and `force` parameters exist now, their CLI flags come in T029
   - selection per the R-11 table; scan page = `kind = 'scan' AND image_coverage > 0`; «successful» = a row with `error IS NULL`
   - the engine is loaded lazily, once per run, at the first page that needs it; the `run` is started before the first document; `run.model` is set when the engine loads
@@ -218,8 +218,8 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
   - `KeyboardInterrupt` → the current page is rolled back, the result has `interrupted = True`, the document state is not written; `finish_run` always runs
   - progress per page goes through the `progress` callback; the logic prints nothing
   - turning (R-6) is **not** in this task (T043): `turn = 0`, `orientation_unknown = false`
-- [ ] T020 [US1] (after T019 and T022) Add `recognize [<ID>...] [--all] [--label МЕТКА] [--json]` to `src/docreader/cli.py` (dispatch, exit 130 on interruption, a progress callback writing to stderr) and the `recognize` text and JSON output to `src/docreader/render.py` exactly as contracts/cli.md (the «низкое качество / без текста / пустых» counts come from `quality.recognition_flags`; the «Чтение сброшено…» line; «Итого…» with seconds per page; decimal comma), with tests in `tests/unit/test_render_recognition.py` — executor: haiku
-- [ ] T021 [US2] Implement `pagetext.lines_from_recognized` to make T015 pass: split `layout_page` into «chars → lines» and «lines with segments → reading order and columns», so both sources share `_column_areas`, `_column_part` and the unresolved count; recognised fragments become `Segment`s in display space; `Line` gets an optional `confidence` (the minimum of its fragments), written by `to_json()` only when set; `has_table = False` for recognised pages; existing pagetext tests stay green unchanged — executor: sonnet
+- [X] T020 [US1] (after T019 and T022) Add `recognize [<ID>...] [--all] [--label МЕТКА] [--json]` to `src/docreader/cli.py` (dispatch, exit 130 on interruption, a progress callback writing to stderr) and the `recognize` text and JSON output to `src/docreader/render.py` exactly as contracts/cli.md (the «низкое качество / без текста / пустых» counts come from `quality.recognition_flags`; the «Чтение сброшено…» line; «Итого…» with seconds per page; decimal comma), with tests in `tests/unit/test_render_recognition.py` — executor: haiku
+- [X] T021 [US2] Implement `pagetext.lines_from_recognized` to make T015 pass: split `layout_page` into «chars → lines» and «lines with segments → reading order and columns», so both sources share `_column_areas`, `_column_part` and the unresolved count; recognised fragments become `Segment`s in display space; `Line` gets an optional `confidence` (the minimum of its fragments), written by `to_json()` only when set; `has_table = False` for recognised pages; existing pagetext tests stay green unchanged — executor: sonnet
 - [X] T022 [US3] Implement `quality.recognition_flags`, the two new `FLAG_NAMES` entries and the new `scan_unread` reasons to make T016 pass (only the `low_recognition_quality` part; `scan_no_text` and `empty` by ink come in T042) — executor: opus
 - [ ] T023 [US2] Change `src/docreader/reading.py` to make T017 pass: load the document's `page_recognition` rows once; for a scan page with a successful row, build lines with `lines_from_recognized`, set `source = 'recognized'`, and flags = `content_flags(..., map_errors=0)` (no `ocr_text` for kind `scan`) + `layout_flag` + `recognition_flags`; without a row or with `error` → `scan_unread` with the new reasons; write `page_text.source`; add the `recognition` settings to the reading `run.settings`. Everything else (cleanup, `document_text`, spans, reset of later stages, state) stays as it is — executor: sonnet
 - [ ] T024 [US1] Make T018 pass: recognition facts for `show` in `src/docreader/registry.py` (one `LEFT JOIN page_recognition`), `source` and `confidence` in `text --page` in `src/docreader/textview.py`, rendering in `src/docreader/render.py`, and the «Распознавание» stage name in the stage labels — executor: sonnet
