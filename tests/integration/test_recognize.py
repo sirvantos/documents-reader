@@ -454,3 +454,107 @@ def test_unknown_id_is_a_user_error_and_nothing_recognised(cli, db, tmp_path, us
     assert "D-0099" in result.stderr
     assert engine.calls == 0
     assert rows(db, doc) == []
+
+
+# --- US6: --force and --pages (task T026) -----------------------------------------------
+
+
+def test_force_with_the_same_result_changes_nothing_downstream(
+    cli, db, tmp_path, use_engine
+) -> None:
+    (doc,), (pdf,) = add(cli, tmp_path / "in", make_scans.make_scan_clean)
+    truth = truth_of(pdf)
+    use_engine(TruthEngine(truth))
+    recognize(cli)
+    set_stage(db, doc, "reading", "done")
+    before = [r["result_sha256"] for r in rows(db, doc)]
+    engine = TruthEngine(truth)
+    use_engine(engine)
+
+    code, data, _ = recognize(cli, doc, "--force")
+
+    assert code == 0
+    assert engine.calls == 2
+    assert [r["result_sha256"] for r in rows(db, doc)] == before
+    assert len(rows(db, doc)) == 2
+    assert stage(db, doc, "reading")[:2] == ("done", None)
+    assert [p["changed"] for p in data["documents"][0]["pages"]] == [False, False]
+
+
+def test_force_with_a_different_result_resets_reading_only(cli, db, tmp_path, use_engine) -> None:
+    (doc,), (pdf,) = add(cli, tmp_path / "in", make_scans.make_scan_clean)
+    truth = truth_of(pdf)
+    use_engine(TruthEngine(truth))
+    recognize(cli)
+    assert cli("read", doc).exit_code == 0
+    for name in LATER_STAGES:
+        set_stage(db, doc, name, "done")
+    text_before = db.execute(
+        "SELECT text_sha256 FROM document_text WHERE document_id = %s", (doc,)
+    ).fetchone()
+    use_engine(TruthEngine(truth, confidence=0.5))
+
+    code, data, _ = recognize(cli, "--all", "--force")
+
+    assert code == 0
+    assert stage(db, doc, "reading")[:2] == ("pending", RESET_REASON)
+    for name in LATER_STAGES:
+        assert stage(db, doc, name)[0] == "done"
+    assert db.execute(
+        "SELECT text_sha256 FROM document_text WHERE document_id = %s", (doc,)
+    ).fetchone() == text_before
+    assert all(p["changed"] for p in data["documents"][0]["pages"])
+
+
+def test_pages_recognises_only_the_given_pages(cli, db, tmp_path, use_engine) -> None:
+    (doc,), (pdf,) = add(cli, tmp_path / "in", lambda p: make_scans.make_scan_clean(p, pages=3))
+    truth = truth_of(pdf)
+    use_engine(TruthEngine(truth))
+    recognize(cli)
+    before = {r["page_number"]: r["recognized_at"] for r in rows(db, doc)}
+    engine = TruthEngine(truth, pages=[2, 3])
+    use_engine(engine)
+
+    code, data, _ = recognize(cli, doc, "--pages", "2-3")
+
+    assert code == 0
+    assert engine.calls == 2
+    after = {r["page_number"]: r["recognized_at"] for r in rows(db, doc)}
+    assert after[1] == before[1]
+    assert after[2] > before[2] and after[3] > before[3]
+    assert [p["page"] for p in data["documents"][0]["pages"]] == [2, 3]
+
+    single = TruthEngine(truth, pages=[3])
+    use_engine(single)
+    assert recognize(cli, doc, "--pages", "3")[0] == 0
+    assert single.calls == 1
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--pages", "2"], "--pages указывается для одного документа"),
+        (["{doc}", "D-0002", "--pages", "2"], "--pages указывается для одного документа"),
+        (["{doc}", "--pages", "9"], "В документе {doc} нет страницы 9 (страниц: 4)"),
+        (
+            ["{doc}", "--pages", "1"],
+            "Стр. 1 документа {doc} — не скан (вид: готовый текст); "
+            "распознаются только страницы-сканы",
+        ),
+        (["{doc}", "--pages", "3-1"], "--pages"),
+        (["{doc}", "--pages", "a"], "--pages"),
+    ],
+)
+def test_pages_errors(cli, db, tmp_path, use_engine, args, message) -> None:
+    (doc, _), (pdf, _) = add(
+        cli, tmp_path / "in", make_scans.make_scan_mixed, make_scans.make_scan_clean
+    )
+    engine = TruthEngine(truth_of(pdf))
+    use_engine(engine)
+
+    result = cli("recognize", *[a.format(doc=doc) for a in args])
+
+    assert result.exit_code == 1
+    assert message.format(doc=doc) in result.stderr
+    assert engine.calls == 0
+    assert rows(db, doc) == []

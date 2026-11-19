@@ -21,6 +21,12 @@ dev = [
     "ruff>=0.17.5",
     "mypy>=2.4.1",
 ]
+# Recognition engines (feature 13): only on the analyst's Mac, `uv sync --group ocr`.
+# Not a default group: the development server and Docker never install them (research R-4).
+ocr = [
+    "tesserocr; sys_platform == 'darwin'",
+    "pyobjc-framework-Vision; sys_platform == 'darwin'",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -54,5 +60,9 @@ warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 # Libraries shipped without type information.
-module = ["pypdfium2", "pypdfium2.*", "pymorphy3", "pymorphy3.*"]
+module = [
+    "pypdfium2", "pypdfium2.*", "pymorphy3", "pymorphy3.*",
+    # recognition engines, optional group `ocr`, Mac only (feature 13)
+    "tesserocr", "Quartz", "Vision", "Foundation",
+]
 ignore_missing_imports = true

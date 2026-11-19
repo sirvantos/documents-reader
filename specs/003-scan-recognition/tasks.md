@@ -249,7 +249,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ### Tests for Шаг 2 ⚠️
 
-- [ ] T026 [P] [US6] Add failing tests to `tests/integration/test_recognize.py` — executor: opus
+- [X] T026 [P] [US6] Add failing tests to `tests/integration/test_recognize.py` — executor: opus
   - US6-1: `--force` with an engine giving the same output → same `result_sha256`, one row per page, `reading` state unchanged (was `done`)
   - US6-2: `--force` with a different output (`ScriptedEngine`) → `reading` = `pending` «распознанный текст изменён»; `page_text`, `document_text` and the `structure`…`indexing` rows unchanged until `read`
   - US6-3: `recognize D-0001 --pages 2-3` → only pages 2 and 3 recognised (engine call count, `recognized_at`), the others untouched; `--pages 3` (one page) works
@@ -261,10 +261,10 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ### Implementation for Шаг 2
 
-- [ ] T028 [US6] Make T026 pass in `src/docreader/recognition.py`: `force` and `pages` selection and validation (`UserError` messages from contracts/cli.md) — executor: sonnet
-- [ ] T029 [P] [US6] Add `--pages N[-M]` and `--force` to `recognize` in `src/docreader/cli.py` (range parsing; errors → `UserError`), with a unit test of the range parser in `tests/unit/test_cli_pages.py` — executor: haiku
+- [X] T028 [US6] Make T026 pass in `src/docreader/recognition.py`: `force` and `pages` selection and validation (`UserError` messages from contracts/cli.md) — executor: sonnet
+- [X] T029 [P] [US6] Add `--pages N[-M]` and `--force` to `recognize` in `src/docreader/cli.py` (range parsing; errors → `UserError`), with a unit test of the range parser in `tests/unit/test_cli_pages.py` — executor: haiku
 - [ ] T030 [US5] Make T027 pass: `src/docreader/recognition_eval.py` — the pure calculation functions plus `run_eval(conn, settings, folder, label, diff) -> EvalResult`, which reads the folder, `page_recognition`, `page_text` and `document_text` and writes the JSON and CSV report files atomically into `settings.reports_dir`; `recognize-eval <ПАПКА> [--label] [--diff] [--json]` in `src/docreader/cli.py`; output in `src/docreader/render.py` exactly as contracts/cli.md. `flags.csv` is T044 — executor: sonnet
-- [ ] T031 Write the queue-1 adapters (research R-1, R-3; contracts/engine.md; critical) in `src/docreader/ocr_engines.py` — executor: opus
+- [X] T031 Write the queue-1 adapters (research R-1, R-3; contracts/engine.md; critical) in `src/docreader/ocr_engines.py` — executor: opus
   - `_load_tesseract`: `tesserocr.PyTessBaseAPI(lang="rus")`, line-level iterator, word confidences (0–100) averaged per line and divided by 100; version `"<tesseract> rus <traineddata date or hash>"`; data path from `model_dir` or the library default; missing `rus.traineddata` → `EnvironmentProblem` with the searched path
   - `_load_apple_vision`: `VNRecognizeTextRequest` with `recognitionLanguages = ["ru-RU"]`, accurate level, language correction **off** (FR-010); normalised boxes → pixels with the top-left origin; version from the OS; on non-macOS → `EnvironmentProblem` «движок apple_vision работает только на macOS»
   - register both in `ENGINES`; the guard test T009 now covers both names

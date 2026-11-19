@@ -95,6 +95,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="идентификаторы (по умолчанию — документы, где нужно распознавание)",
     )
     p.add_argument("--all", action="store_true", help="распознать все документы реестра")
+    p.add_argument(
+        "--force", action="store_true", help="распознать заново и страницы с готовым результатом"
+    )
+    p.add_argument("--pages", metavar="N[-M]", help="страница или диапазон страниц документа")
     p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
@@ -245,14 +249,27 @@ def _print_recognize_progress(doc_id: str, page: int, total: int, seconds: float
     print(render_recognize_progress(doc_id, page, total, seconds), file=sys.stderr, flush=True)
 
 
+def parse_page_range(text: str) -> list[int]:
+    """Parse `--pages`: «3» → [3], «2-3» → [2, 3]; anything else is a user error."""
+    parts = text.split("-")
+    if len(parts) in (1, 2) and all(p.isascii() and p.isdigit() for p in parts):
+        first, last = int(parts[0]), int(parts[-1])
+        if 1 <= first <= last:
+            return list(range(first, last + 1))
+    raise UserError(f"--pages {text}: укажите номер страницы или диапазон N-M, N ≤ M")
+
+
 def _cmd_recognize(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
     seqs = [parse_document_id(i) for i in args.ids] or None
+    pages = parse_page_range(args.pages) if args.pages is not None else None
     result = recognition.recognize_documents(
         conn,
         settings,
         seqs,
         all_documents=args.all,
         label=args.label,
+        force=args.force,
+        pages=pages,
         progress=_print_recognize_progress,
     )
     if result.run_id is None and not result.documents:
