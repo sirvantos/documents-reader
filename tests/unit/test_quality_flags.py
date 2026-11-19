@@ -34,6 +34,8 @@ def test_flag_order_and_names_follow_fr006() -> None:
         "maybe_not_russian",
         "empty",
         "reading_order_unknown",
+        "low_recognition_quality",
+        "scan_no_text",
     )
     assert FLAG_NAMES == {
         "scan_unread": "скан, не прочитана",
@@ -42,6 +44,8 @@ def test_flag_order_and_names_follow_fr006() -> None:
         "maybe_not_russian": "возможно, не русский текст",
         "empty": "пустая",
         "reading_order_unknown": "порядок чтения не определён",
+        "low_recognition_quality": "низкое качество распознавания",
+        "scan_no_text": "текст на скане не найден",
     }
 
 

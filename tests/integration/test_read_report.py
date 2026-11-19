@@ -22,10 +22,12 @@ CODES = (
     "maybe_not_russian",
     "empty",
     "reading_order_unknown",
+    "low_recognition_quality",
+    "scan_no_text",
 )
 HEADERS = [
     "ID", "Имя", "Стр.", "Прочит.", "Скан", "Распозн.", "Нечит.", "Не рус.",
-    "Пустые", "Порядок", "Таблицы", "Состояние",
+    "Пустые", "Порядок", "Низк. кач.", "Без текста", "Таблицы", "Состояние",
 ]
 NOTHING = "Нет прочитанных документов — выполните docreader read"
 STATE_WORDS = {"done": "готово", "needs_review": "требует просмотра", "failed": "ошибка"}

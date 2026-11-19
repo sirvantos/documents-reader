@@ -9,7 +9,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from docreader.config import ReadingSettings
+from docreader.config import ReadingSettings, RecognitionSettings
 from docreader.pagetext import Char
 from docreader.pdfpages import KIND_SCAN, KIND_SCAN_WITH_TEXT
 from docreader.stages import State
@@ -22,6 +22,9 @@ FLAG_NAMES: dict[str, str] = {
     "maybe_not_russian": "возможно, не русский текст",
     "empty": "пустая",
     "reading_order_unknown": "порядок чтения не определён",
+    # feature 13: set by reading from the stored recognition result (research R-8)
+    "low_recognition_quality": "низкое качество распознавания",
+    "scan_no_text": "текст на скане не найден",
 }
 FLAG_ORDER: tuple[str, ...] = tuple(FLAG_NAMES)
 
@@ -255,3 +258,63 @@ def document_state(
     if listed:
         return State.NEEDS_REVIEW, listed
     return State.DONE, None
+
+
+# --- recognised pages (feature 13, research R-8, R-9) --------------------------------------
+
+LOW_QUALITY = "low_recognition_quality"
+
+
+def not_recognized_flag(doc_id: str) -> Flag:
+    """`scan_unread` of a scan page that has no recognition result yet."""
+    return Flag("scan_unread", f"распознавание не выполнено — docreader recognize {doc_id}")
+
+
+def recognition_error_flag(error: str) -> Flag:
+    """`scan_unread` of a scan page whose recognition failed."""
+    return Flag("scan_unread", f"ошибка распознавания: {error}")
+
+
+def _decimal(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",")
+
+
+def _of_lines_word(count: int) -> str:
+    """«из 31 строки», «из 22 строк»: genitive after «из N»."""
+    return "строки" if count % 10 == 1 and count % 100 != 11 else "строк"
+
+
+def _counted(text: str) -> bool:
+    """Lines without a letter or digit (form blanks, underlines) are not scored (R-9)."""
+    return any(ch.isalnum() for ch in text)
+
+
+def recognition_flags(
+    lines: Sequence[Mapping],
+    quality: float | None,
+    ink_share: float | None,
+    orientation_unknown: bool,
+    settings: RecognitionSettings,
+) -> list[Flag]:
+    """Flags of a recognised page from its stored values and the current thresholds.
+
+    `lines` are `page_recognition.lines` elements (`text`, `confidence`). The rule is the
+    same for reading, `recognize` and `recognize-report`, so a changed threshold needs
+    only a re-read (FR-005).
+    """
+    flags: list[Flag] = []
+    counted = [line for line in lines if _counted(str(line["text"]))]
+    parts: list[str] = []
+    if quality is not None and quality < settings.page_min_quality:
+        parts.append(f"оценка {_decimal(quality)} < {_decimal(settings.page_min_quality)}")
+    if counted:
+        low = sum(1 for line in counted if line["confidence"] < settings.line_min_confidence)
+        if low / len(counted) > settings.max_low_line_share:
+            parts.append(
+                f"{low} из {len(counted)} {_of_lines_word(len(counted))} с уверенностью "
+                f"< {_decimal(settings.line_min_confidence)}"
+            )
+    if parts:
+        flags.append(Flag(LOW_QUALITY, "; ".join(parts)))
+    return flags
+
