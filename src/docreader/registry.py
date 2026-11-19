@@ -214,8 +214,12 @@ def show_document(conn: psycopg.Connection, settings: Settings, seq: int) -> dic
         raise _not_found(seq)
     result = _summaries(conn, [doc])[0]
     pages = conn.execute(
-        "SELECT page_number, kind, char_count, image_coverage, invisible_text_share"
-        " FROM page WHERE document_id = %s ORDER BY page_number",
+        "SELECT p.page_number, p.kind, p.char_count, p.image_coverage, p.invisible_text_share,"
+        " r.engine, r.engine_version, r.dpi, r.turn, r.quality, r.ink_share,"
+        " r.recognized_at, r.run_id, r.error"
+        " FROM page p LEFT JOIN page_recognition r"
+        " ON r.document_id = p.document_id AND r.page_number = p.page_number"
+        " WHERE p.document_id = %s ORDER BY p.page_number",
         (doc["id"],),
     ).fetchall()
     result.update(
@@ -232,8 +236,24 @@ def show_document(conn: psycopg.Connection, settings: Settings, seq: int) -> dic
                 "char_count": chars,
                 "image_coverage": coverage,
                 "invisible_text_share": invisible,
+                "recognition": None
+                if engine is None
+                else {
+                    "engine": engine,
+                    "engine_version": version,
+                    "dpi": dpi,
+                    "turn": turn,
+                    "quality": quality,
+                    "ink_share": ink_share,
+                    "recognized_at": recognized_at.isoformat(),
+                    "run_id": rec_run,
+                    "error": error,
+                },
             }
-            for n, kind, chars, coverage, invisible in pages
+            for (
+                n, kind, chars, coverage, invisible,
+                engine, version, dpi, turn, quality, ink_share, recognized_at, rec_run, error,
+            ) in pages
         ],
     )
     return result

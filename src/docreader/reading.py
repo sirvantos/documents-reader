@@ -9,7 +9,7 @@ A failing document gets the state `failed` and the others go on.
 from __future__ import annotations
 
 import importlib.metadata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,7 +23,13 @@ from docreader.cleanup import DocumentText, PageLines, build_document_text, mark
 from docreader.config import Settings
 from docreader.errors import UserError
 from docreader.ids import format_document_id
-from docreader.pagetext import Line, layout_page, read_page_chars, read_page_rules
+from docreader.pagetext import (
+    Line,
+    layout_page,
+    lines_from_recognized,
+    read_page_chars,
+    read_page_rules,
+)
 from docreader.pdfpages import PdfOpenError, open_pdf
 from docreader.quality import (
     FLAG_ORDER,
@@ -33,6 +39,9 @@ from docreader.quality import (
     count_map_errors,
     document_state,
     layout_flag,
+    not_recognized_flag,
+    recognition_error_flag,
+    recognition_flags,
     skip_flag,
 )
 from docreader.stages import Stage, State
@@ -57,6 +66,18 @@ class PageResult:
     has_table: bool = False
     display_height: float | None = None  # page height after /Rotate; None: same as `height`
     ends_in_columns: bool = False
+    source: str = "pdf"  # page_text.source: 'pdf' or 'recognized'
+
+
+@dataclass(frozen=True)
+class StoredRecognition:
+    """One `page_recognition` row as reading needs it."""
+
+    lines: list[dict]
+    quality: float | None
+    ink_share: float | None
+    orientation_unknown: bool
+    error: str | None
 
 
 WordCheck = Callable[[str], bool]
@@ -113,11 +134,62 @@ def _page_infos(conn: psycopg.Connection, doc_id: str) -> list[PageInfo]:
     return [PageInfo(*row) for row in rows]
 
 
+def _load_recognitions(conn: psycopg.Connection, doc_id: str) -> dict[int, StoredRecognition]:
+    rows = conn.execute(
+        "SELECT page_number, lines, quality, ink_share, orientation_unknown, error"
+        " FROM page_recognition WHERE document_id = %s",
+        (doc_id,),
+    ).fetchall()
+    return {
+        n: StoredRecognition(lines, quality, ink, orientation_unknown, error)
+        for n, lines, quality, ink, orientation_unknown, error in rows
+    }
+
+
+def _read_recognized_page(
+    result: PageResult,
+    info: PageInfo,
+    recognition: StoredRecognition,
+    settings: Settings,
+    continues_columns: bool,
+) -> PageResult:
+    """Page text from stored recognised lines, through the PDF column rules (R-7)."""
+    layout = lines_from_recognized(
+        recognition.lines,
+        rotation=result.rotation,
+        width=result.width,
+        height=result.height,
+        settings=settings.reading,
+        continues_columns=continues_columns,
+    )
+    result.source = "recognized"
+    result.lines = layout.lines
+    result.has_table = layout.has_table
+    result.ends_in_columns = layout.ends_in_columns
+    text = "\n".join(line.text for line in result.lines)
+    result.flags = content_flags(info, text, settings.reading, settings.text_min_chars)
+    flag = layout_flag(
+        rotated_lines=layout.rotated_lines, unresolved_lines=layout.unresolved_lines
+    )
+    if flag is not None:
+        result.flags.append(flag)
+    result.flags += recognition_flags(
+        recognition.lines,
+        recognition.quality,
+        recognition.ink_share,
+        recognition.orientation_unknown,
+        settings.recognition,
+    )
+    return result
+
+
 def _read_page(
     page: pdfium.PdfPage,
     info: PageInfo,
     settings: Settings,
     continues_columns: bool = False,
+    recognition: StoredRecognition | None = None,
+    doc_id: str = "",
 ) -> PageResult:
     left, bottom, right, top = page.get_cropbox()
     result = PageResult(
@@ -129,6 +201,14 @@ def _read_page(
     result.display_height = result.width if result.rotation in (90, 270) else result.height
     flag = skip_flag(info)
     if flag is not None:
+        if flag.code == "scan_unread":
+            if recognition is None:
+                result.flags.append(not_recognized_flag(doc_id))
+            elif recognition.error is not None:
+                result.flags.append(recognition_error_flag(recognition.error))
+            else:
+                return _read_recognized_page(result, info, recognition, settings, continues_columns)
+            return result
         result.flags.append(flag)
         return result
     chars = read_page_chars(page)
@@ -161,7 +241,11 @@ def _read_page(
 
 
 def read_copy(
-    path: Path, infos: Sequence[PageInfo], doc_id: str, settings: Settings
+    path: Path,
+    infos: Sequence[PageInfo],
+    doc_id: str,
+    settings: Settings,
+    recognitions: Mapping[int, StoredRecognition] | None = None,
 ) -> list[PageResult]:
     """Read every page of the copy; the file is only read, never written (FR-014)."""
     if not path.is_file():
@@ -176,16 +260,20 @@ def read_copy(
                 f"в копии {len(pdf)} стр., в реестре {len(infos)} — "
                 f"проверьте docreader verify {doc_id}"
             )
+        found = recognitions or {}
         results: list[PageResult] = []
         continues = False
         for info in infos:
             page = pdf[info.page_number - 1]
             try:
-                result = _read_page(page, info, settings, continues)
+                result = _read_page(
+                    page, info, settings, continues, found.get(info.page_number), doc_id
+                )
             finally:
                 page.close()
             results.append(result)
-            if skip_flag(info) is None:  # skipped pages are not read and keep the state
+            if skip_flag(info) is None or result.source == "recognized":
+                # skipped and unrecognised pages are not read and keep the state
                 continues = result.ends_in_columns
         return results
     finally:
@@ -221,7 +309,7 @@ def _write_result(
         with conn.cursor() as cur:
             cur.executemany(
                 "INSERT INTO page_text (document_id, page_number, rotation, width, height,"
-                " lines, has_table, run_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                " lines, has_table, run_id, source) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 [
                     (
                         doc_id,
@@ -232,6 +320,7 @@ def _write_result(
                         Jsonb([line.to_json() for line in p.lines]),
                         p.has_table,
                         run_id,
+                        p.source,
                     )
                     for p in pages
                 ],
@@ -322,7 +411,13 @@ def _read_document(
     }
     try:
         infos = _page_infos(conn, doc_id)
-        pages = read_copy(settings.data_dir / doc["copy_path"], infos, doc_id, settings)
+        pages = read_copy(
+            settings.data_dir / doc["copy_path"],
+            infos,
+            doc_id,
+            settings,
+            _load_recognitions(conn, doc_id),
+        )
         text = clean_document_text(pages, settings, is_known)
         state, reason = document_state({p.number: p.flags for p in pages}, text.read_pages)
         entry["text_changed"] = _write_result(conn, run_id, doc_id, pages, text, state, reason)

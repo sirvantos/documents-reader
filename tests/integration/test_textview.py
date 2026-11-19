@@ -152,6 +152,7 @@ def test_load_page_returns_stored_values(db) -> None:
                 "page": 2,
                 "rotation": 90,
                 "has_table": True,
+                "source": "pdf",
                 "flags": [{"code": "empty", "reason": "причина empty"}],
                 "lines": [{"i": 0, "text": "Строка"}],
             }

@@ -92,7 +92,8 @@ def load_page(conn: psycopg.Connection, seq: int, page: int) -> dict:
     """One page of a read document (task T017).
 
     `{"id": "D-0001", "pages": [{"page": 2, "rotation": 0, "has_table": false,
-    "flags": [{"code", "reason"}], "lines": [<page_text.lines elements>]}]}`
+    "source", "flags": [{"code", "reason"}], "lines": [<page_text.lines elements>]}]};
+    a recognised page also has `engine`, `engine_version`, `quality`.
     """
     doc = _require_read(conn, seq)
     doc_id = doc["id"]
@@ -100,25 +101,31 @@ def load_page(conn: psycopg.Connection, seq: int, page: int) -> dict:
         raise UserError(f"В документе {doc_id} нет страницы {page} (страниц: {doc['page_count']})")
     with conn.cursor(row_factory=dict_row) as cur:
         row = cur.execute(
-            "SELECT rotation, has_table, lines FROM page_text"
+            "SELECT rotation, has_table, lines, source FROM page_text"
             " WHERE document_id = %s AND page_number = %s",
             (doc_id, page),
         ).fetchone()
     flags = _flags_by_page(conn, doc_id).get(page, [])
     if row is None:
         raise UserError(f"Страница {page} документа {doc_id} не прочитана")
-    return {
-        "id": doc_id,
-        "pages": [
-            {
-                "page": page,
-                "rotation": row["rotation"],
-                "has_table": row["has_table"],
-                "flags": flags,
-                "lines": row["lines"],
-            }
-        ],
+    view = {
+        "page": page,
+        "rotation": row["rotation"],
+        "has_table": row["has_table"],
+        "source": row["source"],
+        "flags": flags,
+        "lines": row["lines"],
     }
+    if row["source"] == "recognized":
+        with conn.cursor(row_factory=dict_row) as cur:
+            rec = cur.execute(
+                "SELECT engine, engine_version, quality FROM page_recognition"
+                " WHERE document_id = %s AND page_number = %s",
+                (doc_id, page),
+            ).fetchone()
+        if rec is not None:
+            view.update(rec)
+    return {"id": doc_id, "pages": [view]}
 
 
 _CONTEXT_CHARS = 30

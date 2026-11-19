@@ -256,6 +256,20 @@ def _minute_text(iso: str) -> str:
     return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M")
 
 
+def _decimal_text(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",")
+
+
+def _recognition_text(rec: dict) -> str:
+    if rec["error"]:
+        return f"ошибка распознавания: {rec['error']}"
+    quality = "—" if rec["quality"] is None else _decimal_text(rec["quality"])
+    return (
+        f"распознано {rec['engine']} {rec['engine_version']}, {rec['dpi']} dpi, "
+        f"{_minute_text(rec['recognized_at'])}, оценка {quality}"
+    )
+
+
 def _share_text(share: float | None) -> str:
     return "—" if share is None else f"{share * 100:.0f}%"
 
@@ -292,6 +306,7 @@ def render_show_text(doc: dict) -> str:
             f"  символов {page['char_count']}"
             f"  изображения {page['image_coverage'] * 100:.0f}%"
             f"  невидимый текст {_share_text(page['invisible_text_share'])}"
+            + (f"  {_recognition_text(page['recognition'])}" if page.get("recognition") else "")
         )
     return "\n".join(lines)
 
@@ -385,7 +400,7 @@ def _line_marker(line: dict) -> str:
 
 
 def _page_line_rows(page_lines: list[dict]) -> list[str]:
-    """One aligned row per line: index, role word, optional marker, text."""
+    """One aligned row per line: index, role word, optional marker, confidence, text."""
     roles = [_ROLE_WORDS.get(line["role"], line["role"]) for line in page_lines]
     markers = [_line_marker(line) for line in page_lines]
     role_width = max((len(role) for role in roles), default=0)
@@ -395,9 +410,22 @@ def _page_line_rows(page_lines: list[dict]) -> list[str]:
         cells = [f"{line['i']:>3}", role.ljust(role_width)]
         if marker_width:
             cells.append(marker.ljust(marker_width))
+        if "confidence" in line:
+            cells.append(_decimal_text(line["confidence"]))
         cells.append(line["text"])
         rows.append("  ".join(cells).rstrip())
     return rows
+
+
+def _source_line(page: dict) -> str:
+    if page.get("source") != "recognized":
+        return "Источник: текстовый слой PDF"
+    quality = page.get("quality")
+    score = "—" if quality is None else _decimal_text(quality)
+    return (
+        f"Источник: распознано ({page.get('engine')} {page.get('engine_version')}, "
+        f"оценка {score})"
+    )
 
 
 def render_page_text(view: dict) -> str:
@@ -405,6 +433,8 @@ def render_page_text(view: dict) -> str:
     for page in view["pages"]:
         lines = [f"{view['id']}, стр. {page['page']}"]
         lines.extend(_flag_lines(page["flags"]) or ["Флаги: нет"])
+        if "source" in page:
+            lines.append(_source_line(page))
         if page["has_table"]:
             lines.append("Таблица: есть")
         if not page["lines"]:
