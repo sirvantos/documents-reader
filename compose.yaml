@@ -37,6 +37,8 @@ services:
         condition: service_healthy
     environment:
       DOCREADER_TEST_DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+      # The recognition engine never runs on this server or in Docker (research R-4).
+      DOCREADER_FORBID_MODELS: "1"
     volumes:
       - .:/app:ro
 
@@ -51,6 +53,7 @@ services:
       # The repository is mounted read-only: keep tool caches out of it.
       RUFF_NO_CACHE: "true"
       MYPY_CACHE_DIR: /tmp/mypy
+      DOCREADER_FORBID_MODELS: "1"
     volumes:
       - .:/app:ro
 

@@ -8,6 +8,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "pymorphy3>=2.0.6",
     "pymorphy3-dicts-ru>=2.4.417150.4580142",
+    "pillow",
 ]
 
 [project.scripts]
@@ -17,7 +18,6 @@ docreader = "docreader.cli:main"
 dev = [
     "pytest",
     "reportlab",
-    "pillow",
     "ruff>=0.17.5",
     "mypy>=2.4.1",
 ]

@@ -89,6 +89,18 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
 
 
+# --- recognition engine guard (feature 13, research R-4) ----------------------------
+
+FORBID_MODELS_ENV = "DOCREADER_FORBID_MODELS"
+
+
+@pytest.fixture(autouse=True)
+def _forbid_models(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may start a real recognition engine, except the `real_model` group."""
+    if request.node.get_closest_marker("real_model") is None:
+        monkeypatch.setenv(FORBID_MODELS_ENV, "1")
+
+
 # --- database --------------------------------------------------------------------
 
 

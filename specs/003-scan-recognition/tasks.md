@@ -82,8 +82,8 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 **Purpose**: `Pillow` становится основной зависимостью; папка синтетики попадает
 в `.gitignore`; первые два слоя запрета движка на сервере (R-4)
 
-- [ ] T001 Move `pillow` from the `dev` dependency group to `[project] dependencies` in `pyproject.toml` (keep it in no other group), run `uv lock` and `uv sync`; add `tests/synthetic/out/` to `.gitignore`; `docker compose build tests` and check `docker compose run --rm tests -x -q` stays green — executor: haiku
-- [ ] T002 [P] Guard layers 2–3 of research R-4: (a) add `DOCREADER_FORBID_MODELS: "1"` to the `environment` of the `tests` and `lint` services in `compose.yaml`; (b) add an autouse fixture to `tests/conftest.py` that sets `DOCREADER_FORBID_MODELS=1` via `monkeypatch.setenv` for every test **not** marked `real_model` (check `request.node.get_closest_marker("real_model")`) and leaves the environment untouched for `real_model` tests; (c) add `tests/unit/test_forbid_models_fixture.py` asserting the variable is `"1"` inside an ordinary test — executor: opus
+- [X] T001 Move `pillow` from the `dev` dependency group to `[project] dependencies` in `pyproject.toml` (keep it in no other group), run `uv lock` and `uv sync`; add `tests/synthetic/out/` to `.gitignore`; `docker compose build tests` and check `docker compose run --rm tests -x -q` stays green — executor: haiku
+- [X] T002 [P] Guard layers 2–3 of research R-4: (a) add `DOCREADER_FORBID_MODELS: "1"` to the `environment` of the `tests` and `lint` services in `compose.yaml`; (b) add an autouse fixture to `tests/conftest.py` that sets `DOCREADER_FORBID_MODELS=1` via `monkeypatch.setenv` for every test **not** marked `real_model` (check `request.node.get_closest_marker("real_model")`) and leaves the environment untouched for `real_model` tests; (c) add `tests/unit/test_forbid_models_fixture.py` asserting the variable is `"1"` inside an ordinary test — executor: opus
 
 **Checkpoint**: полный набор зелёный, как до фичи; в `docker compose run --rm tests`
 задано `DOCREADER_FORBID_MODELS=1`
