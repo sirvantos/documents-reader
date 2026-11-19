@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from docreader.config import ReadingSettings
+from docreader.ocr import display_point, pdf_point
 from docreader.textnorm import normalize_chars
 
 Box = tuple[float, float, float, float]  # (left, bottom, right, top)
@@ -279,30 +280,6 @@ class PageLayout:
     ends_in_columns: bool = False
 
 
-def _display_point(
-    x: float, y: float, rotation: int, width: float, height: float
-) -> tuple[float, float]:
-    if rotation == 90:
-        return y, width - x
-    if rotation == 180:
-        return width - x, height - y
-    if rotation == 270:
-        return height - y, x
-    return x, y
-
-
-def _pdf_point(
-    x: float, y: float, rotation: int, width: float, height: float
-) -> tuple[float, float]:
-    if rotation == 90:
-        return width - y, x
-    if rotation == 180:
-        return width - x, height - y
-    if rotation == 270:
-        return y, height - x
-    return x, y
-
-
 def _map_box(box: Box, fn) -> Box:
     points = [fn(x, y) for x in (box[0], box[2]) for y in (box[1], box[3])]
     xs = [p[0] for p in points]
@@ -318,7 +295,7 @@ def _chars_to_display(
     return [
         Char(
             ch.text,
-            _map_box(ch.box, lambda x, y: _display_point(x, y, rotation, width, height)),
+            _map_box(ch.box, lambda x, y: display_point(x, y, rotation, width, height)),
             angle=ch.angle,
             generated=ch.generated,
             map_error=ch.map_error,
@@ -410,8 +387,8 @@ def _find_tables(rules: Sequence[Rule], rotation: int, width: float, height: flo
     horizontal: list[tuple[float, float, float]] = []  # (y, x0, x1)
     vertical: list[tuple[float, float, float]] = []  # (x, y0, y1)
     for rule in rules:
-        x0, y0 = _display_point(rule.x0, rule.y0, rotation, width, height)
-        x1, y1 = _display_point(rule.x1, rule.y1, rotation, width, height)
+        x0, y0 = display_point(rule.x0, rule.y0, rotation, width, height)
+        x1, y1 = display_point(rule.x1, rule.y1, rotation, width, height)
         if abs(y1 - y0) <= abs(x1 - x0):
             horizontal.append(((y0 + y1) / 2, min(x0, x1), max(x0, x1)))
         else:
@@ -510,7 +487,7 @@ def layout_page(
     """
 
     def to_pdf(box: Box) -> Box:
-        return _map_box(box, lambda x, y: _pdf_point(x, y, rotation, width, height))
+        return _map_box(box, lambda x, y: pdf_point(x, y, rotation, width, height))
 
     disp_h = width if rotation in (90, 270) else height
 
