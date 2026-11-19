@@ -433,7 +433,7 @@ def render_page_text(view: dict) -> str:
     for page in view["pages"]:
         lines = [f"{view['id']}, стр. {page['page']}"]
         lines.extend(_flag_lines(page["flags"]) or ["Флаги: нет"])
-        if "source" in page:
+        if "source" in page and page["lines"]:  # a page without lines has no source to name
             lines.append(_source_line(page))
         if page["has_table"]:
             lines.append("Таблица: есть")
