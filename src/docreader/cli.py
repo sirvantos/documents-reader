@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from docreader.ids import format_document_id, parse_document_id
 from docreader.intake import run_intake
 from docreader.render import (
     NO_READ_DOCUMENTS,
+    NO_REVIEW_PAGES,
+    NO_SCAN_DOCUMENTS,
     render_document_text,
     render_find_text,
     render_intake_json,
@@ -27,9 +30,13 @@ from docreader.render import (
     render_read_report_text,
     render_read_text,
     render_reclassify_text,
+    render_recognition_csv,
+    render_recognition_table,
     render_recognize_eval_text,
     render_recognize_progress,
     render_recognize_text,
+    render_review_csv,
+    render_review_text,
     render_show_text,
     render_verify_text,
 )
@@ -110,6 +117,20 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("read-report", help="отчёт о чтении документов")
+    p.add_argument(
+        "--csv",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ПУТЬ",
+        help="сохранить отчёт в CSV (без пути — в папку reports каталога данных)",
+    )
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("recognize-report", help="отчёт о распознавании сканов")
+    p.add_argument(
+        "--review", action="store_true", help="список страниц на просмотр вместо отчёта"
+    )
     p.add_argument(
         "--csv",
         nargs="?",
@@ -336,6 +357,52 @@ def _cmd_read_report(
     return 0
 
 
+def _write_report_csv(text: str, arg: str | None, settings: Settings, prefix: str) -> Path:
+    """Write a CSV report with a BOM; without a path, into the reports folder."""
+    if arg:
+        target = Path(arg)
+    else:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = settings.reports_dir / f"{prefix}-{stamp}.csv"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with open(target, "w", encoding="utf-8-sig", newline="") as fh:
+        fh.write(text)
+    return target
+
+
+def _cmd_recognize_report(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    if args.review:
+        pages = [asdict(page) for page in textview.recognition_review(conn, settings)]
+        if args.csv is not None:
+            target = _write_report_csv(
+                render_review_csv(pages), args.csv, settings, "recognition-review"
+            )
+            print(f"Отчёт сохранён: {target}")
+        elif args.json:
+            print(json.dumps({"pages": pages}, ensure_ascii=False, indent=2))
+        elif not pages:
+            print(NO_REVIEW_PAGES)
+        else:
+            print(render_review_text(pages))
+        return 0
+
+    report = textview.recognition_report(conn, settings).to_json()
+    if args.csv is not None:
+        target = _write_report_csv(
+            render_recognition_csv(report), args.csv, settings, "recognition"
+        )
+        print(f"Отчёт сохранён: {target}")
+    elif args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif not report["documents"]:
+        print(NO_SCAN_DOCUMENTS)
+    else:
+        print(render_recognition_table(report))
+    return 0
+
+
 def _cmd_recognize_eval(
     args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
 ) -> int:
@@ -365,6 +432,7 @@ _HANDLERS: dict[str, _Handler] = {
     "recognize": _cmd_recognize,
     "text": _cmd_text,
     "read-report": _cmd_read_report,
+    "recognize-report": _cmd_recognize_report,
     "recognize-eval": _cmd_recognize_eval,
 }
 

@@ -356,7 +356,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 
 ### Tests for Шаг 5 ⚠️
 
-- [ ] T046 [P] [US7] Write failing integration tests in `tests/integration/test_recognize_report.py` — executor: opus
+- [X] T046 [P] [US7] Write failing integration tests in `tests/integration/test_recognize_report.py` — executor: opus
   - US7-1: per document — scan pages, recognised, errors, pages per flag (from stored values and current thresholds, the same numbers `read` would give), mean quality, seconds, state; a totals row; documents without scans are absent
   - US7-2: `--csv` → UTF-8 with BOM, `;`, last row `Итого;…`; default path `reports/recognition-ГГГГММДД-ЧЧММСС.csv`; message «Отчёт сохранён: <путь>»; no contract text in the file (assert no truth line appears)
   - US7-3: `--review` → errors first, then the rest by quality ascending; each row has the id, page, flag name and reason; `--review --csv` uses the default name `recognition-review-…`; `--json` shapes per contracts/cli.md
@@ -365,8 +365,8 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 ### Implementation for Шаг 5
 
 - [X] T047 [US7] Implement the report and review queries in `src/docreader/textview.py` (one query per report over `page`, `page_recognition` and `stage_status`; flags through `quality.recognition_flags` on the stored values), returning dataclasses — executor: sonnet
-- [ ] T048 [P] [US7] Add `recognize-report [--review] [--csv [ПУТЬ]] [--json]` to `src/docreader/cli.py`, the table, CSV and JSON rendering in `src/docreader/render.py`, the «Распозн.» column in `list` and the two `read-report` columns, with tests in `tests/unit/test_render_recognition.py` — executor: haiku
-- [ ] T049 [US7] Make `tests/integration/test_recognize_report.py` pass end to end — executor: sonnet
+- [X] T048 [P] [US7] Add `recognize-report [--review] [--csv [ПУТЬ]] [--json]` to `src/docreader/cli.py`, the table, CSV and JSON rendering in `src/docreader/render.py`, the «Распозн.» column in `list` and the two `read-report` columns, with tests in `tests/unit/test_render_recognition.py` — executor: haiku
+- [X] T049 [US7] Make `tests/integration/test_recognize_report.py` pass end to end — executor: sonnet
 
 ---
 

@@ -1,8 +1,15 @@
-"""`docreader recognize` text output and progress line (contracts/cli.md, T020)."""
+"""`docreader recognize` and `recognize-report` rendering (contracts/cli.md, T020, T048)."""
 
 from __future__ import annotations
 
-from docreader.render import render_recognize_progress, render_recognize_text
+from docreader.render import (
+    render_recognition_csv,
+    render_recognition_table,
+    render_recognize_progress,
+    render_recognize_text,
+    render_review_csv,
+    render_review_text,
+)
 
 
 def _doc(
@@ -233,3 +240,150 @@ def test_totals_average_rounds_to_one_decimal() -> None:
 def test_progress_line_uses_decimal_comma() -> None:
     assert render_recognize_progress("D-0003", 5, 42, 3.8) == "D-0003 стр. 5/42  3,8 с"
     assert render_recognize_progress("D-0003", 6, 42, 12.0) == "D-0003 стр. 6/42  12,0 с"
+
+
+# --- recognize-report: table, review list, CSV (contracts/cli.md «recognize-report») ----
+
+REPORT_HEADER = [
+    "ID", "Имя", "Сканы", "Распозн.", "Ошибки", "Низк. кач.", "Без текста", "Пустые",
+    "Ср. оценка", "Время, с", "Состояние",
+]
+
+
+def _report_doc(
+    doc_id: str,
+    *,
+    name: str = "dog.pdf",
+    scan_pages: int = 42,
+    recognized: int = 42,
+    errors: int = 0,
+    flags: dict | None = None,
+    mean_quality: float | None = 0.91,
+    seconds: float = 412.4,
+    state: str = "done",
+) -> dict:
+    return {
+        "id": doc_id,
+        "name": name,
+        "scan_pages": scan_pages,
+        "recognized": recognized,
+        "errors": errors,
+        "flags": flags or {"low_recognition_quality": 3, "scan_no_text": 1, "empty": 2},
+        "mean_quality": mean_quality,
+        "seconds": seconds,
+        "state": state,
+    }
+
+
+def _report(documents: list[dict], totals: dict | None = None) -> dict:
+    return {
+        "documents": documents,
+        "totals": totals
+        or {
+            "scan_pages": 94,
+            "recognized": 93,
+            "errors": 1,
+            "flags": {"low_recognition_quality": 3, "scan_no_text": 1, "empty": 2},
+            "mean_quality": 0.93,
+            "seconds": 942.0,
+        },
+    }
+
+
+def _table_rows(report: dict) -> list[list[str]]:
+    return [line.split() for line in render_recognition_table(report).splitlines()]
+
+
+def test_table_header_words_in_order() -> None:
+    lines = render_recognition_table(_report([_report_doc("D-0003")])).splitlines()
+
+    header = lines[0]
+    positions = [header.index(word) for word in REPORT_HEADER]
+    assert positions == sorted(positions)
+    assert header.split("  ")[0] == "ID"
+
+
+def test_table_row_values_and_decimal_comma() -> None:
+    doc = _report_doc("D-0003", mean_quality=0.9)
+    lines = render_recognition_table(_report([doc])).splitlines()
+
+    assert lines[1].split() == [
+        "D-0003", "dog.pdf", "42", "42", "0", "3", "1", "2", "0,90", "412", "готово",
+    ]
+
+
+def test_table_totals_row_last() -> None:
+    lines = render_recognition_table(_report([_report_doc("D-0003"), _report_doc("D-0005")]))
+    last = lines.splitlines()[-1]
+
+    assert len(lines.splitlines()) == 4
+    assert last.split() == ["Итого", "94", "93", "1", "3", "1", "2", "0,93", "942"]
+
+
+def test_table_missing_quality_is_dash() -> None:
+    doc = _report_doc("D-0004", scan_pages=2, recognized=0, mean_quality=None,
+                      flags={}, seconds=0.0, state="pending")
+    row = render_recognition_table(_report([doc])).splitlines()[1]
+
+    assert "—" in row.split()
+    assert row.endswith("ожидает")
+
+
+def test_table_state_words() -> None:
+    docs = [
+        _report_doc("D-0001", state="needs_review"),
+        _report_doc("D-0002", state="failed"),
+    ]
+    lines = render_recognition_table(_report(docs)).splitlines()
+
+    assert lines[1].endswith("требует просмотра")
+    assert lines[2].endswith("ошибка")
+
+
+def test_table_numbers_right_aligned() -> None:
+    small = _report_doc("D-0001", scan_pages=2, recognized=2, seconds=3.0)
+    big = _report_doc("D-0002", scan_pages=120, recognized=120, seconds=1500.0)
+    lines = render_recognition_table(_report([small, big])).splitlines()
+
+    # the last digit of the «Сканы» column is at the same position in both rows
+    assert lines[1].index("2  ") + 1 == lines[2].index("120") + 3
+
+
+def test_review_text_error_and_flag_lines() -> None:
+    pages = [
+        {"id": "D-0005", "page": 17, "code": "recognition_error",
+         "reason": "RuntimeError: boom", "quality": None},
+        {"id": "D-0003", "page": 40, "code": "scan_no_text",
+         "reason": "строк нет, тёмных точек 4,1%", "quality": None},
+        {"id": "D-0003", "page": 31, "code": "low_recognition_quality",
+         "reason": "оценка 0,52 < 0,80", "quality": 0.52},
+    ]
+
+    lines = render_review_text(pages).splitlines()
+
+    assert lines == [
+        "D-0005  стр. 17  ошибка распознавания  RuntimeError: boom",
+        "D-0003  стр. 40  текст на скане не найден  строк нет, тёмных точек 4,1%",
+        "D-0003  стр. 31  низкое качество распознавания  оценка 0,52 < 0,80",
+    ]
+
+
+def test_csv_has_header_rows_and_totals_with_semicolons() -> None:
+    report = _report([_report_doc("D-0003", name="a;b.pdf")])
+
+    rows = render_recognition_csv(report).splitlines()
+
+    assert rows[0].split(";") == REPORT_HEADER
+    assert rows[1].startswith('D-0003;"a;b.pdf";42;42;0;3;1;2;0,91;412;готово')
+    assert rows[-1] == "Итого;;94;93;1;3;1;2;0,93;942;"
+
+
+def test_review_csv_header_and_rows() -> None:
+    pages = [{"id": "D-0005", "page": 17, "code": "recognition_error",
+              "reason": "RuntimeError: boom", "quality": None}]
+
+    rows = render_review_csv(pages).splitlines()
+
+    assert rows[0].split(";") == ["ID", "Стр.", "Проблема", "Причина", "Оценка"]
+    assert rows[1] == "D-0005;17;ошибка распознавания;RuntimeError: boom;—"
+    assert render_review_csv([]).splitlines() == ["ID;Стр.;Проблема;Причина;Оценка"]

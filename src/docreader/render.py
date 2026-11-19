@@ -695,3 +695,107 @@ def render_recognize_eval_text(data: dict, report_path: str, *, with_diff: bool 
             got = item["recognised"] if item["recognised"] is not None else "(строки нет)"
             lines.append(f"{item['id']} стр. {item['page']}; {item['expected']}; {got}")
     return "\n".join(lines)
+
+
+# --- recognize-report (contracts/cli.md, US7, FR-018) ----------------------------------
+
+_RECOGNITION_HEADER = [
+    "ID", "Имя", "Сканы", "Распозн.", "Ошибки", "Низк. кач.", "Без текста", "Пустые",
+    "Ср. оценка", "Время, с", "Состояние",
+]
+_RECOGNITION_LEFT_COLUMNS = (0, 1, 10)
+_RECOGNITION_TOTAL_LABEL = "Итого"
+NO_SCAN_DOCUMENTS = "Нет документов со страницами-сканами"
+NO_REVIEW_PAGES = "Нет страниц на просмотр"
+_REVIEW_HEADER = ["ID", "Стр.", "Проблема", "Причина", "Оценка"]
+_RECOGNITION_ERROR_CODE = "recognition_error"
+_RECOGNITION_ERROR_NAME = "ошибка распознавания"
+
+
+def _quality_cell(value: float | None) -> str:
+    return "—" if value is None else _decimal_text(value)
+
+
+def _aligned(rows: list[list[str]], left_columns: tuple[int, ...]) -> str:
+    """Columns padded to the widest cell; numbers right-aligned, text left-aligned."""
+    widths = [max(len(row[col]) for row in rows) for col in range(len(rows[0]))]
+    lines = []
+    for row in rows:
+        cells = [
+            cell.ljust(width) if col in left_columns else cell.rjust(width)
+            for col, (cell, width) in enumerate(zip(row, widths, strict=True))
+        ]
+        lines.append("  ".join(cells).rstrip())
+    return "\n".join(lines)
+
+
+def _csv_text(rows: list[list[str]]) -> str:
+    """CSV text (`;` separated); the writer adds the BOM through `utf-8-sig`."""
+    buffer = io.StringIO()
+    csv.writer(buffer, delimiter=";").writerows(rows)
+    return buffer.getvalue()
+
+
+def _recognition_stats(label: str, name: str, data: dict, state: str) -> list[str]:
+    flags = data["flags"]
+    return [
+        label,
+        name,
+        str(data["scan_pages"]),
+        str(data["recognized"]),
+        str(data["errors"]),
+        str(flags["low_recognition_quality"]),
+        str(flags["scan_no_text"]),
+        str(flags["empty"]),
+        _quality_cell(data["mean_quality"]),
+        str(round(data["seconds"])),
+        state,
+    ]
+
+
+def _recognition_rows(report: dict) -> list[list[str]]:
+    """Header, one row per document and the totals row, all as strings."""
+    rows = [list(_RECOGNITION_HEADER)]
+    for doc in report["documents"]:
+        state = STATE_LABELS.get(doc["state"], doc["state"])
+        rows.append(_recognition_stats(doc["id"], doc["name"], doc, state))
+    rows.append(_recognition_stats(_RECOGNITION_TOTAL_LABEL, "", report["totals"], ""))
+    return rows
+
+
+def render_recognition_table(report: dict) -> str:
+    """Text table of `recognize-report` (the report dict is `RecognitionReport.to_json()`)."""
+    return _aligned(_recognition_rows(report), _RECOGNITION_LEFT_COLUMNS)
+
+
+def render_recognition_csv(report: dict) -> str:
+    return _csv_text(_recognition_rows(report))
+
+
+def _problem_name(code: str) -> str:
+    if code == _RECOGNITION_ERROR_CODE:
+        return _RECOGNITION_ERROR_NAME
+    return FLAG_NAMES[code]
+
+
+def render_review_text(pages: list[dict]) -> str:
+    """One line per page to review: `D-0005  стр. 17  <problem>  <reason>`."""
+    return "\n".join(
+        f"{p['id']}  стр. {p['page']}  {_problem_name(p['code'])}  {p['reason']}"
+        for p in pages
+    )
+
+
+def render_review_csv(pages: list[dict]) -> str:
+    rows = [list(_REVIEW_HEADER)]
+    rows += [
+        [
+            p["id"],
+            str(p["page"]),
+            _problem_name(p["code"]),
+            p["reason"],
+            _quality_cell(p["quality"]),
+        ]
+        for p in pages
+    ]
+    return _csv_text(rows)
