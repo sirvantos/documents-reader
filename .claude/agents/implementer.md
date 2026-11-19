@@ -18,6 +18,10 @@ Working rules:
 - Do only the task(s) you were given. No extra features, refactors or "future-proofing".
 - If the task is a test task, write the test and confirm it fails for the right reason.
   If it is an implementation task with tests already written, make them pass.
+- Tests handed to you by the coordinating session are fixed: do not edit, weaken,
+  skip, mark xfail or delete them, and do not change fixtures or helpers so that they
+  test less. If you believe such a test is wrong, stop and report why instead of
+  changing it. You may add extra tests of your own.
 - Before reporting, run the relevant tests (`uv run pytest ...`), `uv run ruff check .`
   and `uv run mypy`; all must pass. Report failures honestly with the output.
 - Follow «Правила кода» in `docs/tech-context.md`: explicit transactions on an

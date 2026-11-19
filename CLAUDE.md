@@ -50,6 +50,22 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
     These are database schema and migrations, atomic file intake (copy and
     transaction ordering), classification and other decision rules, anything touching
     the privacy guards, and any task whose first delegated attempt failed review.
+    For feature 13 this also covers the rule that decides a page is a scan, the
+    recognition-engine interface with its test fakes, and the guards that keep the
+    engine from running on this server.
+- Tests follow the same split (test-first):
+  - Critical tasks: Opus writes both the tests and the code.
+  - Default tasks: Opus writes the tests first, runs them and confirms they fail
+    for the right reason, then hands the task to `implementer` (Sonnet) to make
+    them pass.
+  - Mechanical tasks: Haiku writes both the tests and the code.
+  - Tests written by the main session are fixed for the implementer: it must not
+    edit, weaken, skip or delete them. If it thinks such a test is wrong, it stops
+    and reports why. It may add extra tests of its own.
+- Diagnosing bugs from runs the analyst pastes in (synthetic data) is analysis, not
+  coding: Opus finds the cause and states the rule or fix, and only then delegates
+  the code change.
+- If a Haiku result fails review, that kind of task moves to Sonnet from then on.
 - Independent tasks marked `[P]` may be delegated in parallel.
 
 ## Project rules
