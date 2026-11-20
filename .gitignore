@@ -21,3 +21,6 @@ dist/
 .vscode/
 .idea/
 tests/synthetic/out/
+
+# Real contracts under the constitution 4.0.0 exception: never committed
+tests/samples/

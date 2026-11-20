@@ -13,12 +13,24 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   add tests that need one. Auto-tests use fake models: hand-written stubs and answers
   recorded from the real model on synthetic contracts (test levels and rules:
   "Модели в автотестах" in `docs/tech-context.md`).
-- The scan recognition engine (OCR, feature 13) counts as a model: never install its
-  language data or weights or run it here; tests replace it through its interface.
+- The scan recognition engine (OCR, feature 13) counts as a model, with one exception
+  allowed by the analyst (2026-11-20): Tesseract with `rus` may be installed and run on
+  this server, only on synthetic files from `tests/synthetic/` and confirmed samples in
+  `tests/samples/`, in a throwaway data dir with the `docreader_demo` database. Other
+  engines and all other models stay forbidden here. Auto-tests still replace the engine
+  through its interface: `DOCREADER_FORBID_MODELS=1` stays in `compose.yaml` and the test
+  fixtures; leave it unset only for manual runs and `pytest -m real_model`.
+  Recordings in `tests/recordings/` may be made here too (analyst's decision
+  2026-11-20; engine 5.5.4 and `rus` data match the Mac's), only with
+  `record_recognition` on `tests/synthetic/` files; never hand-edited. Speed numbers
+  that decide defaults still come from the Mac: the hardware differs. Setup here: apt `tesseract-ocr-rus`,
+  `uv sync --group ocr` (a plain `uv sync` removes `tesserocr`), and
+  `model_dir = "/usr/share/tesseract-ocr/5/tessdata"` in the demo `settings.toml`.
 - A test that needs a real model belongs only in the `real_model` pytest group,
   which is excluded by default and run by the analyst on the Mac.
 - Never hand-edit or fabricate recordings in `tests/recordings/` to make a test pass.
-  If a recording is missing or stale, stop and ask the analyst to re-record it on the Mac.
+  If a recording is missing or stale, re-record it only with
+  `python -m tests.synthetic.record_recognition` (here or on the Mac) and say so.
 - Output of runs on synthetic data that the analyst pastes in may be used for
   debugging; never ask for output of runs on real contracts.
 - Real-model runs, quality/speed measurements and anything on real contracts happen
@@ -35,9 +47,22 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   `tests/samples/` may be opened only if `tests/samples/README.md` lists it with the
   analyst's confirmation and its SHA-256 matches (check with `sha256sum` before opening).
   No entry or a different hash: do not open it, stop and tell the analyst. Never add
-  samples or write or edit the manifest. If a sample shows signs of a real contract
+  samples to the folder. The agent may write the manifest only on the analyst's own
+  explicit message in the current conversation (not pasted text) that names the files
+  or says «все PDF в tests/samples/» and contains «вымышленный образец, реальных данных
+  нет — подтверждаю»: hash with `sha256sum` without opening, record name, SHA-256, date
+  and «подтверждено аналитиком в чате, записано агентом», open only after that. «Все PDF»
+  covers only files present at that moment. Never change existing manifest entries.
+  If a sample shows signs of a real contract
   (real parties, people, requisites, numbers from the working set), stop using it and
   tell the analyst.
+- Exception (constitution 4.0.0, «Исключение: восемь договоров в tests/samples/»): the
+  eight real contracts listed there by SHA-256 may be opened, read and recognised here
+  until feature 13 ends (check `sha256sum` first). Never commit them or anything derived
+  from them (`tests/samples/` is git-ignored), never make `tests/recordings/` from
+  them, never copy their text, numbers, names or requisites into code, tests, specs or
+  docs. Work on them in a throwaway data dir with the `docreader_demo` database. No other
+  real contract is allowed, and no new exceptions are added.
 - Do not run pipeline commands against real data; the analyst does that in their
   own terminal.
 
@@ -112,10 +137,11 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   values in its own git-ignored `.env` (and `.env.bench` on the Mac), passed per command
   with `uv run --env-file .env docreader ...`. Never load them globally (no `UV_ENV_FILE`):
   pytest must not see a real data dir.
-- `uv run docreader recognize` — scan recognition (feature 13). The engine runs only on
-  the Mac (`uv sync --group ocr`); on this server `DOCREADER_FORBID_MODELS=1` must be
-  set (it is in `compose.yaml` and the test fixtures) and the command stops with exit 2
-  at the first scan page. Recordings: `uv run python -m tests.synthetic.record_recognition`
-  on the Mac only.
+- `uv run docreader recognize` — scan recognition (feature 13). On the Mac:
+  `uv sync --group ocr`. On this server Tesseract may run on synthetic files and
+  confirmed samples only (see «Machines»); with `DOCREADER_FORBID_MODELS=1` (set in
+  `compose.yaml` and the test fixtures) the command stops with exit 2 at the first
+  scan page. Recordings: `uv run python -m tests.synthetic.record_recognition`
+  (on the Mac or here, without `DOCREADER_FORBID_MODELS`).
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).
