@@ -6,12 +6,15 @@ the images it got, so tests can count calls and check image sizes.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from PIL import Image
 
+from docreader.config import RecognitionSettings
 from docreader.ocr import EngineLine, EngineOutput, RecognitionEngine, display_point
 
 
@@ -165,3 +168,86 @@ class EngineFactorySpy:
     def __call__(self, settings: Any, data_dir: Any) -> Any:
         self.calls += 1
         return self.engines[min(self.calls, len(self.engines)) - 1]
+
+
+# --- RecordedEngine (level 2, task T037) ---------------------------------------------------
+
+STALE_HINT = (
+    "запись устарела (или отсутствует) — перезапишите её: "
+    "uv run python -m tests.synthetic.record_recognition (quickstart Б3)"
+)
+THUMB_SIZE = (32, 32)
+# Mean absolute grey difference (0..255) of two thumbnails that still show the same image:
+# the same page rendered by another pdfium build differs by a few levels at most, while
+# another page or another turn of the same page differs by tens.
+MAX_THUMB_DIFF = 8.0
+
+
+class StaleRecording(AssertionError):
+    """The recording is missing or does not match the settings: the test fails, not skips."""
+
+
+def thumbnail(image: Image.Image) -> str:
+    """A 32x32 grey thumbnail as hex: enough to tell pages and turns apart."""
+    return image.convert("L").resize(THUMB_SIZE, Image.Resampling.BOX).tobytes().hex()
+
+
+class RecordedEngine:
+    """Answers with the recorded output of a real engine (`record_recognition`).
+
+    A recording holds, per scan page, the engine output on the image turned 0, 90, 180
+    and 270 degrees with a thumbnail of each image. `recognize` returns the output of the
+    entry with the same image size whose thumbnail is closest; an image without such an
+    entry is a miss (`misses`, LookupError). The recording must match the engine and dpi
+    of `settings` and the current `SCAN_GENERATOR_VERSION`, otherwise StaleRecording.
+    """
+
+    def __init__(self, path: str | Path, settings: RecognitionSettings) -> None:
+        from tests.synthetic import make_scans
+
+        path = Path(path)
+        if not path.is_file():
+            raise StaleRecording(f"{path.name}: {STALE_HINT}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        got = (data["engine"], data["dpi"], data["generator_version"])
+        expected = (settings.engine, settings.dpi, make_scans.SCAN_GENERATOR_VERSION)
+        if got != expected:
+            raise StaleRecording(
+                f"{path.name}: {STALE_HINT}; в записи (движок, dpi, генератор) = {got}, "
+                f"нужно {expected}"
+            )
+        self.name: str = data["engine"]
+        self.version: str = data["engine_version"]
+        self.calls = 0
+        self.misses: list[tuple[int, int]] = []
+        self._entries = [
+            (
+                (turn["image_size"][0], turn["image_size"][1]),
+                bytes.fromhex(turn["thumb"]),
+                EngineOutput(
+                    lines=tuple(
+                        EngineLine(ln["text"], tuple(ln["box"]), ln["confidence"])
+                        for ln in turn["lines"]
+                    ),
+                    orientation=turn["orientation"],
+                ),
+            )
+            for page in data["pages"]
+            for turn in page["turns"]
+        ]
+
+    def recognize(self, image: Image.Image) -> EngineOutput:
+        self.calls += 1
+        thumb = bytes.fromhex(thumbnail(image))
+        width, height = image.size
+        best: tuple[float, EngineOutput] | None = None
+        for (w, h), recorded, output in self._entries:
+            if abs(w - width) > 2 or abs(h - height) > 2:
+                continue
+            diff = sum(abs(a - b) for a, b in zip(recorded, thumb, strict=True)) / len(thumb)
+            if best is None or diff < best[0]:
+                best = (diff, output)
+        if best is None or best[0] > MAX_THUMB_DIFF:
+            self.misses.append(image.size)
+            raise LookupError(f"no recorded answer for an image of size {image.size}")
+        return best[1]

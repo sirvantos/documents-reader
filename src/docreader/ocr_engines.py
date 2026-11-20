@@ -4,17 +4,15 @@ The only place that names engine libraries. Every adapter is loaded through
 `load_engine`, which refuses to run on a machine where DOCREADER_FORBID_MODELS is set
 (the development server, Docker, the test suite) and switches network and telemetry off
 before the engine library is imported. Engine libraries are imported lazily inside the
-factories; they are an optional dependency group (`uv sync --group ocr`, Mac only).
+factories; they are an optional dependency group (`uv sync --group ocr`).
 """
 
 from __future__ import annotations
 
 import hashlib
-import io
 import os
-import platform
-import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
+from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -59,22 +57,59 @@ def tesseract_lines(items: Iterable[tuple[str, float, Iterable[float]]]) -> tupl
     return tuple(lines)
 
 
-def vision_lines(
-    items: Iterable[tuple[str, float, tuple[float, float, float, float]]],
-    *,
-    size: tuple[int, int],
-) -> tuple[EngineLine, ...]:
-    """(text, confidence 0..1, normalised (x, y, w, h) with a bottom-left origin)."""
-    width, height = size
-    lines = []
-    for text, confidence, (x, y, w, h) in items:
-        if text.strip():
-            box = (x * width, (1 - y - h) * height, (x + w) * width, (1 - y) * height)
-            lines.append(EngineLine(text, box, _clamp(confidence)))
-    return tuple(lines)
+Word = tuple[str, float, Sequence[float]]  # text, confidence 0..100, (l, t, r, b) px
+Line = tuple[str, float, Sequence[float], Sequence[Word]]  # Tesseract's line and its words
+
+# A gap between two words wider than this many word heights ends a segment: Tesseract
+# joins the two columns of a signature block or the cells of a table row into one line,
+# while justified text stretches spaces to about two heights (tuned by measurement).
+GAP_FACTOR = 3.0
+# Below this OSD confidence the orientation is treated as unknown and the trial decides.
+OSD_MIN_CONFIDENCE = 2.0
 
 
-# --- queue 1 adapters (research R-1); they run only on the analyst's Mac -------------------
+def split_wide_gaps(
+    lines: Iterable[Line], gap: float = GAP_FACTOR
+) -> list[tuple[str, float, Sequence[float]]]:
+    """Each Tesseract line, or its segments where the words are more than `gap` heights apart.
+
+    A line without such a gap is kept exactly as Tesseract gave it. A segment gets its words
+    joined by one space, the union of their boxes and their confidence weighted by length.
+    """
+    result: list[tuple[str, float, Sequence[float]]] = []
+    for text, confidence, box, words in lines:
+        words = [w for w in words if w[0].strip()]
+        if not words:
+            result.append((text, confidence, box))
+            continue
+        height = sorted(w[2][3] - w[2][1] for w in words)[len(words) // 2]
+        segments: list[list[Word]] = [[words[0]]]
+        for previous, word in pairwise(words):
+            if word[2][0] - previous[2][2] > gap * height:
+                segments.append([word])
+            else:
+                segments[-1].append(word)
+        if len(segments) == 1:
+            result.append((text, confidence, box))
+            continue
+        for segment in segments:
+            size = sum(len(w[0]) for w in segment)
+            result.append(
+                (
+                    " ".join(w[0] for w in segment),
+                    sum(w[1] * len(w[0]) for w in segment) / size,
+                    (
+                        min(w[2][0] for w in segment),
+                        min(w[2][1] for w in segment),
+                        max(w[2][2] for w in segment),
+                        max(w[2][3] for w in segment),
+                    ),
+                )
+            )
+    return result
+
+
+# --- the chosen adapter (research R-1, decision 2026-11-20) ------------------------------
 
 
 class _Tesseract:
@@ -102,87 +137,69 @@ class _Tesseract:
         engine = tesserocr.tesseract_version().splitlines()[0].replace("tesseract ", "")
         self.version = f"{engine} rus {digest}"
         self._api = tesserocr.PyTessBaseAPI(path=path, lang="rus")
+        # Orientation from Tesseract's own detector when its data is there (R-6): the turn
+        # trial alone is misled, because Tesseract reads sideways text as well.
+        self._osd: Any = None
+        if "osd" in languages:
+            osd = Path(path) / "osd.traineddata"
+            osd_digest = hashlib.sha256(osd.read_bytes()).hexdigest()[:12] if osd.is_file() else "?"
+            self.version += f" osd {osd_digest}"
+            self._osd = tesserocr.PyTessBaseAPI(
+                path=path, lang="osd", psm=tesserocr.PSM.OSD_ONLY
+            )
 
     def recognize(self, image: Image.Image) -> EngineOutput:
         tesserocr = self._tesserocr
-        level = tesserocr.RIL.TEXTLINE
         self._api.SetImage(image)
         self._api.Recognize()
-        items: list[tuple[str, float, Iterable[float]]] = []
-        iterator = self._api.GetIterator()
-        for line in tesserocr.iterate_level(iterator, level):
-            text = line.GetUTF8Text(level) or ""
-            box = line.BoundingBox(level)
-            if box is not None:
-                items.append((text, line.Confidence(level), box))
-        return EngineOutput(lines=tesseract_lines(items))
+        heads: list[tuple[str, float, Sequence[float]]] = []
+        words: list[list[Word]] = []
+        for word in tesserocr.iterate_level(self._api.GetIterator(), tesserocr.RIL.WORD):
+            if word.IsAtBeginningOf(tesserocr.RIL.TEXTLINE):
+                line_box = word.BoundingBox(tesserocr.RIL.TEXTLINE) or (0, 0, 0, 0)
+                line_text = _text(word, tesserocr.RIL.TEXTLINE)
+                heads.append((line_text, word.Confidence(tesserocr.RIL.TEXTLINE), line_box))
+                words.append([])
+            text = _text(word, tesserocr.RIL.WORD)
+            box = word.BoundingBox(tesserocr.RIL.WORD)
+            if words and text and box is not None:
+                words[-1].append((text, word.Confidence(tesserocr.RIL.WORD), box))
+        lines = [(*head, line_words) for head, line_words in zip(heads, words, strict=True)]
+        return EngineOutput(
+            lines=tesseract_lines(split_wide_gaps(lines, GAP_FACTOR)),
+            orientation=self._orientation(image),
+        )
+
+    def _orientation(self, image: Image.Image) -> int | None:
+        """0/90/180/270 the text is turned clockwise, or None if OSD is absent or unsure."""
+        if self._osd is None:
+            return None
+        try:
+            self._osd.SetImage(image)
+            found = self._osd.DetectOrientationScript()
+        except RuntimeError:
+            return None
+        if not found or found.get("orient_conf", 0.0) < OSD_MIN_CONFIDENCE:
+            return None
+        degrees = int(found["orient_deg"])
+        return degrees if degrees in (0, 90, 180, 270) else None
+
+
+def _text(position: Any, level: Any) -> str:
+    """Text at the iterator position; tesserocr raises "No text returned" on an empty one."""
+    try:
+        return str(position.GetUTF8Text(level) or "")
+    except RuntimeError:
+        return ""
 
 
 def _load_tesseract(settings: RecognitionSettings, data_dir: Path) -> RecognitionEngine:
     return _Tesseract(settings)
 
 
-class _AppleVision:
-    """Apple Vision text recognition (macOS only), language correction off (FR-010)."""
-
-    name = "apple_vision"
-
-    def __init__(self) -> None:
-        import Quartz  # lazy: optional group `ocr`, macOS only
-        import Vision
-
-        self._quartz = Quartz
-        self._vision = Vision
-        self.version = f"macOS {platform.mac_ver()[0]}"
-
-    def _cg_image(self, image: Image.Image) -> Any:
-        from Foundation import NSData
-
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")  # in memory, nothing written to disk
-        data = NSData.dataWithBytes_length_(buffer.getvalue(), len(buffer.getvalue()))
-        source = self._quartz.CGImageSourceCreateWithData(data, None)
-        return self._quartz.CGImageSourceCreateImageAtIndex(source, 0, None)
-
-    def recognize(self, image: Image.Image) -> EngineOutput:
-        vision = self._vision
-        request = vision.VNRecognizeTextRequest.alloc().init()
-        request.setRecognitionLevel_(vision.VNRequestTextRecognitionLevelAccurate)
-        request.setRecognitionLanguages_(["ru-RU"])
-        request.setUsesLanguageCorrection_(False)
-        handler = vision.VNImageRequestHandler.alloc().initWithCGImage_options_(
-            self._cg_image(image), None
-        )
-        ok, error = handler.performRequests_error_([request], None)
-        if not ok:
-            raise RuntimeError(f"Vision: {error}")
-        items = []
-        for observation in request.results() or []:
-            candidates = observation.topCandidates_(1)
-            if not candidates:
-                continue
-            best = candidates[0]
-            rect = observation.boundingBox()
-            items.append(
-                (
-                    str(best.string()),
-                    float(best.confidence()),
-                    (rect.origin.x, rect.origin.y, rect.size.width, rect.size.height),
-                )
-            )
-        return EngineOutput(lines=vision_lines(items, size=image.size))
-
-
-def _load_apple_vision(settings: RecognitionSettings, data_dir: Path) -> RecognitionEngine:
-    if sys.platform != "darwin":
-        raise EnvironmentProblem("Движок apple_vision работает только на macOS")
-    return _AppleVision()
-
-
 # name -> factory (contracts/engine.md); the next queue is added only after measurement.
 ENGINES: dict[str, EngineFactory] = {
     "tesseract": _load_tesseract,
-    "apple_vision": _load_apple_vision,
 }
 
 
@@ -209,6 +226,6 @@ def load_engine(settings: RecognitionSettings, data_dir: Path) -> RecognitionEng
         return factory(settings, data_dir)
     except ImportError as exc:
         raise EnvironmentProblem(
-            f"Движок {name} не установлен ({exc}) — на ноутбуке выполните "
+            f"Движок {name} не установлен ({exc}) — выполните "
             "uv sync --group ocr"
         ) from exc

@@ -1,6 +1,7 @@
 """Record the real engine's answers on synthetic scans (level 2, research R-13; task T036).
 
-Run only on the analyst's Mac, with the engine set in `[recognition]`:
+Run where the engine is installed (the analyst's Mac or the development server,
+decision 2026-11-20), with the engine set in `[recognition]`:
 
     uv run python -m tests.synthetic.record_recognition [PATH ...]
 
@@ -8,11 +9,12 @@ Without paths, every variant of `make_scans` is generated into `tests/synthetic/
 and recorded. Every given path must lie inside `tests/synthetic/` of this repository
 (symlinks resolved): real contracts are never recorded (principle I, guard in code).
 The check runs before any settings or engine are loaded. On the development server the
-engine guard (DOCREADER_FORBID_MODELS) stops the command.
+engine guard (DOCREADER_FORBID_MODELS, if set) stops the command.
 
 Recordings: `tests/recordings/13-scan-recognition/<engine>/<variant>.json` with the
-engine, its version, dpi, date, generator version and the raw engine output per page
-(pixels of the rendered image). They are never edited by hand.
+engine, its version, dpi, date, generator version and, per scan page, the raw engine
+output on the image turned 0, 90, 180 and 270 degrees (pixels, with a thumbnail of each
+image for `RecordedEngine`). They are never edited by hand.
 """
 
 from __future__ import annotations
@@ -29,11 +31,14 @@ from docreader import ocr_engines
 from docreader.config import RecognitionSettings, load_settings
 from docreader.errors import DocreaderError
 from docreader.ocr import RecognitionEngine, render_page
+from docreader.recognition import _clockwise
+from tests.fakes.ocr import thumbnail
 from tests.synthetic import make_scans
 
 SYNTHETIC_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SYNTHETIC_DIR.parents[1]
 RECORDINGS_DIR = REPO_ROOT / "tests" / "recordings" / "13-scan-recognition"
+TURNS = (0, 90, 180, 270)
 REFUSED = "записываются только синтетические файлы из tests/synthetic/"
 
 EngineFactory = Callable[[RecognitionSettings, Path], RecognitionEngine]
@@ -81,18 +86,23 @@ def record_file(pdf_path: Path, engine: RecognitionEngine, dpi: int) -> dict:
                 image = render_page(page, dpi)
             finally:
                 page.close()
-            output = engine.recognize(image)
-            pages.append(
-                {
-                    "page": number,
-                    "image_size": list(image.size),
-                    "orientation": output.orientation,
-                    "lines": [
-                        {"text": ln.text, "box": list(ln.box), "confidence": ln.confidence}
-                        for ln in output.lines
-                    ],
-                }
-            )
+            turns = []
+            for turn in TURNS:  # recognition may try the turned image too (R-6)
+                turned = _clockwise(image, turn)
+                output = engine.recognize(turned)
+                turns.append(
+                    {
+                        "turn": turn,
+                        "image_size": list(turned.size),
+                        "thumb": thumbnail(turned),
+                        "orientation": output.orientation,
+                        "lines": [
+                            {"text": ln.text, "box": list(ln.box), "confidence": ln.confidence}
+                            for ln in output.lines
+                        ],
+                    }
+                )
+            pages.append({"page": number, "turns": turns})
     finally:
         pdf.close()
     return {
@@ -132,7 +142,9 @@ def main(
         print(str(exc), file=sys.stderr)
         return exc.exit_code
     if not paths:
-        paths = [p for p in make_scans.make_all(synthetic_dir / "out") if "scan" in p.name]
+        out = synthetic_dir / "out"
+        out.mkdir(parents=True, exist_ok=True)
+        paths = [p for p in make_scans.make_all(out) if "scan" in p.name]
     target = recordings_dir / engine.name
     target.mkdir(parents=True, exist_ok=True)
     for pdf_path in paths:

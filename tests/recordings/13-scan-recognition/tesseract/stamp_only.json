@@ -1,0 +1,140 @@
+{
+ "engine": "tesseract",
+ "engine_version": "5.5.4 rus e16e5e036cce osd 9cf5d576fcc4",
+ "dpi": 300,
+ "recorded_at": "2026-11-20T16:15:09+00:00",
+ "generator_version": 2,
+ "variant": "stamp_only",
+ "source": "scan_stamp_only.pdf",
+ "pages": [
+  {
+   "page": 1,
+   "turns": [
+    {
+     "turn": 0,
+     "image_size": [
+      2481,
+      3508
+     ],
+     "thumb": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8ebededebfffffffffffffffffffffffffffffffffffffffffffffffffffff4e9e7edecebe2ffffffffffffffffffffffffffffffffffffffffffffffffffe6e5feebf0e6f3f0ffffffffffffffffffffffffffffffffffffffffffffffffe9ececfdfce1e7fcffffffffffffffffffffffffffffffffffffffffffffffffffeae6dfddeaf2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffafdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdf5ffefe2e8fffadffbf2fffffffffffffffffffffffffffffffffffffffffff2ddafe5dfb5ddc3c7d1d8ffffffffffffffffffffffffffffffffffffffffffffe5d9f6fedeead5f7e7e5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": null,
+     "lines": [
+      {
+       "text": "АЛЬФА",
+       "box": [
+        849.0,
+        1139.0,
+        984.0,
+        1167.0
+       ],
+       "confidence": 0.9669865417480469
+      },
+      {
+       "text": "000",
+       "box": [
+        884.0,
+        1190.0,
+        949.0,
+        1212.0
+       ],
+       "confidence": 0.8691749572753906
+      }
+     ]
+    },
+    {
+     "turn": 90,
+     "image_size": [
+      3508,
+      2481
+     ],
+     "thumb": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe9e5f4ffffffffffffffffffffffffffffffffffffffffffffffffffffffffe9ece5e9f8ffffffffffffffffffffffffffffffffffffffffffffffffffffffe5ecfee7ebfffffffffffffffffffffffffffffffffffffffffffffffffffffae0fdebededfffffffffffffffffffffffffffffffffffffffffffffffffffffdddfcf0ecedffffffffffffffffffffffffffffffffffffffffffffffffffffffeae0e6ebebfffffffffffffffffffffffffffffffffffffffffffffffffffffff1e7f3e2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffcf0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2fdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe5ddf5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd9affffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff6e5effffffffffffffffffffffffffffffffffffffffffffffffffffffffffffddfe2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdeb4e8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeaddffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd5c3fafffffffffffffffffffffffffffffffffffffffffffffffffffffffffff6c7dfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7d1fbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe5d8f2ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": null,
+     "lines": [
+      {
+       "text": "АЛЬФА",
+       "box": [
+        2341.0,
+        849.0,
+        2369.0,
+        984.0
+       ],
+       "confidence": 0.9669865417480469
+      },
+      {
+       "text": "000",
+       "box": [
+        2296.0,
+        884.0,
+        2318.0,
+        949.0
+       ],
+       "confidence": 0.8691749572753906
+      }
+     ]
+    },
+    {
+     "turn": 180,
+     "image_size": [
+      2481,
+      3508
+     ],
+     "thumb": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe5e7f7d5eadefef6d9e5ffffffffffffffffffffffffffffffffffffffffffffd8d1c7c3ddb5dfe5afddf2fffffffffffffffffffffffffffffffffffffffffff2fbdffaffe8e2effff5fdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdfafffffffffffffffffffffffffffffffffffffffffffffffffffffffff1eadde0e5e9fffffffffffffffffffffffffffffffffffffffffffffffffffce7e0fcfdecece9fffffffffffffffffffffffffffffffffffffffffffffffff0f3e6f0ebfee5e6ffffffffffffffffffffffffffffffffffffffffffffffffffe2ebecede7e9f4ffffffffffffffffffffffffffffffffffffffffffffffffffffebededebf8ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": null,
+     "lines": [
+      {
+       "text": "000",
+       "box": [
+        1532.0,
+        2296.0,
+        1597.0,
+        2318.0
+       ],
+       "confidence": 0.7743180084228516
+      },
+      {
+       "text": "УФЯЦУ",
+       "box": [
+        1497.0,
+        2341.0,
+        1632.0,
+        2369.0
+       ],
+       "confidence": 0.30914695739746095
+      }
+     ]
+    },
+    {
+     "turn": 270,
+     "image_size": [
+      3508,
+      2481
+     ],
+     "thumb": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff2d8e5fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbd1e7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdfc7f6fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffac3d5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffddeaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe8b4deffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe2dffdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefe5f6ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffafd9fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff5dde5fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffdf2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0fcffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe2f3e7f2ffffffffffffffffffffffffffffffffffffffffffffffffffffffebebe6e1e9ffffffffffffffffffffffffffffffffffffffffffffffffffffffedecf0fcddfdffffffffffffffffffffffffffffffffffffffffffffffffffffededebfddffaffffffffffffffffffffffffffffffffffffffffffffffffffffebe7feece6fffffffffffffffffffffffffffffffffffffffffffffffffffffff8e9e5eceafffffffffffffffffffffffffffffffffffffffffffffffffffffffff4e5e9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": null,
+     "lines": [
+      {
+       "text": "000",
+       "box": [
+        1190.0,
+        1532.0,
+        1212.0,
+        1597.0
+       ],
+       "confidence": 0.7743180084228516
+      },
+      {
+       "text": "УФЯЦУ",
+       "box": [
+        1139.0,
+        1497.0,
+        1167.0,
+        1632.0
+       ],
+       "confidence": 0.30914695739746095
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

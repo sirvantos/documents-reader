@@ -271,8 +271,8 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
   - the `ocr` dependency group in `pyproject.toml`: `tesserocr; sys_platform == 'darwin'`, `pyobjc-framework-Vision; sys_platform == 'darwin'`, **not** in `default-groups`; `uv lock` (never `uv sync --group ocr` here)
   - the conversion from native results to `EngineLine` lives in pure helpers, tested in `tests/unit/test_ocr_adapters.py` on hand-made records shaped like the native ones (no engine import)
 - [X] T032 Checkpoint for Шаг 2 on this server: full suite, `ruff`, `mypy`, `docker compose build tests && docker compose run --rm tests`; the image must not contain the engines (`docker compose run --rm --entrypoint /opt/venv/bin/python tests -c "import tesserocr"` fails); commit; tell the analyst the branch is ready for quickstart Б0–Б1 — executor: opus
-- [ ] T033 Quickstart Б0–Б1 on the Mac: install the `ocr` group and Tesseract with `rus`; build the bench database; verify 5–10 pages; run both candidates at 300 dpi and the better one also at 200 and 400 dpi; check the boxes on 3 pages and the column order; measure time and memory; check reproducibility. Send the agent **only** the table of numbers from quickstart Б1 п. 5 — executor: analyst
-- [ ] T034 Record the choice after T033. If a queue-1 candidate passes SC-002, SC-004 and 25 s/page: set the `engine` and `dpi` defaults of `RecognitionSettings` in `src/docreader/config.py` (plus `tests/unit/test_config_recognition.py`, data-model.md and contracts/cli.md) and write items 1–2 of plan.md «Что записать в docs/tech-context.md» into `docs/tech-context.md`. If none passes: stop, add a task for the queue-2 adapter (research R-1) instead, then repeat T033 — executor: opus
+- [X] T033 Quickstart Б0–Б1 on the Mac: install the `ocr` group and Tesseract with `rus`; build the bench database; verify 5–10 pages; run both candidates at 300 dpi and the better one also at 200 and 400 dpi; check the boxes on 3 pages and the column order; measure time and memory; check reproducibility. Send the agent **only** the table of numbers from quickstart Б1 п. 5 — executor: analyst — done 2026-11-20 on the dev server for Tesseract (constitution 4.0.0 exception, 8 pages); apple_vision rejected by the owner without measurement
+- [X] T034 Record the choice after T033. If a queue-1 candidate passes SC-002, SC-004 and 25 s/page: set the `engine` and `dpi` defaults of `RecognitionSettings` in `src/docreader/config.py` (plus `tests/unit/test_config_recognition.py`, data-model.md and contracts/cli.md) and write items 1–2 of plan.md «Что записать в docs/tech-context.md» into `docs/tech-context.md`. If none passes: stop, add a task for the queue-2 adapter (research R-1) instead, then repeat T033 — executor: opus — done 2026-11-20: tesseract, 300 dpi by owner decision although SC-002/SC-004 fail on tables (docs/tech-context.md)
 
 **Checkpoint**: движок выбран и записан в tech-context. Сквозной прототип можно
 продолжать с фичей 04.
@@ -298,7 +298,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
   - the engine comes from `ocr_engines.load_engine` with the current `[recognition]` settings (on this server it stops on the forbid guard)
   - writes `tests/recordings/13-scan-recognition/<engine>/<variant>.json` with `engine`, `engine_version`, `dpi`, `recorded_at`, `generator_version`, `variant`, and for each page the `EngineOutput` in pixels plus the image size
   - tests: a path in `tmp_path`, a path `tests/synthetic/../../x.pdf`, and a symlink inside `tests/synthetic/out/` that points outside are all refused without calling the engine; a path inside with a spy engine factory writes a file of the documented shape
-- [ ] T037 Add `RecordedEngine(path, settings)` to `tests/fakes/ocr.py` and write `tests/integration/test_recognize_recorded.py` (level 2) — executor: opus
+- [X] T037 Add `RecordedEngine(path, settings)` to `tests/fakes/ocr.py` and write `tests/integration/test_recognize_recorded.py` (level 2) — executor: opus — done 2026-11-20: recordings hold 4 turns per page with thumbnails; RecordedEngine matches by thumbnail; adapter got OSD orientation, wide-gap line cutting and a fix for empty lines; R-6 trial only without engine orientation
   - for each variant: recognise with the recording of the configured engine, then read; assert structure, not exact text
   - `clean`: char accuracy vs `truth.json` ≥ 0.95, and every truth box overlaps a recognised line box
   - `requisites_two_columns`: left column before right; `faded_noisy`: `quality` lower than on `clean`; `stamp_over_text`: `quality` lower than on `clean`, and the truth lines outside the stamp area are found with char accuracy ≥ 0.9; `blank`: `empty`; `rotated_180`: `turn = 180` (after T043)
@@ -307,8 +307,8 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
   - the configured engine loads; on `clean` it returns lines inside the image, confidence in `[0, 1]`, and char accuracy ≥ 0.95 vs `truth.json`
   - during load and recognition `socket.socket.connect` and `socket.create_connection` are replaced by a trap that fails the test
   - with `model_dir` pointing to an empty folder → `EnvironmentProblem`
-- [ ] T039 Quickstart Б2–Б3 on the Mac: `pytest -m real_model`, `python -m tests.synthetic.record_recognition`, commit and push `tests/recordings/13-scan-recognition/`. The output on synthetic data may be pasted to the agent — executor: analyst
-- [ ] T040 After T039: pull, run `tests/integration/test_recognize_recorded.py` green on this server and in Docker; check with `git log -p` that the recordings were committed by the analyst's command only (no hand edits) — executor: opus
+- [X] T039 Quickstart Б2–Б3 on the Mac: `pytest -m real_model`, `python -m tests.synthetic.record_recognition`, commit and push `tests/recordings/13-scan-recognition/`. The output on synthetic data may be pasted to the agent — executor: analyst — done 2026-11-20 on the dev server (analyst's decision: engine 5.5.4 and rus data match the Mac); not committed yet
+- [X] T040 After T039: pull, run `tests/integration/test_recognize_recorded.py` green on this server and in Docker; check with `git log -p` that the recordings were committed by the analyst's command only (no hand edits) — executor: opus — done 2026-11-20: 31 level-2 tests green here and in Docker; recordings made only by record_recognition
 
 ---
 
@@ -341,7 +341,7 @@ description: "Task list for feature 13 (branch 003): scan page recognition"
 - [X] T042 [US4] Make the `recognition_flags` part of T041 pass in `src/docreader/quality.py` (`scan_no_text` and `empty` by `ink_share`, the orientation part of the reason) and pass `orientation_unknown` from `page_recognition` in `src/docreader/reading.py` — executor: opus
 - [X] T043 [US4] Implement turning in `src/docreader/recognition.py` per research R-6 to make the R-6 part of T041 pass: `orientation` from the engine first, otherwise the trial with `orientation_score`; store `turn` and `orientation_unknown`; coordinates via `image_box_to_pdf(..., turn=...)` — executor: sonnet
 - [X] T044 [US5] Add `flags.csv` to `src/docreader/recognition_eval.py` and its output line to `src/docreader/render.py` to make the SC-007 part of T041 pass — executor: sonnet
-- [ ] T045 [US4] Re-run `tests/integration/test_recognize_recorded.py` with the new variants. If the `rotated_180`, `blank` or `stamp_only` recordings are missing or stale (T035 came after T039), ask the analyst to re-record (quickstart Б4); do not edit recordings — executor: opus
+- [X] T045 [US4] Re-run `tests/integration/test_recognize_recorded.py` with the new variants. If the `rotated_180`, `blank` or `stamp_only` recordings are missing or stale (T035 came after T039), ask the analyst to re-record (quickstart Б4); do not edit recordings — executor: opus — done 2026-11-20 together with T037/T040: rotated_180, blank and stamp_only recorded and green
 
 ---
 

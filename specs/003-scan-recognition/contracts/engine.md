@@ -25,6 +25,7 @@ class EngineOutput:
 class RecognitionEngine(Protocol):
     name: str      # key in ocr_engines.ENGINES
     version: str   # engine + language model version, recorded in page_recognition and run
+                   # tesseract: "5.5.4 rus <sha12> osd <sha12>" (osd only if its data is there)
     def recognize(self, image: PIL.Image.Image) -> EngineOutput: ...
 ```
 
@@ -49,8 +50,7 @@ EngineFactory = Callable[[RecognitionSettings, Path], RecognitionEngine]  # sett
 
 ENGINES: dict[str, EngineFactory] = {
     "tesseract": _load_tesseract,       # tesserocr + rus.traineddata
-    "apple_vision": _load_apple_vision, # pyobjc-framework-Vision, macOS only
-}
+}  # apple_vision removed 2026-11-20: rejected by the owner (docs/tech-context.md)
 
 def load_engine(settings: RecognitionSettings, data_dir: Path) -> RecognitionEngine:
     """Check the guards, then call the factory. Raises EnvironmentProblem with a hint."""
@@ -67,8 +67,6 @@ def load_engine(settings: RecognitionSettings, data_dir: Path) -> RecognitionEng
    в `EnvironmentProblem` с подсказкой:
    - `tesseract`: «движок tesseract не установлен — на ноутбуке: brew install
      tesseract tesseract-lang && uv sync --group ocr»;
-   - `apple_vision`: на не-macOS — «движок apple_vision работает только на macOS»;
-     иначе — «uv sync --group ocr»;
 6. фабрика проверяет, что языковые данные или файлы модели есть на диске. Если их
    нет — `EnvironmentProblem` с путём, по которому они искались. Ничего не
    скачивается.

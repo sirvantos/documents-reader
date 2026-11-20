@@ -57,7 +57,7 @@ class ReadingSettings:
 class RecognitionSettings:
     """Values of the [recognition] section (data-model «Настройки», research R-2, R-6, R-9)."""
 
-    engine: str = ""
+    engine: str = "tesseract"
     dpi: int = 300
     try_rotations: bool = True
     page_min_quality: float = 0.80

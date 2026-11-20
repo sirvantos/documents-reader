@@ -95,6 +95,13 @@ def test_a_synthetic_file_is_recorded_in_the_documented_shape(dirs) -> None:
     assert saved["recorded_at"]
     assert [p["page"] for p in saved["pages"]] == [2, 4]  # scan pages only
     first = saved["pages"][0]
-    assert set(first) == {"page", "image_size", "orientation", "lines"}
-    assert set(first["lines"][0]) == {"text", "box", "confidence"}
-    assert first["lines"][0]["text"] == truth["pages"][1]["lines"][0]["text"]
+    assert set(first) == {"page", "turns"}
+    # the turn trial of recognition (R-6) asks the engine about the turned image too
+    assert [t["turn"] for t in first["turns"]] == [0, 90, 180, 270]
+    upright, quarter = first["turns"][0], first["turns"][1]
+    assert set(upright) == {"turn", "image_size", "thumb", "orientation", "lines"}
+    assert quarter["image_size"] == upright["image_size"][::-1]
+    assert upright["thumb"] != quarter["thumb"]
+    assert set(upright["lines"][0]) == {"text", "box", "confidence"}
+    assert upright["lines"][0]["text"] == truth["pages"][1]["lines"][0]["text"]
+    assert engine.calls == 8  # 2 scan pages x 4 turns

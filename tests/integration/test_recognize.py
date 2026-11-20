@@ -685,3 +685,22 @@ def test_good_first_attempt_is_not_turned(cli, db, tmp_path, use_engine) -> None
 
     assert engine.calls == 1
     assert rows(db, doc)[0]["turn"] == 0
+
+
+def test_upright_orientation_from_the_engine_skips_the_turn_trial(
+    cli, db, tmp_path, use_engine
+) -> None:
+    # R-6: the trial runs only when the engine gave no orientation. A weak page that the
+    # engine reports as upright (0°) is not turned: real Tesseract reads sideways text too.
+    from docreader.ocr import EngineOutput
+
+    (doc,), _ = add(cli, tmp_path / "in", lambda p: make_scans.make_scan_clean(p, pages=1))
+    weak = EngineOutput(lines=(_line(BAD_TEXT, 0.4),), orientation=0)
+    engine = ScriptedEngine([weak, _output(GOOD_TEXT, 0.95)])
+    use_engine(engine)
+
+    recognize(cli)
+
+    assert engine.calls == 1
+    (row,) = rows(db, doc)
+    assert row["turn"] == 0 and row["orientation_unknown"] is False

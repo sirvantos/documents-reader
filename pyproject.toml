@@ -21,11 +21,12 @@ dev = [
     "ruff>=0.17.5",
     "mypy>=2.4.1",
 ]
-# Recognition engines (feature 13): only on the analyst's Mac, `uv sync --group ocr`.
-# Not a default group: the development server and Docker never install them (research R-4).
+# Recognition engines (feature 13): `uv sync --group ocr`. Not a default group: Docker
+# never installs them (research R-4). Tesseract may also run on the dev server for
+# debugging on synthetic files and confirmed samples (CLAUDE.md «Machines»); it builds
+# from source there and needs the system packages libtesseract-dev and pkg-config.
 ocr = [
-    "tesserocr; sys_platform == 'darwin'",
-    "pyobjc-framework-Vision; sys_platform == 'darwin'",
+    "tesserocr",
 ]
 
 [build-system]
@@ -66,7 +67,7 @@ warn_unused_ignores = true
 # Libraries shipped without type information.
 module = [
     "pypdfium2", "pypdfium2.*", "pymorphy3", "pymorphy3.*",
-    # recognition engines, optional group `ocr`, Mac only (feature 13)
-    "tesserocr", "Quartz", "Vision", "Foundation",
+    # recognition engine, optional group `ocr` (feature 13)
+    "tesserocr",
 ]
 ignore_missing_imports = true

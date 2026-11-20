@@ -226,7 +226,7 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "rotated_min_angle": 5.0,
         },
         "recognition": {
-            "engine": "",
+            "engine": "tesseract",
             "dpi": 300,
             "try_rotations": True,
             "page_min_quality": 0.8,

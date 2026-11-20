@@ -59,9 +59,13 @@ def levenshtein(a: str, b: str) -> int:
     return previous[-1]
 
 
+_FORM_BLANK = re.compile(r"_{2,}")
+
+
 def _flat(text: str) -> str:
-    """Common normalisation, then every whitespace run (line breaks too) → one space."""
-    return " ".join(normalize_chars(text).split())
+    """Common normalisation; runs of underscores (empty form fields, which engines drop)
+    become a space; then every whitespace run (line breaks too) → one space."""
+    return " ".join(_FORM_BLANK.sub(" ", normalize_chars(text)).split())
 
 
 def _distance_and_length(expected: str, got: str) -> tuple[int, int]:

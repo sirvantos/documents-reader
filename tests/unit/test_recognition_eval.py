@@ -94,3 +94,11 @@ def test_missing_and_repeated_lines() -> None:
 def test_missing_lines_tolerate_small_recognition_errors() -> None:
     # a line with one wrong letter is not «missing»: it is counted in char accuracy
     assert missing_lines("Подрядчик обязуется", "Подрядчнк обязуется") == []
+
+
+def test_form_blanks_do_not_count() -> None:
+    # Runs of underscores are empty form fields, not text; engines drop them (R-12).
+    expected = "г. Москва «___» __________ 2024 г."
+    assert char_accuracy(expected, "г. Москва « » 2024 г.") == 1.0
+    assert char_accuracy("подпись ____ В.В. Иванов", "подпись В.В. Иванов") == 1.0
+    assert char_accuracy("snake_case", "snakecase") < 1.0  # a single underscore is text

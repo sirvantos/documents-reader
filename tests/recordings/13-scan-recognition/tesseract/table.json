@@ -1,0 +1,510 @@
+{
+ "engine": "tesseract",
+ "engine_version": "5.5.4 rus e16e5e036cce osd 9cf5d576fcc4",
+ "dpi": 300,
+ "recorded_at": "2026-11-20T16:15:06+00:00",
+ "generator_version": 2,
+ "variant": "table",
+ "source": "scan_table.pdf",
+ "pages": [
+  {
+   "page": 1,
+   "turns": [
+    {
+     "turn": 0,
+     "image_size": [
+      2481,
+      3508
+     ],
+     "thumb": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbf7f7f7f7f7f7f7f7f7f7f7f7f7f5f7f7f7f5f7f7f7f7f7f7f7fbfffffffffff3dde0e1e1e1ddeaf7f7f7f7f7f7eddff7f7edf7f6e3e0e0e0def3fffffffffff3d7dadae0d5dcdeebf7f7f7f7f7ece0f7f7ecf7f7f7f3dfd6dbf3fffffffffff3dbd8e1dbdddaf5f7f7f7f7f7f7ede0f7f7edf7f7f7ebdbd6dbf3fffffffffff3d9d7e1d8dcdee7e2e1f1f7f7f7edd8ebf7edf7f7f7f3ddd6dbf3fffffffffffbf7f7f6f7f7f7f7f6f6f7f7f7f7f4f6f7f7f4f7f7f7f7f7f7f7fbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": 0,
+     "lines": [
+      {
+       "text": "Наименование работ",
+       "box": [
+        321.0,
+        330.0,
+        826.0,
+        375.0
+       ],
+       "confidence": 0.9633782196044922
+      },
+      {
+       "text": "Демонтаж перегородок",
+       "box": [
+        318.0,
+        432.0,
+        894.0,
+        476.0
+       ],
+       "confidence": 0.9634575653076172
+      },
+      {
+       "text": "Устройство стяжки",
+       "box": [
+        318.0,
+        532.0,
+        779.0,
+        576.0
+       ],
+       "confidence": 0.9678867340087891
+      },
+      {
+       "text": "Монтаж окон ПВХ",
+       "box": [
+        321.0,
+        633.0,
+        748.0,
+        668.0
+       ],
+       "confidence": 0.9625514221191406
+      },
+      {
+       "text": "Вывоз строительного мусора",
+       "box": [
+        321.0,
+        732.0,
+        1021.0,
+        776.0
+       ],
+       "confidence": 0.9644757843017578
+      },
+      {
+       "text": "ЕД.",
+       "box": [
+        1404.0,
+        332.0,
+        1470.0,
+        372.0
+       ],
+       "confidence": 0.8537397766113282
+      },
+      {
+       "text": "м2",
+       "box": [
+        1404.0,
+        432.0,
+        1459.0,
+        467.0
+       ],
+       "confidence": 0.957622299194336
+      },
+      {
+       "text": "м2",
+       "box": [
+        1404.0,
+        532.0,
+        1459.0,
+        567.0
+       ],
+       "confidence": 0.8960223388671875
+      },
+      {
+       "text": "шт.",
+       "box": [
+        1404.0,
+        642.0,
+        1479.0,
+        668.0
+       ],
+       "confidence": 0.9292708587646484
+      },
+      {
+       "text": "рейс",
+       "box": [
+        1404.0,
+        731.0,
+        1510.0,
+        776.0
+       ],
+       "confidence": 0.9659729766845703
+      },
+      {
+       "text": "Стоимость, руб.",
+       "box": [
+        1858.0,
+        330.0,
+        2237.0,
+        375.0
+       ],
+       "confidence": 0.9620011901855469
+      },
+      {
+       "text": "12 500,00",
+       "box": [
+        2013.0,
+        432.0,
+        2239.0,
+        472.0
+       ],
+       "confidence": 0.9552738952636719
+      },
+      {
+       "text": "100 000,00",
+       "box": [
+        1984.0,
+        532.0,
+        2239.0,
+        572.0
+       ],
+       "confidence": 0.9605503845214843
+      },
+      {
+       "text": "245 000,00",
+       "box": [
+        1983.0,
+        633.0,
+        2239.0,
+        673.0
+       ],
+       "confidence": 0.9675377655029297
+      },
+      {
+       "text": "18 750,50",
+       "box": [
+        2013.0,
+        732.0,
+        2239.0,
+        772.0
+       ],
+       "confidence": 0.9636956787109375
+      }
+     ]
+    },
+    {
+     "turn": 90,
+     "image_size": [
+      3508,
+      2481
+     ],
+     "thumb": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbf3f3f3f3fbfffffffffffffffffffffffffffffffffffffffffffffffffffff7d9dbd7ddf7fffffffffffffffffffffffffffffffffffffffffffffffffffff7d7d8dbdff7fffffffffffffffffffffffffffffffffffffffffffffffffffff6e1e1dbe0f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7d8dbe0e1f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7dcddd6e1f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7dedadcddf7fffffffffffffffffffffffffffffffffffffffffffffffffffff7e7f5dee9f7fffffffffffffffffffffffffffffffffffffffffffffffffffff5e2f7ebf7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff6e1f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f1f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff4ececececf4fffffffffffffffffffffffffffffffffffffffffffffffffffff6d8e0e0dff7fffffffffffffffffffffffffffffffffffffffffffffffffffff7ebf7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff4ececececf4fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f6f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7e3f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f3ebf3e0f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7dddbdfe0f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7d6d6d6e1f7fffffffffffffffffffffffffffffffffffffffffffffffffffff6dbdbdbdef7fffffffffffffffffffffffffffffffffffffffffffffffffffffbf3f3f3f3fbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": 90,
+     "lines": [
+      {
+       "text": "Наименование работ",
+       "box": [
+        3133.0,
+        321.0,
+        3178.0,
+        826.0
+       ],
+       "confidence": 0.9668183135986328
+      },
+      {
+       "text": "Демонтаж перегородок",
+       "box": [
+        3032.0,
+        318.0,
+        3076.0,
+        894.0
+       ],
+       "confidence": 0.9634575653076172
+      },
+      {
+       "text": "Устройство стяжки",
+       "box": [
+        2932.0,
+        318.0,
+        2976.0,
+        779.0
+       ],
+       "confidence": 0.9661004638671875
+      },
+      {
+       "text": "Монтаж окон ПВХ",
+       "box": [
+        2840.0,
+        321.0,
+        2875.0,
+        748.0
+       ],
+       "confidence": 0.9625514221191406
+      },
+      {
+       "text": "Вывоз строительного мусора",
+       "box": [
+        2732.0,
+        321.0,
+        2776.0,
+        1021.0
+       ],
+       "confidence": 0.9658699035644531
+      },
+      {
+       "text": "Стоимость, руб.",
+       "box": [
+        3133.0,
+        1858.0,
+        3178.0,
+        2237.0
+       ],
+       "confidence": 0.9620011901855469
+      },
+      {
+       "text": "12 500,00",
+       "box": [
+        3036.0,
+        2013.0,
+        3076.0,
+        2239.0
+       ],
+       "confidence": 0.9552738952636719
+      },
+      {
+       "text": "100 000,00",
+       "box": [
+        2936.0,
+        1984.0,
+        2976.0,
+        2239.0
+       ],
+       "confidence": 0.9605503845214843
+      },
+      {
+       "text": "245 000,00",
+       "box": [
+        2835.0,
+        1983.0,
+        2875.0,
+        2239.0
+       ],
+       "confidence": 0.9675377655029297
+      },
+      {
+       "text": "18 750,50",
+       "box": [
+        2736.0,
+        2013.0,
+        2776.0,
+        2239.0
+       ],
+       "confidence": 0.9636956787109375
+      }
+     ]
+    },
+    {
+     "turn": 180,
+     "image_size": [
+      2481,
+      3508
+     ],
+     "thumb": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbf7f7f7f7f7f7f7f4f7f7f6f4f7f7f7f7f6f6f7f7f7f7f6f7f7fbfffffffffff3dbd6ddf3f7f7f7edf7ebd8edf7f7f7f1e1e2e7dedcd8e1d7d9f3fffffffffff3dbd6dbebf7f7f7edf7f7e0edf7f7f7f7f7f7f5dadddbe1d8dbf3fffffffffff3dbd6dff3f7f7f7edf7f7e0ecf7f7f7f7f7ebdedcd6e0dbdbd7f3fffffffffff3dee1e0e0e3f6f7ecf7f7dfecf7f7f7f7f7f7eadde1e1e0dfddf3fffffffffffbf7f7f7f7f7f7f7f5f7f7f7f5f7f7f7f7f7f7f7f7f7f7f7f7f7fbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": 180,
+     "lines": [
+      {
+       "text": "05'0$/ 8Т",
+       "box": [
+        242.0,
+        2736.0,
+        468.0,
+        2776.0
+       ],
+       "confidence": 0.30484222412109374
+      },
+      {
+       "text": "00'000 бус",
+       "box": [
+        242.0,
+        2835.0,
+        498.0,
+        2875.0
+       ],
+       "confidence": 0.34808128356933593
+      },
+      {
+       "text": "00'000 00Т",
+       "box": [
+        242.0,
+        2936.0,
+        497.0,
+        2976.0
+       ],
+       "confidence": 0.5115766525268555
+      },
+      {
+       "text": "00'005 СТ",
+       "box": [
+        242.0,
+        3036.0,
+        468.0,
+        3076.0
+       ],
+       "confidence": 0.3429473876953125
+      },
+      {
+       "text": "\"ОЛА ‘94120\\и019Э",
+       "box": [
+        244.0,
+        3133.0,
+        623.0,
+        3178.0
+       ],
+       "confidence": 0.3400251007080078
+      },
+      {
+       "text": "е4оЭАи о4оюн9яиэ1ио412 09198",
+       "box": [
+        1460.0,
+        2732.0,
+        2160.0,
+        2776.0
+       ],
+       "confidence": 0.33764114379882815
+      },
+      {
+       "text": "хац нохо желнои",
+       "box": [
+        1733.0,
+        2840.0,
+        2160.0,
+        2875.0
+       ],
+       "confidence": 0.5928900146484375
+      },
+      {
+       "text": "ИЖЕ 0912и0412д",
+       "box": [
+        1702.0,
+        2932.0,
+        2163.0,
+        2976.0
+       ],
+       "confidence": 0.0
+      },
+      {
+       "text": "яопоо-1э4эи желноиэП",
+       "box": [
+        1587.0,
+        3032.0,
+        2163.0,
+        3076.0
+       ],
+       "confidence": 0.0
+      },
+      {
+       "text": "109е4 эинезонэмиен",
+       "box": [
+        1655.0,
+        3133.0,
+        2160.0,
+        3178.0
+       ],
+       "confidence": 0.6805274963378907
+      }
+     ]
+    },
+    {
+     "turn": 270,
+     "image_size": [
+      3508,
+      2481
+     ],
+     "thumb": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffbf3f3f3f3fbfffffffffffffffffffffffffffffffffffffffffffffffffffff7dedbdbdbf6fffffffffffffffffffffffffffffffffffffffffffffffffffff7e0d6d6d6f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7e0dfdbddf7fffffffffffffffffffffffffffffffffffffffffffffffffffff7e0f3ebf3f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7e3f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f6f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff4ececececf4fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7ebf7fffffffffffffffffffffffffffffffffffffffffffffffffffff7dfe0e0d8f6fffffffffffffffffffffffffffffffffffffffffffffffffffff4ececececf4fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7f1f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7f7f7e1f6fffffffffffffffffffffffffffffffffffffffffffffffffffff7f7ebf7e2f5fffffffffffffffffffffffffffffffffffffffffffffffffffff7eadef5e7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7dddcdadef7fffffffffffffffffffffffffffffffffffffffffffffffffffff7e1d5dddcf7fffffffffffffffffffffffffffffffffffffffffffffffffffff7e1e0dbd8f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7e1dae1e1f6fffffffffffffffffffffffffffffffffffffffffffffffffffff7e0dad8d7f7fffffffffffffffffffffffffffffffffffffffffffffffffffff7ddd7dbd9f7fffffffffffffffffffffffffffffffffffffffffffffffffffffbf3f3f3f3fbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+     "orientation": 270,
+     "lines": [
+      {
+       "text": "05'0$/ 8Т",
+       "box": [
+        732.0,
+        242.0,
+        772.0,
+        468.0
+       ],
+       "confidence": 0.30484222412109374
+      },
+      {
+       "text": "00'000 бус",
+       "box": [
+        633.0,
+        242.0,
+        673.0,
+        498.0
+       ],
+       "confidence": 0.34808128356933593
+      },
+      {
+       "text": "00'000 00Т",
+       "box": [
+        532.0,
+        242.0,
+        572.0,
+        497.0
+       ],
+       "confidence": 0.5115766525268555
+      },
+      {
+       "text": "00'005 СТ",
+       "box": [
+        432.0,
+        242.0,
+        472.0,
+        468.0
+       ],
+       "confidence": 0.3429473876953125
+      },
+      {
+       "text": "\"ОЛА ‘94120\\и019Э",
+       "box": [
+        330.0,
+        244.0,
+        375.0,
+        623.0
+       ],
+       "confidence": 0.3400251007080078
+      },
+      {
+       "text": "е4оЭАи о4оюн9яиэ1ио412 09198",
+       "box": [
+        732.0,
+        1460.0,
+        776.0,
+        2160.0
+       ],
+       "confidence": 0.33764114379882815
+      },
+      {
+       "text": "хац нохо желнои",
+       "box": [
+        633.0,
+        1733.0,
+        668.0,
+        2160.0
+       ],
+       "confidence": 0.5928900146484375
+      },
+      {
+       "text": "ИЖЕ 0912и0412д",
+       "box": [
+        532.0,
+        1702.0,
+        576.0,
+        2163.0
+       ],
+       "confidence": 0.0
+      },
+      {
+       "text": "яопоо-1э4эи желноиэП",
+       "box": [
+        432.0,
+        1587.0,
+        476.0,
+        2163.0
+       ],
+       "confidence": 0.0
+      },
+      {
+       "text": "109е4 эинезонэмиен",
+       "box": [
+        330.0,
+        1655.0,
+        375.0,
+        2160.0
+       ],
+       "confidence": 0.6805274963378907
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

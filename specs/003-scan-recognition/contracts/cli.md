@@ -15,7 +15,7 @@
 
 ```toml
 [recognition]
-engine = "tesseract"          # пусто — движок не выбран
+engine = "tesseract"          # по умолчанию (замер 2026-11-20); пусто — движок не выбран
 dpi = 300
 try_rotations = true
 page_min_quality = 0.80       # порог флага low_recognition_quality

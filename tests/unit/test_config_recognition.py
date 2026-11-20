@@ -9,7 +9,7 @@ from docreader.config import ReadingSettings, RecognitionSettings, load_settings
 from docreader.errors import EnvironmentProblem
 
 DEFAULT_RECOGNITION = {
-    "engine": "",
+    "engine": "tesseract",
     "dpi": 300,
     "try_rotations": True,
     "page_min_quality": 0.80,

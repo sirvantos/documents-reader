@@ -283,7 +283,8 @@ def _recognize_page(
         if output.orientation in (90, 180, 270):
             turn = (360 - output.orientation) % 360
             output = engine.recognize(_clockwise(image, turn))
-        elif settings.try_rotations:
+        elif output.orientation is None and settings.try_rotations:
+            # R-6: the trial only when the engine gave no orientation (0° is an answer)
             first_quality = page_quality(output.lines)
             # a page without scored lines is judged by ink (blank or no text), not turned
             if first_quality is not None and first_quality < settings.page_min_quality:
