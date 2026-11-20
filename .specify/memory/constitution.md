@@ -1,40 +1,30 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 2.1.0 → 3.0.0 (MAJOR)
-  Rationale: a first-stage limit is redefined («Только PDF с извлекаемым текстом» → «PDF
-  с текстом и сканы») and principle VII is redefined (one more allowed use of a model).
-  Decision of the project owner, 2026-11-18. Reason: the real contract set is mostly scans —
-  53 of 56 contracts have no text layer and one more has 52 scanned pages, so the PoC
-  cannot be done on text PDFs only.
+Version change: 3.0.0 → 3.1.0 (MINOR)
+  Rationale: a new subsection that materially expands the rules for the AI agent.
+  Decision of the project owner, 2026-11-20. Reason: hand-made fictional sample
+  contracts are needed to debug recognition and prepare verified texts, and the
+  generators alone do not cover real page layouts.
 
-Modified principles:
-  VII. Сомнительное — человеку: a language model is also allowed for recognizing the text
-       of scanned pages (keeps the choice of recognition engine open for /speckit.plan).
-  I and III — unchanged: the recognition model is downloaded in advance and works offline;
-       quotes are still checked by a program, now also against recognized text.
+Modified principles: none. Principle I text is unchanged (frozen for the PoC); a
+  confirmed fictional sample is defined as a synthetic example for its purposes.
 
-Modified sections:
-  - О проекте: stage 1 «Чтение» covers local recognition of scanned pages.
-  - Ограничения первого этапа: «Только PDF с извлекаемым текстом» → «PDF с текстом
-    и сканы» (local recognition, recognized text marked and positioned, low-quality pages
-    flagged for manual review, a recognition error in a quote → unconfirmed quote).
-  - Что считается готовым PoC: + recognition quality of scanned pages as a separate figure.
+Added sections:
+  - «Разработка с ИИ-агентом» → «Вымышленные образцы договоров»: tests/samples/,
+    per-file analyst confirmation with SHA-256 in tests/samples/README.md, agent opens
+    only listed files with a matching hash, never writes the manifest, stops on doubt;
+    a de-identified copy of a real contract is not a sample.
 
-Added sections: none
 Removed sections: none
-
-Templates: not modified (no template references the scan limit).
+Templates: not modified.
 
 Follow-up files (not changed by this command):
-  ⚠ docs/tech-context.md — stack (recognition engine, Mac-only engines vs. «code works on
-      macOS and Linux»), feature map (new feature «Распознавание сканов» between intake
-      and reading), data model (recognized lines in page_text), assumptions table
-  ⚠ docs/features/03-pdf-text-reading.md and specs/002-pdf-text-reading/spec.md — the scan
-      page is no longer «помечается и не обрабатывается»; stays so within feature 002,
-      recognition comes with the new feature
-  ⚠ docs/features/01..12 — any wording «сканы не распознаются»
-  ⚠ CLAUDE.md «Machines» — recognition model runs only on the Mac; tests use fakes
+  ⚠ CLAUDE.md «Data privacy» and «Project rules» — allow tests/samples/ files listed in
+      the manifest with a matching SHA-256; keep every other ban
+  ⚠ docs/tech-context.md «Модели в автотестах» — whether recordings may be made on
+      samples (record_recognition accepts only tests/synthetic/ now)
+  ⚠ tests/samples/README.md — the manifest itself, written by the analyst only
 
 Deferred TODOs: none
 -->
@@ -200,6 +190,39 @@ Deferred TODOs: none
 - Отладка и тесты ведутся на синтетических договорах, которые лежат в репозитории.
 - Папка данных находится вне репозитория и вне рабочей папки агента.
 
+### Вымышленные образцы договоров
+
+Кроме договоров из генераторов в репозитории могут лежать вымышленные образцы:
+PDF-файлы, которые аналитик подготовил сам и подтвердил, что это не реальные договоры.
+Для принципа I подтверждённый образец считается синтетическим примером. Агент может
+открывать его, читать, использовать для отладки и для подготовки проверенных текстов
+замера.
+
+- **Что считается вымышленным образцом.** Документ, в котором вымышлены все стороны,
+  ФИО, реквизиты (ИНН, КПП, ОГРН, банковские счета), номера, суммы и условия.
+  Копия реального договора, даже с заменёнными названиями и фамилиями, образцом
+  не считается: в ней остаются реальные коммерческие условия.
+- **Где лежат.** Только в папке `tests/samples/` репозитория. Файл образца вне этой
+  папки агент не открывает.
+- **Кто подтверждает.** Только аналитик, явной записью в манифесте
+  `tests/samples/README.md`. По каждому файлу записываются имя, SHA-256, дата
+  и фраза «вымышленный образец, реальных данных нет — подтверждаю». Агент
+  не добавляет образцы, не пишет и не правит манифест.
+- **Что открывает агент.** Только файл, который есть в манифесте и чей SHA-256 совпадает
+  с записью. Нет записи или отпечаток не совпал — файл не открывается, агент
+  останавливается и сообщает аналитику.
+- **Если сомнение.** Если в образце есть признаки реального договора (реальные лица,
+  реквизиты, номера из рабочего набора), агент прекращает работу с файлом и сообщает
+  аналитику. Файл убирается из репозитория и из истории до любой отправки в удалённый
+  репозиторий.
+- **Что остаётся в силе.** Папка данных (`$DOCREADER_DATA_DIR`), реальные договоры,
+  эталон и результаты прогонов агенту по-прежнему недоступны. Содержимое образцов,
+  как и любых договоров, не отправляется во внешние сервисы: оно обрабатывается
+  только локально, и модели проекта работают только локально.
+- **Ответственность.** За то, что образец вымышленный, отвечает аналитик своей записью
+  в манифесте. Подтверждение нельзя дать «на будущее» или для папки целиком: оно
+  относится к конкретному файлу с конкретным отпечатком.
+
 ## Изменение конституции
 
 Принципы I и III не меняются в рамках PoC. Остальные принципы и ограничения первого
@@ -215,4 +238,4 @@ Deferred TODOs: none
   проектирования и после него; найденные отступления оформляются по правилу из раздела
   «Порядок работы».
 
-**Версия:** 3.0.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-18
+**Версия:** 3.1.0 | **Принята:** 2026-11-15 | **Последнее изменение:** 2026-11-20

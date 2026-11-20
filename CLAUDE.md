@@ -31,6 +31,13 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 - Never read, print, list or copy anything from the data directory
   (`$DOCREADER_DATA_DIR`) or any real contract, gold set or run result.
 - Debug and test only on synthetic files that live in the repository.
+- Fictional samples (constitution «Вымышленные образцы договоров»): a PDF in
+  `tests/samples/` may be opened only if `tests/samples/README.md` lists it with the
+  analyst's confirmation and its SHA-256 matches (check with `sha256sum` before opening).
+  No entry or a different hash: do not open it, stop and tell the analyst. Never add
+  samples or write or edit the manifest. If a sample shows signs of a real contract
+  (real parties, people, requisites, numbers from the working set), stop using it and
+  tell the analyst.
 - Do not run pipeline commands against real data; the analyst does that in their
   own terminal.
 
@@ -78,7 +85,8 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 - Never read, open, print or copy real contracts, gold data or run results.
   They live outside the repository in the data folder. Do not ask the user
   to paste them.
-- Debug and test only on synthetic files made by the generators in `tests/synthetic/`.
+- Debug and test only on synthetic files made by the generators in `tests/synthetic/`,
+  or on confirmed fictional samples in `tests/samples/` (see «Data privacy»).
 - Never send document content to any external service. All models run locally.
 - Code, identifiers, commit messages and code comments are in English.
   Specs and project docs are in Russian.
