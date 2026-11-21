@@ -146,7 +146,8 @@ def test_fewer_than_min_lines_is_not_a_column_area() -> None:
     result = layout(chars)
     assert texts(result) == ["L1 R1", "L2 R2"]
     assert [line.column for line in result.lines] == [None, None]
-    assert result.unresolved_lines == 2
+    # the two lines split at the same place: rows of a table without rules (T058)
+    assert result.unresolved_lines == 0
 
 
 def test_small_gap_or_drifting_gap_is_not_a_column_area() -> None:
@@ -255,13 +256,23 @@ def test_two_tables_are_numbered_in_order() -> None:
     assert [line.table["t"] for line in result.lines] == [0, 0, 1, 1]
 
 
-def test_lines_with_many_segments_outside_columns_and_tables_are_unresolved() -> None:
+def test_aligned_lines_with_many_segments_are_table_rows_not_unresolved() -> None:
+    # a table without rules: splits within 15 pt of another line's — read row by row,
+    # the order is known (T058, 2026-11-22; was 3 unresolved lines)
     chars: list[Char] = []
     for k, xs in enumerate(((72, 250, 420), (72, 262, 411), (72, 244, 431))):
         chars += row(650 - k * 24, ("aa", xs[0]), ("bb", xs[1]), ("cc", xs[2]))
     result = layout(chars)
-    assert result.unresolved_lines == 3
+    assert texts(result) == ["aa bb cc"] * 3
+    assert result.unresolved_lines == 0
     assert not result.has_table
+
+
+def test_lines_with_many_segments_split_at_different_places_are_unresolved() -> None:
+    chars: list[Char] = []
+    for k, xs in enumerate(((72, 200, 420), (72, 260, 480), (72, 320, 380))):
+        chars += row(650 - k * 24, ("aa", xs[0]), ("bb", xs[1]), ("cc", xs[2]))
+    assert layout(chars).unresolved_lines == 3
 
 
 # --- word spaces of justified text and clause numbers (real contracts, 2026-11-18) ---------
@@ -293,7 +304,8 @@ def test_wide_word_spaces_of_justified_text_are_not_unresolved() -> None:
 def test_a_really_wide_gap_still_makes_a_line_unresolved() -> None:
     # 40 pt at a 10 pt line: beyond max(20, 25) — a spaced table or a form line
     chars: list[Char] = []
-    for k, xs in enumerate(((72, 200), (72, 230), (72, 190))):
+    # the splits are 40 pt apart: no two lines line up, so none is a table row (T058)
+    for k, xs in enumerate(((72, 200), (72, 240), (72, 280))):
         chars += row(650 - k * 24, ("Итого", xs[0]), ("1500", xs[1]))
     assert layout(chars).unresolved_lines == 3
 

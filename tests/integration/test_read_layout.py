@@ -214,11 +214,14 @@ def test_text_turned_inside_the_page_gets_order_flag(cli, db, tmp_path):
     assert REORDER_REASON in reason
 
 
-def test_spaced_table_gets_order_flag_and_no_table(cli, db, tmp_path):
+def test_spaced_table_is_read_row_by_row_without_order_flag(cli, db, tmp_path):
+    # T058 (2026-11-22): rows of a table without rules whose cells line up are read row
+    # by row and no longer raise reading_order_unknown (was: flag, research R-8)
     doc = read_doc(cli, tmp_path, mk.make_spaced_table_ru)
 
     row = page_rows(db, doc)[1]
-    assert flags(db, doc, 1) == ["reading_order_unknown"]
+    assert flags(db, doc, 1) == []
+    assert texts(row["lines"]) == [" ".join(cells) for cells in mk.SPACED_TABLE_PAGES[0]]
     assert row["has_table"] is False
     assert not any(ln["table"] for ln in row["lines"])
 

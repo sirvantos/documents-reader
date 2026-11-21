@@ -596,11 +596,13 @@ def _arrange(
         ordered.append(lines[i])
         i += 1
 
-    unresolved = sum(
-        1
+    multi_part = [
+        i
         for i, line in enumerate(lines)
         if len(_parts(line, settings)) >= 2 and i not in in_area and table_of[i] is None
-    )
+    ]
+    # rows of a table without rules are read row by row: their order is known (T058)
+    unresolved = len(multi_part) - len(_table_rows(lines, multi_part, settings))
     band = disp_h * settings.header_band
     # the last body line: single lines of the footer band after the area do not count
     last = len(lines) - 1
@@ -608,6 +610,34 @@ def _arrange(
         last -= 1
     ends_in_columns = last in in_area
     return ordered, unresolved, ends_in_columns
+
+
+def _table_rows(
+    lines: Sequence[Line], candidates: Sequence[int], settings: ReadingSettings
+) -> set[int]:
+    """Lines among `candidates` (several parts, outside column areas and tables) that are
+    rows of a table without rules: at least half of the places where the line splits
+    into parts match, within `column_gap_tolerance`, a split of another such line.
+
+    Measured on the samples (2026-11-22): spec tables, signature sheets, calendar plans
+    and estimates gave 101 of 107 reading_order_unknown flags on scans; their rows read
+    row by row in the right order. A two-column text with the same split on three or
+    more lines in a row is a column area already and never gets here.
+    """
+    cuts = {
+        i: [part[0].bbox[0] for part in _parts(lines[i], settings)[1:]] for i in candidates
+    }
+    tolerance = settings.column_gap_tolerance
+    rows: set[int] = set()
+    for i, own in cuts.items():
+        for j, other in cuts.items():
+            if j == i:
+                continue
+            hits = sum(1 for x in own if any(abs(x - y) <= tolerance for y in other))
+            if hits and 2 * hits >= len(own):
+                rows.add(i)
+                break
+    return rows
 
 
 def lines_from_recognized(

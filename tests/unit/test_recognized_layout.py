@@ -12,7 +12,6 @@ from __future__ import annotations
 from docreader.config import ReadingSettings
 from docreader.ocr import pdf_point
 from docreader.pagetext import Char, build_lines, lines_from_recognized
-from docreader.quality import UNRESOLVED_MIN_LINES
 
 W, H = 595.0, 842.0
 SETTINGS = ReadingSettings()
@@ -92,7 +91,48 @@ def test_table_cells_of_a_row_stay_together() -> None:
     assert [ln.text for ln in result.lines] == [" ".join(row) for row in cells]
     assert all(ln.table is None for ln in result.lines)
     assert result.has_table is False
-    assert result.unresolved_lines >= UNRESOLVED_MIN_LINES
+    # rows whose part boundaries line up are table rows read row by row: the order is
+    # known, so they do not count for reading_order_unknown (T058, 2026-11-22)
+    assert result.unresolved_lines == 0
+
+
+def test_header_rows_of_a_spec_table_are_known_order() -> None:
+    # «№ | Перечень основных данных | Содержание основных данных»: two header lines of
+    # three parts at the same places (measured on the samples), then the table body
+    # in two columns, then one stray two-part line
+    lines = [
+        frag("№", 85, 782, 96), frag("Перечень основных", 153, 782, 254),
+        frag("Содержание основных", 368, 782, 483),
+        frag("п/п", 83, 770, 98), frag("данных и требований", 149, 770, 258),
+        frag("данных и требований", 371, 770, 480),
+    ]
+    for n in range(4):
+        top = 740 - 14 * n
+        lines += [frag(f"раздел {n}", 112, top, 250), frag(f"требование {n}", 304, top, 547)]
+    lines += [frag("приложение", 60, 500, 140), frag("к договору", 430, 500, 500)]
+    result = layout(lines)
+    assert [ln.text for ln in result.lines[:2]] == [
+        "№ Перечень основных Содержание основных",
+        "п/п данных и требований данных и требований",
+    ]
+    assert result.unresolved_lines == 1  # only the stray line; the header rows line up
+
+
+def test_unaligned_multi_part_lines_still_count() -> None:
+    # form fragments of a title page: each line splits at a different place
+    result = layout(
+        [
+            frag("от 2025г.", 50, 700, 110), frag("В.В.Петров", 470, 700, 540),
+            frag("« »", 330, 680, 350), frag("202 г. №", 398, 680, 450),
+            frag("сооружений»", 113, 660, 190), frag("инфраструктуры, является", 304, 660, 470),
+        ]
+    )
+    assert result.unresolved_lines == 3
+
+
+def test_a_single_multi_part_line_has_no_partner_and_counts() -> None:
+    result = layout([frag("Слева", 50, 700, 100), frag("Справа", 400, 700, 460)])
+    assert result.unresolved_lines == 1
 
 
 def test_page_rotated_by_90_is_read_in_display_order() -> None:
