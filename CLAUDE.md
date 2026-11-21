@@ -56,9 +56,10 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   If a sample shows signs of a real contract
   (real parties, people, requisites, numbers from the working set), stop using it and
   tell the analyst.
-- Exception (constitution 4.1.0, «Исключение: девять договоров в tests/samples/»): the
-  nine real contracts listed there by SHA-256 may be opened, read and recognised here
-  until feature 13 ends (check `sha256sum` first). Never commit them or anything derived
+- Exception (constitution 4.2.1, «Исключение: одиннадцать договоров в tests/samples/»): the
+  eleven real contracts listed there by SHA-256 may be opened, read and recognised here
+  until the branch `003-scan-recognition` is merged into `main` (constitution 4.2.1; then
+  delete them and everything derived from them here) — check `sha256sum` first. Never commit them or anything derived
   from them (`tests/samples/` is git-ignored), never make `tests/recordings/` from
   them, never copy their text, numbers, names or requisites into code, tests, specs or
   docs. Work on them in a throwaway data dir with the `docreader_demo` database. No other
