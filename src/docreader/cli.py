@@ -273,8 +273,14 @@ NOTHING_TO_RECOGNIZE = (
 )
 
 
-def _print_recognize_progress(doc_id: str, page: int, total: int, seconds: float) -> None:
-    print(render_recognize_progress(doc_id, page, total, seconds), file=sys.stderr, flush=True)
+def _print_recognize_progress(
+    doc_id: str, page: int, done: int, total: int, seconds: float
+) -> None:
+    print(
+        render_recognize_progress(doc_id, page, done, total, seconds),
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def parse_page_range(text: str) -> list[int]:

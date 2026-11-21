@@ -536,9 +536,14 @@ def _decimal(value: float) -> str:
     return f"{value:.1f}".replace(".", ",")
 
 
-def render_recognize_progress(doc_id: str, page: int, total: int, seconds: float) -> str:
-    """One stderr line per recognised page: `D-0003 стр. 5/42  3,8 с`."""
-    return f"{doc_id} стр. {page}/{total}  {_decimal(seconds)} с"
+def render_recognize_progress(
+    doc_id: str, page: int, done: int, total: int, seconds: float
+) -> str:
+    """One stderr line per recognised page: `D-0003 стр. 87 (1/52)  3,8 с`.
+
+    `page` is the page number; `done` of `total` counts the pages of this run only.
+    """
+    return f"{doc_id} стр. {page} ({done}/{total})  {_decimal(seconds)} с"
 
 
 def _recognize_head(doc: dict) -> str:

@@ -43,7 +43,8 @@ READING_RESET_REASON = "распознанный текст изменён"
 _MAX_ERROR_LEN = 500
 
 EngineFactory = Callable[[RecognitionSettings, Path], RecognitionEngine]
-Progress = Callable[[str, int, int, float], None]  # doc id, page, scan pages, seconds
+# doc id, page number, place of the page in this run, pages in this run, seconds
+Progress = Callable[[str, int, int, int, float], None]
 
 
 class DocumentError(Exception):
@@ -495,7 +496,7 @@ def _recognize_document(run: _Run, plan: _Plan, progress: Progress | None) -> Do
                     f"проверьте docreader verify {plan.id}"
                 )
             engine = run.get_engine()
-            for number in plan.todo:
+            for done, number in enumerate(plan.todo, 1):
                 result = _recognize_page(pdf, number, engine, dpi, settings.recognition)
                 changed, reset = _write_page(
                     conn, run.run_id, plan.id, number, engine, dpi, result
@@ -528,7 +529,7 @@ def _recognize_document(run: _Run, plan: _Plan, progress: Progress | None) -> Do
                     )
                 )
                 if progress is not None:
-                    progress(plan.id, number, len(plan.scan_pages), result.seconds)
+                    progress(plan.id, number, done, len(plan.todo), result.seconds)
         finally:
             pdf.close()
     entry.seconds = round(entry.seconds, 3)

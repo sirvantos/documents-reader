@@ -238,8 +238,13 @@ def test_totals_average_rounds_to_one_decimal() -> None:
 
 
 def test_progress_line_uses_decimal_comma() -> None:
-    assert render_recognize_progress("D-0003", 5, 42, 3.8) == "D-0003 стр. 5/42  3,8 с"
-    assert render_recognize_progress("D-0003", 6, 42, 12.0) == "D-0003 стр. 6/42  12,0 с"
+    assert render_recognize_progress("D-0003", 5, 1, 42, 3.8) == "D-0003 стр. 5 (1/42)  3,8 с"
+    assert render_recognize_progress("D-0003", 6, 2, 42, 12.0) == "D-0003 стр. 6 (2/42)  12,0 с"
+
+
+def test_progress_line_does_not_read_as_page_of_total() -> None:
+    # page 87 is the first of 52 scan pages to recognise: not «стр. 87/52»
+    assert render_recognize_progress("D-0056", 87, 1, 52, 5.4) == "D-0056 стр. 87 (1/52)  5,4 с"
 
 
 # --- recognize-report: table, review list, CSV (contracts/cli.md «recognize-report») ----

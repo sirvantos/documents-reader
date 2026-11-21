@@ -244,10 +244,12 @@ def test_interrupted_run_resumes_from_the_first_unsaved_page(
 
     rest = TruthEngine(truth, pages=[2, 3])
     use_engine(rest)
-    code, data, _ = recognize(cli)
+    code, data, stderr = recognize(cli)
 
     assert code == 0
     assert rest.calls == 2
+    # progress counts the pages of this run: page 2 is the first of two, not «2/3»
+    assert f"{doc} стр. 2 (1/2)" in stderr and f"{doc} стр. 3 (2/2)" in stderr
     resumed = rows(db, doc)
     assert [r["page_number"] for r in resumed] == [1, 2, 3]
     assert stage(db, doc, "recognition")[:2] == ("done", None)
