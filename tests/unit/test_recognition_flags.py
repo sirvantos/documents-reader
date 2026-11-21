@@ -18,7 +18,8 @@ from docreader.quality import (
 )
 from docreader.stages import State
 
-SETTINGS = RecognitionSettings()  # 0.80 / 0.60 / 0.20 / 0.003
+# The rule is tested at fixed thresholds; the default page threshold has its own tests below.
+SETTINGS = RecognitionSettings(page_min_quality=0.80)  # 0.80 / 0.60 / 0.20 / 0.003
 
 
 def _lines(*items: tuple[str, float]) -> list[dict]:
@@ -70,6 +71,16 @@ def test_exactly_at_the_thresholds_there_is_no_flag() -> None:
 
 def test_line_confidence_exactly_at_the_threshold_is_not_low() -> None:
     assert _flags(_lines(*[("слово", 0.60)] * 3), 0.80) == []
+
+
+def test_default_page_threshold_is_090() -> None:
+    # Quickstart Б6 (2026-11-22, 40 pages marked by hand): signature sheets and calendar
+    # plans scored 0.82–0.89 and were all bad; plain text and spec tables scored 0.91+.
+    assert RecognitionSettings().page_min_quality == 0.90
+    defaults = RecognitionSettings()
+    (flag,) = _flags(_lines(("5900е654004", 0.88)), 0.88, settings=defaults)
+    assert flag.reason == "оценка 0,88 < 0,90"
+    assert _flags(_lines(GOOD), 0.92, settings=defaults) == []
 
 
 def test_lines_without_letters_or_digits_are_left_out() -> None:

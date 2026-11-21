@@ -60,7 +60,7 @@ class RecognitionSettings:
     engine: str = "tesseract"
     dpi: int = 300
     try_rotations: bool = True
-    page_min_quality: float = 0.80
+    page_min_quality: float = 0.90  # quickstart Б6, 2026-11-22 (SC-007)
     line_min_confidence: float = 0.60
     max_low_line_share: float = 0.20
     blank_max_ink_share: float = 0.003

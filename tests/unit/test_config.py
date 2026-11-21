@@ -229,7 +229,7 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "engine": "tesseract",
             "dpi": 300,
             "try_rotations": True,
-            "page_min_quality": 0.8,
+            "page_min_quality": 0.9,
             "line_min_confidence": 0.6,
             "max_low_line_share": 0.2,
             "blank_max_ink_share": 0.003,

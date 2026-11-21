@@ -209,7 +209,8 @@ def test_rank_prefers_fewer_missed_bad_pages_then_closeness() -> None:
 
 def test_report_prints_numbers_and_a_settings_snippet() -> None:
     marked = [(stored(0.55), True), (stored(0.92), False), (stored(0.75), False)]
-    lines = tune.report_lines(marked, RecognitionSettings(), [p for p, _ in marked])
+    base = RecognitionSettings(page_min_quality=0.80)
+    lines = tune.report_lines(marked, base, [p for p, _ in marked])
     text = "\n".join(lines)
     assert "Размечено страниц: 3 (плохих 1, хороших 2)" in text
     assert "Сейчас: page_min_quality 0.80" in text and "верен 66.7%" in text

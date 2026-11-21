@@ -92,7 +92,7 @@ def test_review_list_errors_first_then_worst_quality(cli, recognised) -> None:
         (recognised["faded"], 1, "low_recognition_quality"),
     ]
     assert pages[0]["reason"] == "RuntimeError: engine failed"
-    assert pages[2]["reason"].startswith("оценка 0,40 < 0,80")
+    assert pages[2]["reason"].startswith("оценка 0,40 < 0,90")
     assert pages[2]["quality"] == pytest.approx(0.40)
 
     text = cli("recognize-report", "--review").stdout.splitlines()

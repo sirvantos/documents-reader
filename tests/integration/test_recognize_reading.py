@@ -227,7 +227,7 @@ def test_low_quality_page_is_flagged_and_needs_review(cli, db, tmp_path, use_eng
     found = flags(db, doc)
     assert set(found) == {2}
     reason = found[2]["low_recognition_quality"]
-    assert reason.startswith("оценка 0,4") and "< 0,80" in reason
+    assert reason.startswith("оценка 0,4") and "< 0,90" in reason
     assert [len(lines) for _, _, lines, _ in page_text(db, doc)] == [1, 2]
     state, reason, _ = stage(db, doc, "reading")
     assert state == "needs_review"
@@ -254,7 +254,7 @@ def test_thresholds_used_by_reading_are_recorded(cli, db, tmp_path, use_engine) 
     (settings,) = db.execute(
         "SELECT settings FROM run WHERE stage = 'reading' ORDER BY id DESC LIMIT 1"
     ).fetchone()
-    assert settings["recognition"]["page_min_quality"] == 0.8
+    assert settings["recognition"]["page_min_quality"] == 0.9
 
 
 # --- columns, other flags, regression -----------------------------------------------------------

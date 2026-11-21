@@ -12,7 +12,7 @@ DEFAULT_RECOGNITION = {
     "engine": "tesseract",
     "dpi": 300,
     "try_rotations": True,
-    "page_min_quality": 0.80,
+    "page_min_quality": 0.90,
     "line_min_confidence": 0.60,
     "max_low_line_share": 0.20,
     "blank_max_ink_share": 0.003,

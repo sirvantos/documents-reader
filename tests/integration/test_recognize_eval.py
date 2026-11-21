@@ -84,7 +84,7 @@ def test_numbers_on_synthetic_pages(cli, evaluated) -> None:
     assert data["control"]["found"] == 2 and data["control"]["total"] == 3
     assert data["control"]["kinds"]["inn"] == [0, 1]
     assert (data["engine"], data["engine_version"], data["dpi"]) == ("truth", "1", 300)
-    assert data["settings"]["recognition"]["page_min_quality"] == 0.8
+    assert data["settings"]["recognition"]["page_min_quality"] == 0.9
     assert data["flags"] is None
     assert data["not_recognized"] == []
 
