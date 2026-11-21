@@ -65,7 +65,9 @@ Line = tuple[str, float, Sequence[float], Sequence[Word]]  # Tesseract's line an
 # while justified text stretches spaces to about two heights (tuned by measurement).
 GAP_FACTOR = 3.0
 # Below this OSD confidence the orientation is treated as unknown and the trial decides.
-OSD_MIN_CONFIDENCE = 2.0
+# Measured 2026-11-22: readable scans give ≥ 13 (≥ 19.9 on the working set); on a ~100 dpi
+# scan OSD said 180° at 2.0–3.7 and all twelve such turns were wrong.
+OSD_MIN_CONFIDENCE = 5.0
 
 
 def split_wide_gaps(

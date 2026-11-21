@@ -38,7 +38,7 @@ from typing import Any
 ROTATED = re.compile(r"(\d+) \S+ повёрнутого текста")
 UNRESOLVED = re.compile(r"(\d+) \S+ из нескольких частей")
 TURNS = (0, 90, 180, 270)
-OSD_MIN_CONFIDENCE = 2.0  # the same cut as docreader.ocr_engines
+OSD_MIN_CONFIDENCE = 5.0  # the same cut as docreader.ocr_engines
 TURN_GAIN = 0.10  # a turn this much better than the stored quality points at orientation
 
 

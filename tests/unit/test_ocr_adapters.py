@@ -208,6 +208,10 @@ def test_a_line_across_two_columns_is_cut_at_the_wide_gap(fake_tesserocr) -> Non
         ({"orient_deg": 180, "orient_conf": 18.4}, 180),
         ({"orient_deg": 0, "orient_conf": 13.0}, 0),
         ({"orient_deg": 90, "orient_conf": 0.5}, None),  # unsure: the trial decides
+        # a ~100 dpi scan: OSD said 180° at 2.0–3.7 and every such turn was wrong
+        ({"orient_deg": 180, "orient_conf": 3.7}, None),
+        ({"orient_deg": 180, "orient_conf": 4.9}, None),
+        ({"orient_deg": 180, "orient_conf": 5.0}, 180),
         (None, None),  # blank page: OSD finds nothing
     ],
 )
