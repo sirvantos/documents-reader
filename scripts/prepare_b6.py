@@ -83,6 +83,10 @@ def date_valid(text: str) -> bool:
 
 # letters an engine puts for digits (О/O for 0, З for 3, б/Б for 6) are caught as well
 _DIGITISH = r"[\dOoОоЗзбБ]"
+# «ИНН/КПП 7700000000/770001001»: the first number is the ИНН, the second the КПП
+_INN_KPP = re.compile(
+    rf"ИНН\s*/\s*КПП\s*:?\s*({_DIGITISH}{{9,13}})\s*/\s*({_DIGITISH}{{7,11}})"
+)
 _INN = re.compile(rf"ИНН\s*:?\s*({_DIGITISH}{{9,13}})")
 _OGRN = re.compile(rf"ОГРН(?:ИП)?\s*:?\s*({_DIGITISH}{{12,16}})")
 _KPP = re.compile(rf"КПП\s*:?\s*({_DIGITISH}{{7,11}})")
@@ -92,6 +96,13 @@ _DATE = re.compile(r"(?<![\d.])(\d{1,2}\.\d{1,2}\.\d{2,4})(?![\d.])")
 def suspicious_values(text: str) -> list[str]:
     """Requisites and dates of a recognised text that cannot be right, as short notes."""
     notes: list[str] = []
+    for match in _INN_KPP.finditer(text):
+        inn, kpp = match.groups()
+        if not inn_valid(inn):
+            notes.append(f"ИНН «{inn}»: неверная длина, буквы или контрольная цифра")
+        if not (kpp.isdigit() and len(kpp) == 9):
+            notes.append(f"КПП «{kpp}»: должно быть 9 цифр")
+    text = _INN_KPP.sub(" ", text)  # the pair is checked; keep it from the checks below
     for match in _INN.finditer(text):
         if not inn_valid(match.group(1)):
             notes.append(f"ИНН «{match.group(1)}»: неверная длина, буквы или контрольная цифра")

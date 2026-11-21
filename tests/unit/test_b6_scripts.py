@@ -73,6 +73,16 @@ def test_suspicious_values_lists_only_broken_ones() -> None:
     assert any("31.02.2024" in n for n in notes)
 
 
+def test_inn_kpp_pair_is_split_into_inn_and_kpp() -> None:
+    # «ИНН/КПП A/B»: A is the ИНН, B the КПП (T059: the КПП check used to take A)
+    assert prepare.suspicious_values("ИНН/КПП 5001007329/500101001") == []
+    assert prepare.suspicious_values("ИНН/ КПП 5001007329/500101001,") == []
+    notes = prepare.suspicious_values("ИНН/КПП 5001007328/50010100")
+    assert len(notes) == 2
+    assert any("ИНН «5001007328»" in n for n in notes)
+    assert any("КПП «50010100»" in n for n in notes)
+
+
 def test_check_notes_name_low_lines_values_and_dpi_differences() -> None:
     lines = [
         {"text": "1.1. Предмет договора", "confidence": 0.95},
