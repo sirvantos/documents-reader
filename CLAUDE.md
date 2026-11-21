@@ -56,13 +56,14 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   If a sample shows signs of a real contract
   (real parties, people, requisites, numbers from the working set), stop using it and
   tell the analyst.
-- Exception (constitution 4.0.0, «Исключение: восемь договоров в tests/samples/»): the
-  eight real contracts listed there by SHA-256 may be opened, read and recognised here
+- Exception (constitution 4.1.0, «Исключение: девять договоров в tests/samples/»): the
+  nine real contracts listed there by SHA-256 may be opened, read and recognised here
   until feature 13 ends (check `sha256sum` first). Never commit them or anything derived
   from them (`tests/samples/` is git-ignored), never make `tests/recordings/` from
   them, never copy their text, numbers, names or requisites into code, tests, specs or
   docs. Work on them in a throwaway data dir with the `docreader_demo` database. No other
-  real contract is allowed, and no new exceptions are added.
+  real contract is allowed. A new one is added only by a constitution amendment on the
+  owner's decision (its SHA-256 in the table); a permission in chat alone does not open it.
 - Do not run pipeline commands against real data; the analyst does that in their
   own terminal.
 
