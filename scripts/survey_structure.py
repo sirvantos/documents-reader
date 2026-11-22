@@ -6,16 +6,22 @@ Run from the repository root after reading (`docreader read`); no model runs:
 
 It reads the body lines of every document available after reading (stage `reading` in
 `done` or `needs_review`, at least one page read) and counts how the text is laid out,
-to answer the open questions of `specs/004-structure-parsing/spec.md` before clarify:
+to answer the open questions of `specs/004-structure-parsing/spec.md` before clarify.
 
-1. Numbering: «1. ЗАГОЛОВОК» with «1.1», «Раздел I» / «Статья 5», Roman numerals, headings
-   in capitals without a number, flat «1.», «2.», nothing at all; deeper levels and lists.
-2. Continuation: how often a «N.M» number is the next one, a repeat, a gap or a restart,
-   and what a word section («Статья K») is followed by.
-3. The end of a contract: requisites headings and «Приложение N» — where they stand
-   against the last clause; the share of text before the first and after the last clause.
-4. False starts and risks: lines starting with a date or a sum, table rows starting with
-   a number, clause lengths, recognised and unread pages.
+Each document is split first: the preamble (before the first numbered line), the main
+text, and the tail. The main text ends at the requisites heading (a level-1 «N.» line or
+a line in capitals naming requisites or signatures) or, without one, at an «Приложение»
+line among the first lines of a page. Everything is then counted for the main text only,
+so numbering inside appendices (estimates, schedules) does not mix in:
+
+1. The boundary: how it was found, the share of text in each part, the size of the
+   requisites section, «Приложение» lines at the top of a page before the boundary.
+2. Numbering: level-1 «N.» lines that are headings (followed by «N.1») or sentences,
+   «N.M» and deeper, word sections, Roman numerals, headings in capitals, lists.
+3. Continuation of «N.M» and «N.»: next, new section, repeat, gap, restart, jumps;
+   numbers damaged by recognition («5,2», «5.2Оплата»).
+4. Risks in the main text: lines starting with a date or a sum, numbers on their own
+   line, table rows, clause lengths, recognised and low-quality pages.
 
 Only counts, shares, ranges and document ids are printed and saved (to
 `$DOCREADER_DATA_DIR/reports/survey-structure-….txt`): no text, no file names, no
@@ -53,9 +59,14 @@ REQUISITES = re.compile(
 )
 CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 TABLE_NUMBER = re.compile(r"^\d{1,3}(?:[.)]|\s|$)")  # «1 Земляные работы», «2.», «3)»
+# Numbers that recognition may have damaged: «5,2 Оплата», «5.2Оплата».
+COMMA_NUMBER = re.compile(r"^\d{1,2},\d{1,2}\.?\s")
+GLUED_NUMBER = re.compile(r"^\d{1,2}\.\d{1,2}\.?[А-Яа-яЁё]")
 
 HEADING_MAX_CHARS = 90
+TITLE_MAX_CHARS = 60  # a level-1 «N. Предмет договора» heading is at most this long
 TOP_OF_PAGE_LINES = 3  # an «Приложение» line among the first body lines of its page
+NEXT_NUMBER_WINDOW = 3  # a heading is followed by «N.1» within this many lines
 
 ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
 
@@ -85,7 +96,7 @@ def is_caps(text: str) -> bool:
 
 
 def is_requisites_heading(text: str) -> bool:
-    """A short line naming the requisites or signatures, numbered or not."""
+    """A short line naming the requisites or signatures."""
     line = text.strip()
     return len(line) <= HEADING_MAX_CHARS and REQUISITES.search(line) is not None
 
@@ -97,6 +108,7 @@ class Start:
     kind: str
     number: tuple[int, ...] = ()
     caps_rest: bool = False  # the text after the number is in capitals («1. ПРЕДМЕТ»)
+    rest_chars: int = 0  # length of the text after the number
 
 
 def classify(text: str) -> Start | None:
@@ -111,10 +123,11 @@ def classify(text: str) -> Start | None:
     if (m := MULTI.match(line)) is not None:
         parts = tuple(int(p) for p in m.group(1).split("."))
         rest = line[m.end():].strip()
-        return Start("multi" if rest else "bare_number", parts, is_caps(rest))
+        return Start("multi" if rest else "bare_number", parts, is_caps(rest), len(rest))
     if (m := SINGLE.match(line)) is not None:
         rest = line[m.end():].strip()
-        return Start("single" if rest else "bare_number", (int(m.group(1)),), is_caps(rest))
+        kind = "single" if rest else "bare_number"
+        return Start(kind, (int(m.group(1)),), is_caps(rest), len(rest))
     if PAREN_NUM.match(line):
         return Start("paren_num")
     if LETTER.match(line):
@@ -179,37 +192,87 @@ class Line:
     table: bool = False
 
 
+@dataclass(frozen=True)
+class Boundary:
+    """Where the preamble ends and where the main text ends (line indexes)."""
+
+    first: int | None  # first numbered line; None — no numbering at all
+    end: int  # first line of the tail; len(lines) — no tail
+    how: str  # "requisites_numbered", "requisites_caps", "appendix", "none"
+    appendix_after: int | None  # first top-of-page «Приложение» after the end, if any
+    appendix_before: int  # top-of-page «Приложение» lines between `first` and `end`
+
+
+def find_boundary(lines: Sequence[Line]) -> Boundary:
+    """The end of the main text: the requisites heading, else an appendix at a page top."""
+    starts = [classify(line.text) if not line.table else None for line in lines]
+    first = next(
+        (i for i, s in enumerate(starts) if s is not None and s.kind in ("single", "multi")), None
+    )
+    if first is None:
+        return Boundary(None, len(lines), "none", None, 0)
+
+    def top_appendix(i: int) -> bool:
+        s = starts[i]
+        return s is not None and s.kind == "appendix" and lines[i].index_on_page < TOP_OF_PAGE_LINES
+
+    end, how = len(lines), "none"
+    for i in range(first + 1, len(lines)):
+        s = starts[i]
+        if lines[i].table or not is_requisites_heading(lines[i].text):
+            continue
+        if s is not None and s.kind == "single":
+            end, how = i, "requisites_numbered"
+            break
+        if is_caps(lines[i].text) and (s is None or s.kind == "caps_heading"):
+            end, how = i, "requisites_caps"
+            break
+    if how == "none":
+        end = next((i for i in range(first + 1, len(lines)) if top_appendix(i)), len(lines))
+        how = "appendix" if end < len(lines) else "none"
+    after = next((i for i in range(end + 1, len(lines)) if top_appendix(i)), None)
+    if how == "appendix":
+        after = end
+    before = sum(1 for i in range(first, end) if top_appendix(i))
+    return Boundary(first, end, how, after, before)
+
+
 @dataclass
 class DocSurvey:
-    """Counts for one document. Holds no text."""
+    """Counts for one document; everything but the boundary is for the main text. No text."""
 
     doc_id: str
     pages: int = 0
+    how: str = "none"
+    appendix_top_before_end: int = 0
+    requisites_section_lines: int | None = None
+    preamble_share: float = 0.0
+    main_share: float = 0.0
+    requisites_share: float = 0.0
+    appendix_share: float = 0.0
     starts: Counter[str] = field(default_factory=Counter)
-    level1_caps: int = 0  # «1. ПРЕДМЕТ ДОГОВОРА»
-    level1_plain: int = 0  # «1. Подрядчик обязуется…»
+    level1_heading: int = 0  # «N. …» followed by «N.1» within a few lines
+    level1_sentence: int = 0  # «N. …» not followed by «N.1»
+    level1_short: int = 0  # at most TITLE_MAX_CHARS after the number
+    level1_caps: int = 0
     depth: Counter[int] = field(default_factory=Counter)  # «5.2» → 2, «5.2.1» → 3
-    table_number_lines: int = 0
     steps: Counter[str] = field(default_factory=Counter)  # depth-2 continuation
     level1_steps: Counter[str] = field(default_factory=Counter)
-    word_section_inner: Counter[str] = field(default_factory=Counter)
-    requisites_lines: int = 0
-    requisites_numbered: bool = False  # the requisites heading carries a clause number
-    requisites_after_last: bool = False
-    requisites_inside: bool = False  # a requisites line before the last clause
-    appendix_top: int = 0
-    appendix_other: int = 0
-    appendix_before_requisites: bool | None = None
-    restart_after_appendix: bool = False
-    lines_last_to_tail: int | None = None
-    preamble_share: float | None = None
-    tail_share: float | None = None
+    damaged_numbers: Counter[str] = field(default_factory=Counter)  # "comma", "glued"
+    table_lines: int = 0
+    table_number_lines: int = 0
     clause_lengths: list[int] = field(default_factory=list)
-    flagged_pages: Counter[str] = field(default_factory=Counter)
+    main_pages: int = 0
+    main_flagged_pages: Counter[str] = field(default_factory=Counter)
 
     @property
     def style(self) -> str:
         return style_of(self)
+
+
+def _share(offsets: Sequence[int], start: int, end: int) -> float:
+    total = offsets[-1]
+    return (offsets[end] - offsets[start]) / total if total and end > start else 0.0
 
 
 def survey_document(
@@ -217,111 +280,106 @@ def survey_document(
 ) -> DocSurvey:
     """Count the layout of one document. The text is only classified, never kept."""
     s = DocSurvey(doc_id=doc_id, pages=pages)
-    for codes in page_flags.values():
-        for code in set(codes):
-            s.flagged_pages["unread" if code in UNREAD_FLAGS else code] += 1
-
     offsets = [0]  # offsets[i] — start of line i; offsets[len(lines)] — total length
     for line in lines:
         offsets.append(offsets[-1] + len(line.text) + 1)
-    total = offsets[-1]
 
-    starts: list[int] = []  # line indexes of clause starts that continue the numbering
-    requisites: list[int] = []
-    first_appendix: int | None = None
+    b = find_boundary(lines)
+    s.how = b.how
+    s.appendix_top_before_end = b.appendix_before
+    if b.first is None:
+        s.preamble_share = 1.0 if offsets[-1] else 0.0
+        return s
+    s.preamble_share = _share(offsets, 0, b.first)
+    s.main_share = _share(offsets, b.first, b.end)
+    if b.how.startswith("requisites"):
+        stop = b.appendix_after if b.appendix_after is not None else len(lines)
+        s.requisites_share = _share(offsets, b.end, stop)
+        s.requisites_section_lines = stop - b.end
+        s.appendix_share = _share(offsets, stop, len(lines))
+    else:
+        s.appendix_share = _share(offsets, b.end, len(lines))
+
+    main = range(b.first, b.end)
+    main_pages = {lines[i].page for i in main}
+    s.main_pages = len(main_pages)
+    for page in main_pages:
+        for code in set(page_flags.get(page, ())):
+            s.main_flagged_pages["unread" if code in UNREAD_FLAGS else code] += 1
+
+    starts = {i: classify(lines[i].text) for i in main if not lines[i].table}
+    clause_starts: list[int] = []
     previous: tuple[int, ...] | None = None
     previous_level1: int | None = None
-    pending_section: int | None = None
-
-    for i, line in enumerate(lines):
-        start = classify(line.text)
+    for i in main:
+        line = lines[i]
         if line.table:
+            s.table_lines += 1
             if TABLE_NUMBER.match(line.text.strip()):
                 s.table_number_lines += 1
             continue
-        if is_requisites_heading(line.text):
-            s.requisites_lines += 1
-            requisites.append(i)
-            if start is not None and start.kind in ("single", "multi"):
-                s.requisites_numbered = True
+        text = line.text.strip()
+        if COMMA_NUMBER.match(text):
+            s.damaged_numbers["comma"] += 1
+        elif GLUED_NUMBER.match(text):
+            s.damaged_numbers["glued"] += 1
+        start = starts[i]
         if start is None:
             continue
         s.starts[start.kind] += 1
         if len(start.number) >= 2 and start.kind in ("multi", "bare_number"):
             s.depth[len(start.number)] += 1
-        if start.kind == "word_section":
-            pending_section = start.number[0]
-        elif start.kind == "appendix":
-            if line.index_on_page < TOP_OF_PAGE_LINES:
-                s.appendix_top += 1
+        if start.kind == "single":
+            n = start.number[0]
+            followed = any(
+                (nxt := starts.get(j)) is not None
+                and nxt.kind in ("multi", "bare_number")
+                and nxt.number[:2] == (n, 1)
+                for j in range(i + 1, min(i + 1 + NEXT_NUMBER_WINDOW, b.end))
+            )
+            if followed:
+                s.level1_heading += 1
             else:
-                s.appendix_other += 1
-            if first_appendix is None:
-                first_appendix = i
-        elif start.kind == "single":
+                s.level1_sentence += 1
+            if start.rest_chars <= TITLE_MAX_CHARS:
+                s.level1_short += 1
             if start.caps_rest:
                 s.level1_caps += 1
-            else:
-                s.level1_plain += 1
-            step = level1_step(previous_level1, start.number[0])
+            step = level1_step(previous_level1, n)
             s.level1_steps[step] += 1
             if step in ("first", "next"):
-                previous_level1 = start.number[0]
-                starts.append(i)
+                previous_level1 = n
+                clause_starts.append(i)
         elif start.kind in ("multi", "bare_number") and len(start.number) == 2:
-            if pending_section is not None:
-                a = start.number[0]
-                key = "same_number" if a == pending_section else "from_one" if a == 1 else "other"
-                s.word_section_inner[key] += 1
-                pending_section = None
             step = step_kind(previous, start.number)
             s.steps[step] += 1
             if step in ("first", "next", "new_section"):
                 previous = start.number
-                starts.append(i)
-            elif step == "restart" and first_appendix is not None:
-                s.restart_after_appendix = True
+                clause_starts.append(i)
 
-    main = [i for i in starts if first_appendix is None or i < first_appendix]
-    if main and total:
-        first, last = main[0], main[-1]
-        s.preamble_share = offsets[first] / total
-        after = [r for r in requisites if r > last]
-        s.requisites_after_last = bool(after)
-        s.requisites_inside = any(r < last for r in requisites)
-        # The last clause ends at the first requisites heading or appendix after it.
-        marks = [*after[:1], *([first_appendix] if first_appendix is not None else [])]
-        end = min(marks) if marks else len(lines)
-        s.tail_share = (total - offsets[end]) / total
-        if marks:
-            s.lines_last_to_tail = end - last
-        bounds = [*main, end]
-        s.clause_lengths = [
-            offsets[b] - offsets[a] for a, b in itertools.pairwise(bounds) if b > a
-        ]
-    if requisites and first_appendix is not None:
-        s.appendix_before_requisites = first_appendix < requisites[0]
+    bounds = [*sorted(clause_starts), b.end]
+    s.clause_lengths = [
+        offsets[y] - offsets[x] for x, y in itertools.pairwise(bounds) if y > x
+    ]
     return s
 
 
 def style_of(s: DocSurvey) -> str:
-    """One label for the numbering style of a document."""
+    """One label for the numbering style of the main text."""
     multi = s.steps["next"] + s.steps["new_section"] >= 3
-    if multi and s.level1_caps >= 2:
-        return "«N. ЗАГОЛОВОК» и «N.M»"
+    if multi and s.level1_heading >= 2:
+        return "«N. Заголовок» и «N.M»"
     if multi and s.starts["word_section"] >= 2:
         return "«Раздел/Статья/Глава K» и «N.M»"
     if multi and s.starts["roman"] >= 2:
         return "римские «I.» и «N.M»"
     if multi and s.starts["caps_heading"] >= 2:
         return "заголовки прописными без номера и «N.M»"
-    if multi and s.level1_plain >= 2:
-        return "«N. обычный текст» и «N.M»"
     if multi:
         return "только «N.M»"
     if s.starts["word_section"] >= 2:
         return "«Статья K» без «N.M»"
-    if s.level1_caps + s.level1_plain >= 3:
+    if s.level1_sentence >= 3:
         return "сквозная «N.» без «N.M»"
     return "нумерация не найдена"
 
@@ -333,7 +391,14 @@ def _pct(part: float, whole: float) -> str:
     return f"{100 * part / whole:.0f}%" if whole else "—"
 
 
-_SHARES = ((0.0, 0.05, "< 5%"), (0.05, 0.2, "5–20%"), (0.2, 0.5, "20–50%"), (0.5, 2.0, "≥ 50%"))
+_SHARES = (
+    (0.0, 1e-9, "0"),
+    (1e-9, 0.05, "< 5%"),
+    (0.05, 0.2, "5–20%"),
+    (0.2, 0.5, "20–50%"),
+    (0.5, 0.8, "50–80%"),
+    (0.8, 2.0, "≥ 80%"),
+)
 
 
 def share_buckets(values: Iterable[float]) -> str:
@@ -348,11 +413,13 @@ def share_buckets(values: Iterable[float]) -> str:
     return ", ".join(parts) if parts else "—"
 
 
-_COUNTS: tuple[tuple[int, int | None], ...] = ((1, 1), (2, 3), (4, 10), (11, 50), (51, None))
+_COUNTS: tuple[tuple[int, int | None], ...] = (
+    (0, 0), (1, 1), (2, 3), (4, 10), (11, 50), (51, 200), (201, None),
+)
 
 
 def count_buckets(values: Iterable[int]) -> str:
-    """`1: 4, 2–3: 1, > 50: 2` — how many values fall into each range."""
+    """`0: 2, 1: 4, 2–3: 1` — how many values fall into each range."""
     counts: Counter[tuple[int, int | None]] = Counter()
     for v in values:
         for low, high in _COUNTS:
@@ -376,10 +443,16 @@ def _ids(docs: Iterable[DocSurvey], limit: int = 12) -> str:
 
 
 def _docs_lines(docs: Sequence[DocSurvey], kind: str) -> str:
-    return (
-        f"{sum(1 for d in docs if d.starts[kind])} док., {sum(d.starts[kind] for d in docs)} строк"
-    )
+    with_kind = [d for d in docs if d.starts[kind]]
+    return f"{len(with_kind)} док., {sum(d.starts[kind] for d in docs)} строк"
 
+
+_HOW = {
+    "requisites_numbered": "заголовок реквизитов с номером «N.»",
+    "requisites_caps": "заголовок реквизитов прописными без номера",
+    "appendix": "«Приложение» вверху страницы (реквизитов не найдено)",
+    "none": "не найдена (хвоста нет)",
+}
 
 _STEP_NAMES = {
     "first": "первый номер",
@@ -392,16 +465,39 @@ _STEP_NAMES = {
     "jump": "скачок",
 }
 
+_LEVEL1_NAMES = {
+    "first": "первый",
+    "next": "следующий",
+    "repeat": "повтор",
+    "gap": "пропуск",
+    "restart": "заново с 1",
+    "other": "иначе",
+}
+
 _KINDS = (
-    ("single", "«N. …» (уровень 1)"),
-    ("multi", "«N.M …» и глубже"),
     ("word_section", "«Раздел/Статья/Глава K»"),
     ("roman", "«I. …» римские"),
     ("caps_heading", "заголовок прописными без номера"),
     ("bare_number", "номер на отдельной строке"),
     ("paren_num", "перечень «1)»"),
     ("letter", "перечень «а)»"),
+    ("appendix", "строка начинается с «Приложение»"),
+    ("date", "строка начинается с даты"),
+    ("sum", "строка начинается с суммы"),
 )
+
+
+def _steps_lines(docs: Sequence[DocSurvey], attr: str, names: Mapping[str, str]) -> list[str]:
+    total: Counter[str] = Counter()
+    for d in docs:
+        total.update(getattr(d, attr))
+    whole = sum(total.values())
+    out = []
+    for key, name in names.items():
+        if total[key]:
+            with_key = sum(1 for d in docs if getattr(d, attr)[key])
+            out.append(f"     {name}: {total[key]} ({_pct(total[key], whole)}), {with_key} док.")
+    return out or ["     —"]
 
 
 def summary_lines(docs: Sequence[DocSurvey]) -> list[str]:
@@ -411,98 +507,77 @@ def summary_lines(docs: Sequence[DocSurvey]) -> list[str]:
     if not n:
         return [*out, "Нет документов, доступных после чтения."]
 
-    out.append("1. Нумерация")
+    out.append("1. Граница основного текста")
+    for how, name in _HOW.items():
+        members = [d for d in docs if d.how == how]
+        if members:
+            out.append(f"   {name}: {len(members)} док. — {_ids(members)}")
+    early = [d for d in docs if d.appendix_top_before_end]
+    out.append(
+        f"   «Приложение» вверху страницы внутри основного текста: {len(early)} док. — "
+        f"{_ids(early)}"
+    )
+    out.append(
+        "   строк в разделе реквизитов (до приложения или конца): "
+        + count_buckets(
+            d.requisites_section_lines for d in docs if d.requisites_section_lines is not None
+        )
+    )
+    for attr, name in (
+        ("preamble_share", "преамбула"),
+        ("main_share", "основной текст"),
+        ("requisites_share", "раздел реквизитов"),
+        ("appendix_share", "приложения"),
+    ):
+        out.append(f"   доля текста — {name}: " + share_buckets(getattr(d, attr) for d in docs))
+
+    out += ["", "2. Нумерация в основном тексте"]
     out.append("   Стиль документа:")
     for style, count in Counter(d.style for d in docs).most_common():
         members = [d for d in docs if d.style == style]
         out.append(f"     {style}: {count} ({_pct(count, n)}) — {_ids(members)}")
-    out.append("   Строки вида (вне таблиц):")
-    for kind, name in _KINDS:
-        out.append(f"     {name}: {_docs_lines(docs, kind)}")
+    heading = sum(d.level1_heading for d in docs)
+    sentence = sum(d.level1_sentence for d in docs)
     out.append(
-        f"     «N. ЗАГОЛОВОК ПРОПИСНЫМИ»: {sum(1 for d in docs if d.level1_caps)} док.; "
-        f"«N. обычный текст»: {sum(1 for d in docs if d.level1_plain)} док."
+        f"   «N. …» уровня 1: {heading + sentence} строк; за ними «N.1» (заголовок раздела): "
+        f"{heading}; без «N.1»: {sentence}"
     )
-    for depth, example in ((3, "5.2.1"), (4, "5.2.1.1")):
+    out.append(
+        f"     короче {TITLE_MAX_CHARS + 1} знаков: {sum(d.level1_short for d in docs)}; "
+        f"прописными: {sum(d.level1_caps for d in docs)}"
+    )
+    out.append(
+        "     строк «N.» без «N.1» на документ: "
+        + count_buckets(d.level1_sentence for d in docs)
+    )
+    for depth, example in ((2, "5.2"), (3, "5.2.1"), (4, "5.2.1.1")):
         out.append(
-            f"     номера глубины {depth} («{example}»): "
+            f"   номера глубины {depth} («{example}»): "
             f"{sum(1 for d in docs if d.depth[depth])} док., "
             f"{sum(d.depth[depth] for d in docs)} строк"
         )
+    for kind, name in _KINDS[:6]:
+        out.append(f"   {name}: {_docs_lines(docs, kind)}")
 
-    out += ["", "2. Продолжение нумерации (вне таблиц)"]
-    steps: Counter[str] = Counter()
-    for d in docs:
-        steps.update(d.steps)
+    out += ["", "3. Продолжение нумерации в основном тексте"]
     out.append("   «N.M» после последнего принятого номера:")
-    for key, name in _STEP_NAMES.items():
-        if steps[key]:
-            with_key = sum(1 for d in docs if d.steps[key])
-            out.append(
-                f"     {name}: {steps[key]} ({_pct(steps[key], sum(steps.values()))}), "
-                f"{with_key} док."
-            )
-    level1: Counter[str] = Counter()
-    for d in docs:
-        level1.update(d.level1_steps)
-    level1_text = ", ".join(f"{k}: {v}" for k, v in sorted(level1.items())) or "—"
-    out.append(f"   «N.» уровня 1: {level1_text}")
-    inner: Counter[str] = Counter()
-    for d in docs:
-        inner.update(d.word_section_inner)
-    if inner:
+    out += _steps_lines(docs, "steps", _STEP_NAMES)
+    out.append("   «N.» после последнего принятого номера:")
+    out += _steps_lines(docs, "level1_steps", _LEVEL1_NAMES)
+    for key, name in (("comma", "«5,2 …» (запятая)"), ("glued", "«5.2Текст» (без пробела)")):
         out.append(
-            "   первый «N.M» после «Раздел/Статья K»: "
-            f"N = K: {inner['same_number']}, N = 1: {inner['from_one']}, иначе: {inner['other']}"
+            f"   номер, возможно испорченный распознаванием, {name}: "
+            f"{sum(1 for d in docs if d.damaged_numbers[key])} док., "
+            f"{sum(d.damaged_numbers[key] for d in docs)} строк"
         )
 
-    out += ["", "3. Конец договора"]
-    with_req = [d for d in docs if d.requisites_lines]
+    out += ["", "4. Риски в основном тексте"]
+    for kind, name in _KINDS[6:]:
+        out.append(f"   {name}: {_docs_lines(docs, kind)}")
     out.append(
-        f"   строка о реквизитах/подписях: {len(with_req)} док.; с номером пункта: "
-        f"{sum(1 for d in docs if d.requisites_numbered)}; после последнего пункта: "
-        f"{sum(1 for d in docs if d.requisites_after_last)}; до последнего пункта: "
-        f"{sum(1 for d in docs if d.requisites_inside)}"
-    )
-    with_app = [d for d in docs if d.appendix_top or d.appendix_other]
-    out.append(
-        f"   «Приложение…»: {len(with_app)} док.; вверху страницы: "
-        f"{sum(1 for d in docs if d.appendix_top)} док., не вверху: "
-        f"{sum(1 for d in docs if d.appendix_other)} док."
-    )
-    both = [d for d in docs if d.appendix_before_requisites is not None]
-    out.append(
-        f"   и приложение, и реквизиты: {len(both)} док.; приложение раньше реквизитов: "
-        f"{sum(1 for d in both if d.appendix_before_requisites)}"
-    )
-    out.append(
-        "   нумерация «1.1» заново после приложения: "
-        f"{sum(1 for d in docs if d.restart_after_appendix)} док."
-    )
-    neither = [
-        d for d in docs if not d.requisites_lines and not (d.appendix_top or d.appendix_other)
-    ]
-    out.append(f"   ни реквизитов, ни приложения: {len(neither)} док. — {_ids(neither)}")
-    out.append(
-        "   строк от начала последнего пункта до реквизитов/приложения: "
-        + count_buckets(d.lines_last_to_tail for d in docs if d.lines_last_to_tail is not None)
-    )
-    out.append(
-        "   доля текста до первого пункта (преамбула): "
-        + share_buckets(d.preamble_share for d in docs if d.preamble_share is not None)
-    )
-    out.append(
-        "   доля текста после последнего пункта (хвост): "
-        + share_buckets(d.tail_share for d in docs if d.tail_share is not None)
-    )
-
-    out += ["", "4. Ложные начала и риски"]
-    out.append(f"   строка начинается с даты: {_docs_lines(docs, 'date')}")
-    out.append(f"   строка начинается с суммы: {_docs_lines(docs, 'sum')}")
-    out.append(
-        "   строка таблицы начинается с номера: "
-        f"{sum(1 for d in docs if d.table_number_lines)} док., "
-        f"{sum(d.table_number_lines for d in docs)} строк"
+        f"   строки таблиц: {sum(1 for d in docs if d.table_lines)} док., "
+        f"{sum(d.table_lines for d in docs)} строк; из них начинаются с номера: "
+        f"{sum(d.table_number_lines for d in docs)}"
     )
     ratios = []
     for d in docs:
@@ -514,15 +589,18 @@ def summary_lines(docs: Sequence[DocSurvey]) -> list[str]:
             f"   самый длинный пункт / медиана пунктов документа ({len(ratios)} док.): "
             f"медиана {statistics.median(ratios):.1f}; {ranges}"
         )
+    pages = sum(d.main_pages for d in docs)
+    out.append(f"   страниц основного текста: {pages}")
     for code, name in (
         (RECOGNIZED, "распознаны (фича 13)"),
-        ("ocr_text", "текстовый слой от распознавания"),
         ("low_recognition_quality", "низкое качество распознавания"),
+        ("ocr_text", "текстовый слой от распознавания"),
         ("unread", "не прочитаны (скан, нет текста, нечитаемо)"),
     ):
+        count = sum(d.main_flagged_pages[code] for d in docs)
         out.append(
-            f"   страницы «{name}»: {sum(d.flagged_pages[code] for d in docs)} стр., "
-            f"{sum(1 for d in docs if d.flagged_pages[code])} док."
+            f"     «{name}»: {count} стр. ({_pct(count, pages)}), "
+            f"{sum(1 for d in docs if d.main_flagged_pages[code])} док."
         )
     return out
 
@@ -583,7 +661,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"\nОстановлено: {exc}", file=sys.stderr)
         return 1
     lines = [
-        "Обзор структуры договоров, фича 04 — только цифры",
+        "Обзор структуры договоров, фича 04 — только цифры (версия 2)",
         f"Дата: {datetime.now().isoformat(timespec='minutes')}",
         "",
         *summary_lines(docs),
