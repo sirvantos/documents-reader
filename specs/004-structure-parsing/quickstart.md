@@ -55,6 +55,17 @@ uv run --env-file "$DEMO/.env" docreader clause D-0001/2.1 --own
 Перед началом: ветка `004-structure-parsing`, `uv sync --group ocr`, чтение
 и распознавание набора выполнены (`docreader read` по текущим данным).
 
+Б1, Б3 и подготовку Б2 делает один скрипт:
+
+```bash
+uv run python scripts/quickstart_structure.py            # .env
+```
+
+Он печатает и сохраняет в `$DOCREADER_DATA_DIR/reports/structure-b-summary-….txt`
+только идентификаторы, числа и причины (сводку можно прислать агенту), а оглавления
+пяти договоров для Б2 пишет в `$DOCREADER_DATA_DIR/reports/structure-b2/` (текст
+договоров, не присылать). Ниже — те же шаги вручную.
+
 ### Б1. Разбор набора и скорость (SC-005)
 
 ```bash
