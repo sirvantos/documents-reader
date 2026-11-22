@@ -24,7 +24,7 @@
 | `reason` | text | NOT NULL для `rejected` и `failed`, иначе NULL | причина без текста договора |
 | `proposed_value` | text | NULL | запись значения от модели (`found` и `rejected`) |
 | `proposed_quote` | text | NULL | цитата от модели (`rejected`; для просмотра, FR-006) |
-| `proposed_clause` | text | NULL | пункт, названный моделью |
+| `proposed_clause` | text | NULL | пункт, названный моделью (`found` и `rejected`) |
 | `source_text_sha256` | char(64) | NOT NULL, `~ '^[0-9a-f]{64}$'` | отпечаток `document_text.text`, по которому получен результат |
 | `run_id` | bigint | NOT NULL, FK → `run(id)` ON DELETE RESTRICT | запуск извлечения |
 
@@ -34,7 +34,7 @@ CHECK по результату:
 found      ⇒ value_text, value_normalized, quote, quote_start, quote_end, clause_key,
              page, pages NOT NULL; reason NULL
 not_found  ⇒ value_text, value_normalized, quote, quote_start, quote_end, clause_key,
-             page, pages, reason, proposed_quote NULL
+             page, pages, reason, proposed_* NULL
 rejected   ⇒ reason NOT NULL; value_text, value_normalized, quote … pages NULL
 failed     ⇒ reason NOT NULL; value_text … pages NULL; proposed_* NULL
 ```
@@ -43,11 +43,17 @@ failed     ⇒ reason NOT NULL; value_text … pages NULL; proposed_* NULL
 
 Внешнего ключа на `clause` нет: `parse` заменяет записи документа через `DELETE` +
 `INSERT` (`parsing.py`), и каскад стёр бы поля даже при повторном разборе того же
-текста, а FK без каскада не дал бы разбору перезаписать пункты. Ключ остаётся верным
-по построению: тот же текст даёт те же ключи (SC-004 фичи 04), другой текст сбрасывает
-этап и делает строки устаревшими по `source_text_sha256`. `fields` показывает пункт
-по ключу и, если записи с таким ключом нет, пишет «пункт не найден в разборе» вместо
-идентификатора. Тест: повторный `parse` того же текста не меняет `fields`.
+текста, а FK без каскада не дал бы разбору перезаписать пункты. Тот же текст и те же
+правила разбора дают те же ключи (SC-004 фичи 04), другой текст сбрасывает этап
+и делает строки устаревшими по `source_text_sha256`. Но повторный разбор того же текста
+с изменёнными правилами или настройками `[structure]` может сдвинуть ключи, а `parse`
+следующие этапы не сбрасывает (находка анализа U3). Поэтому читатель строки сверяет
+ключ с разбором: запись с ключом `clause_key` должна существовать и содержать
+`quote_start` (`start <= quote_start < end_`). Не так — `fields` вместо идентификатора
+пишет «пункт не найден в разборе — выполните docreader extract D-0001», а повторная
+проверка SC-001 (`scripts/quickstart_extraction.py`) считает такую строку отдельно.
+Тесты: повторный `parse` того же текста не меняет `fields`; ключ, чья запись больше
+не содержит цитату, даёт пометку.
 
 Правила, которые проверяет код и тесты (не схема):
 

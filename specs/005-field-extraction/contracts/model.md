@@ -8,14 +8,17 @@
 ```text
 load_client(settings: ExtractionSettings, transport: httpx.BaseTransport | None = None) -> ModelClient
     DOCREADER_FORBID_MODELS задана и transport не передан → EnvironmentProblem (код 2)
-    base_url не локальный → EnvironmentProblem (проверка и при загрузке настроек)
+    base_url не локальный → EnvironmentProblem — и с переданным transport (та же функция,
+    что проверяет адрес при загрузке настроек; защита от настроек, собранных в обход загрузки)
     transport=None → настоящий сетевой транспорт; в тестах — MockTransport из tests/fakes/llm.py
 
 ModelClient.check() -> str
     GET {base_url}/models; id первой модели (или settings.model, если она в списке);
     нет ответа → ModelUnavailable (EnvironmentProblem)
 
-ModelClient.extract(messages: list[dict]) -> ExtractionAnswer
+ModelClient.extract(messages: list[dict], response_model: type[T]) -> T
+    response_model — Pydantic-схема ответа; этап передаёт ExtractionAnswer (llm.py не
+    импортирует extraction_prompt)
     Instructor, mode из настроек, max_retries = settings.max_retries,
     temperature, seed, max_tokens, extra_body из настроек, timeout = timeout_s
     ответ не по форме после повторов → AnswerFormError(attempts)
@@ -33,7 +36,7 @@ ModelClient.extract(messages: list[dict]) -> ExtractionAnswer
 ```text
 ScriptedModel(*answers: str | Exception) -> httpx.MockTransport-фабрика
     отвечает на POST /chat/completions по порядку: строка → ответ сервера с этим
-    content; ConnectTimeout / ConnectError → исключение транспорта;
+    content; исключение httpx (ConnectError, ReadTimeout) → исключение транспорта;
     GET /models → {"data": [{"id": "fake-model"}]}
     .requests — список тел запросов (для проверки подсказки и параметров)
 

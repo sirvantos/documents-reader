@@ -31,10 +31,9 @@
 
 ## Notes
 
-- One [NEEDS CLARIFICATION] marker remains on purpose (Edge Cases, «Текст не помещается
-  в один запрос к модели»): it depends on how many contracts of the set exceed the model's
-  limit. Resolve it in `/speckit-clarify` after the survey of real contracts
-  (`scripts/survey_fields.py`, CLAUDE.md «Delivery»: survey before clarify).
+- The one [NEEDS CLARIFICATION] marker left on purpose (Edge Cases, «Текст не помещается
+  в один запрос к модели») was resolved in `/speckit-clarify` on 2026-11-22 from the survey
+  of real contracts (`scripts/survey_fields.py` v2, clarification Q1): no markers remain.
 - Settled from binding documents instead of asking: which documents extraction takes
   (FR-010) and stale results (FR-011) — `docs/tech-context.md`, «Договорённости между
   этапами»; value kinds and quote check for names (FR-004, FR-005) — `docs/field-catalog.md`,
