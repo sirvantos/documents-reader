@@ -40,8 +40,8 @@ def test_surveys_read_documents_only(cli, db, tmp_path):
     assert s.style == "«N. Заголовок» и «N.M»"
     # «1. Предмет договора» … «6. Заключительные положения», each followed by «N.1»
     assert (s.level1_heading, s.level1_sentence, s.level1_caps) == (6, 0, 0)
-    # 1.1 first; 1.2 1.3 2.2 3.2 4.2 next; 2.1 3.1 4.1 5.1 6.1 new section
-    assert s.steps == {"first": 1, "next": 5, "new_section": 5}
+    # every «N.» heading expects «N.1»: all eleven «N.M» lines are the next number
+    assert s.steps == {"next": 11}
     # no requisites and no appendix in the synthetic contract: no tail
     assert s.how == "none" and s.appendix_share == 0
     assert 0 < s.preamble_share < 0.2 and s.main_share > 0.8

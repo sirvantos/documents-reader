@@ -62,6 +62,9 @@ TABLE_NUMBER = re.compile(r"^\d{1,3}(?:[.)]|\s|$)")  # «1 Земляные ра
 # Numbers that recognition may have damaged: «5,2 Оплата», «5.2Оплата».
 COMMA_NUMBER = re.compile(r"^\d{1,2},\d{1,2}\.?\s")
 GLUED_NUMBER = re.compile(r"^\d{1,2}\.\d{1,2}\.?[А-Яа-яЁё]")
+# A «date» whose first two numbers are the current clause: «5.2.15» inside clause 5.2.
+DATE_AS_NUMBER = re.compile(r"^(\d{1,2})\.(\d{1,2})\.\d{2}(?!\d)")
+SMALL_MAIN_SHARE = 0.5  # the report names documents whose main text is smaller
 
 HEADING_MAX_CHARS = 90
 TITLE_MAX_CHARS = 60  # a level-1 «N. Предмет договора» heading is at most this long
@@ -259,6 +262,7 @@ class DocSurvey:
     steps: Counter[str] = field(default_factory=Counter)  # depth-2 continuation
     level1_steps: Counter[str] = field(default_factory=Counter)
     damaged_numbers: Counter[str] = field(default_factory=Counter)  # "comma", "glued"
+    date_like_subclause: int = 0  # a «date» line that reads as «N.M.K» of the current clause
     table_lines: int = 0
     table_number_lines: int = 0
     clause_lengths: list[int] = field(default_factory=list)
@@ -349,13 +353,20 @@ def survey_document(
             s.level1_steps[step] += 1
             if step in ("first", "next"):
                 previous_level1 = n
+                previous = (n, 0)  # a section heading «N.» expects «N.1» next
                 clause_starts.append(i)
         elif start.kind in ("multi", "bare_number") and len(start.number) == 2:
             step = step_kind(previous, start.number)
             s.steps[step] += 1
             if step in ("first", "next", "new_section"):
                 previous = start.number
+                # «7.1» right after «6.3»: the heading «7.» is missing or was not recognised
+                previous_level1 = max(previous_level1 or 0, start.number[0])
                 clause_starts.append(i)
+        elif start.kind == "date" and previous is not None:
+            m = DATE_AS_NUMBER.match(text)
+            if m is not None and (int(m.group(1)), int(m.group(2))) == previous[:2]:
+                s.date_like_subclause += 1
 
     bounds = [*sorted(clause_starts), b.end]
     s.clause_lengths = [
@@ -530,6 +541,10 @@ def summary_lines(docs: Sequence[DocSurvey]) -> list[str]:
         ("appendix_share", "приложения"),
     ):
         out.append(f"   доля текста — {name}: " + share_buckets(getattr(d, attr) for d in docs))
+    small = [d for d in docs if d.how != "none" and d.main_share < SMALL_MAIN_SHARE]
+    out.append(
+        f"   основной текст меньше {SMALL_MAIN_SHARE:.0%}: {len(small)} док. — {_ids(small)}"
+    )
 
     out += ["", "2. Нумерация в основном тексте"]
     out.append("   Стиль документа:")
@@ -574,6 +589,11 @@ def summary_lines(docs: Sequence[DocSurvey]) -> list[str]:
     out += ["", "4. Риски в основном тексте"]
     for kind, name in _KINDS[6:]:
         out.append(f"   {name}: {_docs_lines(docs, kind)}")
+    out.append(
+        "     из строк «с датой» читаются как «N.M.K» текущего пункта: "
+        f"{sum(1 for d in docs if d.date_like_subclause)} док., "
+        f"{sum(d.date_like_subclause for d in docs)} строк"
+    )
     out.append(
         f"   строки таблиц: {sum(1 for d in docs if d.table_lines)} док., "
         f"{sum(d.table_lines for d in docs)} строк; из них начинаются с номера: "
@@ -661,7 +681,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"\nОстановлено: {exc}", file=sys.stderr)
         return 1
     lines = [
-        "Обзор структуры договоров, фича 04 — только цифры (версия 2)",
+        "Обзор структуры договоров, фича 04 — только цифры (версия 3)",
         f"Дата: {datetime.now().isoformat(timespec='minutes')}",
         "",
         *summary_lines(docs),

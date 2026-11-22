@@ -139,7 +139,9 @@ def test_surveys_the_main_text_only() -> None:
     assert s.style == "«N. Заголовок» и «N.M»"
     assert s.how == "requisites_numbered" and s.requisites_section_lines == 2
     assert (s.level1_heading, s.level1_sentence, s.level1_short, s.level1_caps) == (2, 0, 2, 2)
-    assert s.steps == {"first": 1, "next": 3, "new_section": 1, "repeat": 1, "gap": 1}
+    # «1.» and «2.» headings expect «1.1» and «2.1»: 1.1 1.2 1.3 2.1 2.2 next
+    assert s.steps == {"next": 5, "repeat": 1, "gap": 1}
+    assert s.date_like_subclause == 0  # «01.03.2025» is a date
     assert s.level1_steps == {"first": 1, "next": 1}
     assert s.depth == {2: 7, 3: 1}
     assert s.starts["date"] == 1 and s.starts["letter"] == 1 and s.starts["appendix"] == 1
@@ -183,6 +185,50 @@ def test_appendix_at_a_page_top_ends_the_main_text_without_requisites() -> None:
     assert s.how == "appendix"
     assert s.appendix_share > 0 and s.requisites_section_lines is None
     assert "restart" not in s.steps
+
+
+def test_section_without_subclauses_does_not_break_the_count() -> None:
+    lines = [
+        Line(1, 0, "1. Предмет договора"),
+        Line(1, 1, "1.1. Первый пункт"),
+        Line(1, 2, "1.2. Второй пункт"),
+        Line(1, 3, "2. Форс-мажор"),
+        Line(1, 4, "Стороны освобождаются от ответственности"),
+        Line(1, 5, "3. Цена"),
+        Line(1, 6, "3.1. Цена составляет"),
+        Line(1, 7, "3.2. Оплата частями"),
+    ]
+    s = survey.survey_document("D-0006", lines, {}, pages=1)
+    assert s.steps == {"next": 4}
+    assert s.level1_steps == {"first": 1, "next": 2}
+    assert (s.level1_heading, s.level1_sentence) == (2, 1)
+    assert len(s.clause_lengths) == 7
+
+
+def test_missing_section_heading_moves_the_section_on() -> None:
+    lines = [
+        Line(1, 0, "1. Предмет договора"),
+        Line(1, 1, "1.1. Первый пункт"),
+        Line(1, 2, "2.1. Пункт раздела без заголовка"),
+        Line(1, 3, "3. Цена"),
+        Line(1, 4, "3.1. Цена составляет"),
+    ]
+    s = survey.survey_document("D-0008", lines, {}, pages=1)
+    assert s.steps == {"next": 2, "new_section": 1}
+    assert s.level1_steps == {"first": 1, "next": 1}
+
+
+def test_date_that_reads_as_a_subclause_of_the_current_clause() -> None:
+    lines = [
+        Line(1, 0, "5. Ответственность"),
+        Line(1, 1, "5.1. Первый пункт"),
+        Line(1, 2, "5.2. Второй пункт"),
+        Line(1, 3, "5.2.15 Подпункт с двузначным номером"),
+        Line(1, 4, "01.03.2025 стороны подписали акт"),
+    ]
+    s = survey.survey_document("D-0009", lines, {}, pages=1)
+    assert s.starts["date"] == 2
+    assert s.date_like_subclause == 1
 
 
 def test_flat_numbering_of_sentences() -> None:
