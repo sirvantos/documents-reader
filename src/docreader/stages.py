@@ -39,6 +39,7 @@ class RunStage(StrEnum):
     INTAKE = "intake"  # add, reclassify
     READING = "reading"
     RECOGNITION = "recognition"
+    STRUCTURE = "structure"  # feature 04: parse
 
 
 STAGES: tuple[Stage, ...] = tuple(Stage)

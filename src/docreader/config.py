@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
@@ -68,6 +69,14 @@ class RecognitionSettings:
 
 
 @dataclass(frozen=True)
+class StructureSettings:
+    """Values of the [structure] section (data-model «Настройки», research R-10)."""
+
+    max_gap: int = 5
+    requisites_pattern: str = r"реквизит|подписи\s+сторон|адреса\s+сторон|юридические\s+адреса"
+
+
+@dataclass(frozen=True)
 class Settings:
     data_dir: Path
     database_url: str
@@ -76,6 +85,7 @@ class Settings:
     large_file_pages: int = 200
     reading: ReadingSettings = field(default_factory=ReadingSettings)
     recognition: RecognitionSettings = field(default_factory=RecognitionSettings)
+    structure: StructureSettings = field(default_factory=StructureSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -95,6 +105,7 @@ class Settings:
             "intake": {"large_file_pages": self.large_file_pages},
             "reading": asdict(self.reading),
             "recognition": asdict(self.recognition),
+            "structure": asdict(self.structure),
         }
 
 
@@ -176,6 +187,16 @@ def _in_unit_interval(v: Any) -> bool:
     return 0 <= v <= 1
 
 
+def _is_compilable_pattern(v: str) -> bool:
+    if not v.strip():
+        return False
+    try:
+        re.compile(v)
+    except re.error:
+        return False
+    return True
+
+
 # table -> key -> (field name, type, validator, description of the allowed range)
 _SCHEMA: dict[str, dict[str, tuple[str, type, Callable[[Any], bool], str]]] = {
     "page_kinds": {
@@ -242,9 +263,20 @@ _SCHEMA: dict[str, dict[str, tuple[str, type, Callable[[Any], bool], str]]] = {
         "blank_max_ink_share": ("blank_max_ink_share", float, _in_unit_interval, "число в [0, 1]"),
         "model_dir": ("model_dir", str, lambda v: True, "строка"),
     },
+    # Keys of [structure] map one-to-one to StructureSettings fields.
+    "structure": {
+        "max_gap": ("max_gap", int, lambda v: 0 <= v <= 20, "целое от 0 до 20"),
+        "requisites_pattern": (
+            "requisites_pattern",
+            str,
+            _is_compilable_pattern,
+            "непустая строка — регулярное выражение, которое компилируется",
+        ),
+    },
 }
 READING_TABLE = "reading"
 RECOGNITION_TABLE = "recognition"
+STRUCTURE_TABLE = "structure"
 
 
 def _type_matches(kind: type, value: Any) -> bool:
@@ -274,6 +306,7 @@ def _read_settings_file(data_dir: Path) -> dict:
     values: dict = {}
     reading_values: dict = {}
     recognition_values: dict = {}
+    structure_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
@@ -283,6 +316,8 @@ def _read_settings_file(data_dir: Path) -> dict:
             target = reading_values
         elif table == RECOGNITION_TABLE:
             target = recognition_values
+        elif table == STRUCTURE_TABLE:
+            target = structure_values
         else:
             target = values
         for key, value in entries.items():
@@ -299,4 +334,6 @@ def _read_settings_file(data_dir: Path) -> dict:
         values["reading"] = ReadingSettings(**reading_values)
     if RECOGNITION_TABLE in doc:
         values["recognition"] = RecognitionSettings(**recognition_values)
+    if STRUCTURE_TABLE in doc:
+        values["structure"] = StructureSettings(**structure_values)
     return values

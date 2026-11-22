@@ -234,7 +234,8 @@ def test_recognition_stage_added_for_existing_documents(empty_database_url: str)
         conn.execute(
             "INSERT INTO stage_status (document_id, stage) VALUES ('D-0001', 'reading')"
         )
-        assert dbmod.apply_migrations(conn) == ["0003_recognition"]
+        # later migrations (0004 and on) are applied after it
+        assert dbmod.apply_migrations(conn)[0] == "0003_recognition"
         row = conn.execute(
             "SELECT state, reason FROM stage_status "
             "WHERE document_id = 'D-0001' AND stage = 'recognition'"
@@ -367,3 +368,109 @@ def test_page_recognition_run_is_restricted_and_document_cascades(db) -> None:
         db.execute("DELETE FROM run WHERE id = %s", (rec_run,))
     db.execute("DELETE FROM document WHERE id = 'D-0001'")
     assert db.execute("SELECT count(*) FROM page_recognition").fetchone()[0] == 0
+
+
+# --- 0004_structure (feature 04, task T002) --------------------------------------------
+
+HASH = "a" * 64
+
+
+def _structure_run(db) -> int:
+    return db.execute(
+        "INSERT INTO run (stage, code_version, settings) VALUES ('structure', 'test', '{}') "
+        "RETURNING id"
+    ).fetchone()[0]
+
+
+def _insert_clause(db, run_id: int, **overrides) -> None:
+    row = {
+        "key": "5.2",
+        "ordinal": 0,
+        "kind": "clause",
+        "number_printed": "5.2.",
+        "number": [5, 2],
+        "depth": 2,
+        "parent_key": None,
+        "start": 0,
+        "end_": 10,
+        "first_page": 1,
+        "last_page": 1,
+        "sha": HASH,
+    }
+    row.update(overrides)
+    db.execute(
+        "INSERT INTO clause (document_id, key, ordinal, kind, number_printed, number, depth,"
+        " parent_key, start, end_, first_page, last_page, source_text_sha256, run_id)"
+        " VALUES ('D-0001', %(key)s, %(ordinal)s, %(kind)s, %(number_printed)s, %(number)s,"
+        " %(depth)s, %(parent_key)s, %(start)s, %(end_)s, %(first_page)s, %(last_page)s,"
+        " %(sha)s, %(run_id)s)",
+        {**row, "run_id": run_id},
+    )
+
+
+def test_structure_migration_is_listed_as_applied(db) -> None:
+    versions = {r[0] for r in db.execute("SELECT version FROM schema_migrations")}
+    assert "0004_structure" in versions
+
+
+def test_clause_accepts_every_kind(db) -> None:
+    _seed_page(db)
+    run_id = _structure_run(db)
+    _insert_clause(
+        db, run_id, key="преамбула", ordinal=0, kind="preamble", number_printed=None,
+        number=None, depth=0, start=0, end_=5,
+    )
+    _insert_clause(
+        db, run_id, key="5", ordinal=1, kind="section", number_printed="5.", number=[5],
+        depth=1, start=5, end_=8,
+    )
+    _insert_clause(db, run_id, key="5.2", ordinal=2, parent_key="5", start=8, end_=12)
+    _insert_clause(
+        db, run_id, key="реквизиты", ordinal=3, kind="tail", number_printed=None,
+        number=None, depth=0, start=12, end_=20,
+    )
+    assert db.execute("SELECT count(*) FROM clause").fetchone()[0] == 4
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"key": " "},
+        {"kind": "appendix"},
+        {"kind": "section", "number": None},
+        {"kind": "section", "number_printed": None},
+        {"kind": "preamble"},  # a preamble has no number
+        {"depth": 3},  # number {5,2} has depth 2
+        {"end_": 0},  # end_ <= start
+        {"start": -1},
+        {"ordinal": -1},
+        {"first_page": 2, "last_page": 1},
+        {"sha": "z" * 64},
+        {"parent_key": "9"},  # no such record
+    ],
+)
+def test_clause_rejects_bad_rows(db, overrides) -> None:
+    _seed_page(db)
+    run_id = _structure_run(db)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_clause(db, run_id, **overrides)
+
+
+def test_clause_keys_and_ordinals_are_unique_per_document(db) -> None:
+    _seed_page(db)
+    run_id = _structure_run(db)
+    _insert_clause(db, run_id)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_clause(db, run_id, ordinal=1)  # same key
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_clause(db, run_id, key="5.3")  # same ordinal
+
+
+def test_clause_run_is_restricted_and_document_cascades(db) -> None:
+    _seed_page(db)
+    run_id = _structure_run(db)
+    _insert_clause(db, run_id)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        db.execute("DELETE FROM run WHERE id = %s", (run_id,))
+    db.execute("DELETE FROM document WHERE id = 'D-0001'")
+    assert db.execute("SELECT count(*) FROM clause").fetchone()[0] == 0

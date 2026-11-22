@@ -235,4 +235,8 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "blank_max_ink_share": 0.003,
             "model_dir": "",
         },
+        "structure": {
+            "max_gap": 5,
+            "requisites_pattern": r"реквизит|подписи\s+сторон|адреса\s+сторон|юридические\s+адреса",
+        },
     }

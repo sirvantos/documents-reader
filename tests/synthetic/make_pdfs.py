@@ -1083,6 +1083,135 @@ def make_signature_sheet_ru(path: str | Path, pages: int = 3) -> Path:
     return _write(path, _pdf(draw))
 
 
+# --- structured contract for feature 04 (R-12) ---------------------------------
+
+# Page 1 preamble is wider than the text area at 11 pt, so page 1 is set at 8 pt.
+_STRUCTURED_PAGE1_SIZE = 8.0
+
+_STRUCTURED_PAGE1: tuple[str, ...] = (
+    "Договор подряда № 7/2026",
+    "г. Энск",
+    "ООО «Альфа», именуемое Заказчиком, и ООО «Бета», именуемое Подрядчиком, заключили договор:",
+    "1. Предмет договора",
+    "1.1. Подрядчик выполняет работы.",
+    "1.2. Работы выполняются в два этапа.",
+    "1.2.1. Первый этап.",
+    "1.2.1.1. Подготовка участка.",
+    "1.2.2. Второй этап включает:",
+    "а) разметку участка;",
+    "1) завоз материалов.",
+)
+
+# Page 2 is split by the table: the lines before it (20), then the table, then the
+# lines after it (2). STRUCTURED_CONTRACT_PAGES keeps the plain lines of the page in
+# reading order without the table cells; the cells are in STRUCTURED_CONTRACT_TABLE.
+_STRUCTURED_PAGE2_BEFORE: tuple[str, ...] = (
+    "Работы второго этапа сдаются по акту.",
+    "2. Цена договора",
+    "2.1. Цена складывается из частей:",
+    *(f"2.1.{i}. Часть {i}." for i in range(1, 13)),
+    "01.03.2025 Заказчик вносит аванс.",
+    "2.5 млн рублей оплачиваются по акту.",
+    "согласно п. 1.2 настоящего договора",
+    "1.5 тонны материалов поставляет Подрядчик.",
+    "2.2Оплата производится по счёту.",
+)
+_STRUCTURED_PAGE2_AFTER: tuple[str, ...] = (
+    "3. Форс-мажор",
+    "Стороны освобождаются от ответственности при форс-мажоре.",
+)
+
+# Table rows of page 2, cell by cell; the first cells look like numbers of clauses.
+STRUCTURED_CONTRACT_TABLE: tuple[tuple[str, str], ...] = (
+    ("2.3", "Разметка участка"),
+    ("2.4", "Завоз материалов"),
+    ("2.5", "Уборка территории"),
+)
+_STRUCTURED_TABLE_COLUMNS = (72, 112, 535)  # column boundaries, left to right
+_STRUCTURED_TABLE_ROW_HEIGHT = 24
+
+_STRUCTURED_PAGE4: tuple[str, ...] = (
+    "4. Сроки",
+    "4.1. Начало работ — дата подписания.",
+    "4.2. Окончание — по графику.",
+    "5.1. Порядок приёмки определяется актом.",
+    "5.2. Акт подписывается в 5 дней.",
+    "5.4. Споры решаются в суде.",
+    "6. Ответственность сторон",
+    "6.1. Стороны несут ответственность по закону.",
+    "6. Ответственность сторон",
+    "6.2",
+    "Неустойка начисляется за просрочку.",
+    "7. Адреса и реквизиты сторон",
+    "Заказчик: ООО «Альфа», ИНН 0000000000",
+    "Подрядчик: ООО «Бета», ИНН 0000000001",
+)
+
+_STRUCTURED_PAGE5: tuple[str, ...] = (
+    "Приложение № 1",
+    "1. Перечень работ",
+    "1.1. Земляные работы.",
+)
+
+# One entry per page: lines of a page with text, None for the full-page image (page 3).
+STRUCTURED_CONTRACT_PAGES: tuple[tuple[str, ...] | None, ...] = (
+    _STRUCTURED_PAGE1,
+    (*_STRUCTURED_PAGE2_BEFORE, *_STRUCTURED_PAGE2_AFTER),
+    None,
+    _STRUCTURED_PAGE4,
+    _STRUCTURED_PAGE5,
+)
+
+
+def _draw_structured_table(c: canvas.Canvas, top: float) -> float:
+    """Ruled table of STRUCTURED_CONTRACT_TABLE from `top` down; returns its bottom y.
+
+    Drawn like `make_price_table_ru`: horizontal rules between rows, vertical rules at
+    the column boundaries, each cell text at the top-left of its cell.
+    """
+    rows = len(STRUCTURED_CONTRACT_TABLE)
+    bottom = top - rows * _STRUCTURED_TABLE_ROW_HEIGHT
+    for i in range(rows + 1):
+        y = top - i * _STRUCTURED_TABLE_ROW_HEIGHT
+        c.line(_STRUCTURED_TABLE_COLUMNS[0], y, _STRUCTURED_TABLE_COLUMNS[-1], y)
+    for x in _STRUCTURED_TABLE_COLUMNS:
+        c.line(x, top, x, bottom)
+    for i, row in enumerate(STRUCTURED_CONTRACT_TABLE):
+        row_top = top - i * _STRUCTURED_TABLE_ROW_HEIGHT
+        for j, cell in enumerate(row):
+            _ru_page(c, (cell,), x=_STRUCTURED_TABLE_COLUMNS[j] + 6, y_top=row_top - 16)
+    return bottom
+
+
+def make_structured_contract(path: str | Path) -> Path:
+    """Five-page Russian contract for the structure parsing tests (feature 04, R-12).
+
+    Page 2 has a ruled table between its text lines; page 3 is a full-page picture with
+    no text. Text per page: STRUCTURED_CONTRACT_PAGES; table cells: STRUCTURED_CONTRACT_TABLE.
+    """
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, _STRUCTURED_PAGE1, size=_STRUCTURED_PAGE1_SIZE)
+        c.showPage()
+
+        _ru_page(c, _STRUCTURED_PAGE2_BEFORE)
+        last_baseline = ru_line_baselines(len(_STRUCTURED_PAGE2_BEFORE))[-1]
+        bottom = _draw_structured_table(c, last_baseline - 12)
+        _ru_page(c, _STRUCTURED_PAGE2_AFTER, y_top=bottom - 16)
+        c.showPage()
+
+        _full_page_image(c, seed=103)
+        c.showPage()
+
+        _ru_page(c, _STRUCTURED_PAGE4)
+        c.showPage()
+
+        _ru_page(c, _STRUCTURED_PAGE5)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
 # --- demo set ------------------------------------------------------------------
 
 
@@ -1102,6 +1231,7 @@ def make_demo_set(directory: str | Path) -> list[Path]:
         make_damaged(root / "damaged.pdf"),
         make_empty(root / "empty.pdf"),
         make_contract_ru(root / "contract_ru.pdf"),
+        make_structured_contract(root / "structured_contract.pdf"),
         make_digital(
             root / "digital_copy.pdf"
         ),  # duplicate of digital.pdf under another name
