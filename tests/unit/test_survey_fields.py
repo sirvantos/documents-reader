@@ -111,3 +111,37 @@ def test_summary_prints_no_text_or_numbers_of_the_documents() -> None:
     assert sorted(w for w in words if re.search(rf"\b{w}\b", summary)) == []
     for secret in ("17/ЭН-2026", "1 234 567", "Альфа", "Бета", "0000000000", "2027"):
         assert secret not in summary
+
+
+def test_number_place() -> None:
+    assert survey.number_place("ДОГОВОР № 17/ЭН\nг. Энск") == ("«№»", "в строке «Договор»", False)
+    assert survey.number_place("ДОГОВОР ПОДРЯДА\nNe 17/ЭН-2026\n") == (
+        "искажённый", "в следующей строке", False
+    )
+    assert survey.number_place("Договор подряда № ______\nг. Энск") == ("нет", "нет", True)
+    assert survey.number_place("г. Энск\nпротокол No 5 от") == (
+        "искажённый", "в другой строке", False
+    )
+
+
+def test_name_forms() -> None:
+    assert survey.name_forms(PREAMBLE) == {"скобки «(ООО «…»)»"}
+    assert survey.name_forms(
+        "Общество «Бета» (далее — Подрядчик) и ОАО «Альфа» (далее – Заказчик)"
+    ) == {"«(далее — …)»", "«ООО «…»» вне скобок"}
+    assert survey.name_forms("Общество (ООО Бета) и заказчик") == {"скобки без кавычек"}
+    assert survey.name_forms("Стороны договорились") == {"нет"}
+
+
+def test_number_outside_the_preamble() -> None:
+    text, records = build()
+    tail = records[-1]
+    appendix = "Приложение № 2\nк Договору № 17/ЭН-2026\n"
+    text += appendix
+    records[-1] = Record("tail", tail.start, tail.end + len(appendix))
+    d = survey.survey_document("D-0001", text, records, headers="Договор № 17/ЭН-2026 стр. 3")
+    assert (d.number_in_headers, d.number_in_requisites, d.number_in_appendices) == (
+        True, False, True
+    )
+    summary = "\n".join(survey.summary_lines([d]))
+    assert "17/ЭН" not in summary

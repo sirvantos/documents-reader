@@ -12,9 +12,14 @@ of `specs/005-field-extraction/spec.md` before clarify:
    to the first «Приложение» line) and the appendices; a rough token estimate. Decides
    what the model is shown when the whole text does not fit one request.
 2. Parties: the roles «Заказчик»/«Подрядчик» named in the preamble, short names in
-   brackets («(ОАО «РЖД»)»), and how many such brackets the preamble has.
+   brackets («(ОАО «РЖД»)»), and how many such brackets the preamble has; (version 2)
+   other forms of a short name: «(далее — …)», a bracket without quotes, an
+   abbreviation with a quoted name outside brackets.
 3. Contract number: a «Договор № …» line at the start of the preamble — filled, blank
-   («№ ____») or missing.
+   («№ ____») or missing; (version 2) the sign «№» or its recognition errors («Ne»,
+   «No», «N°», «Мо»), the number on the line after «Договор», a contract number in the
+   page headers and footers (removed from the cleaned text), in the requisites section
+   and in the appendices («к Договору № …»).
 4. Price: sections whose heading names the price; mentions «без НДС» / «с НДС» there,
    sums with «руб» there and in the whole main text.
 5. Term: sentences about the term of the contract — an end date in words, in digits,
@@ -43,6 +48,15 @@ SHORT_NAME = re.compile(
     r"\(\s*(?:ОАО|ООО|АО|ПАО|ЗАО|НАО|ФГУП|ГУП|МУП|ИП)\s*[«\"“][^»\"”]{1,60}[»\"”]\s*\)"
 )
 NUMBER_LINE = re.compile(r"(?im)^\s*договор\b[^\n]{0,80}?№\s*(?P<rest>[^\n]{0,40})")
+# «№» and what recognition makes of it
+SIGN = r"(?:№|N[eoо°º]|Мо|N\s?[oо]\b)"
+SIGN_DIGIT = re.compile(rf"(?P<sign>{SIGN})\s*(?P<value>[^\s_]*\d)")
+SIGN_BLANK = re.compile(rf"{SIGN}\s*(?:_{{2,}}|$)", re.MULTILINE)
+CONTRACT_WORD = re.compile(r"договор", re.IGNORECASE)
+CONTRACT_NUMBER = re.compile(rf"договор\w*\s*{SIGN}\s*[^\s_]*\d", re.IGNORECASE)
+BRACKET_FURTHER = re.compile(r"\(\s*далее\s*[-–—:]?[^)]{1,80}\)", re.IGNORECASE)
+BRACKET_NO_QUOTES = re.compile(r"\(\s*(?:ОАО|ООО|АО|ПАО|ЗАО|НАО)\s+[А-ЯЁA-Z][^)«\"]{1,40}\)")
+ABBR_QUOTED = re.compile(r"\b(?:ОАО|ООО|АО|ПАО|ЗАО|НАО)\s*[«\"]")
 PRICE_HEADING = re.compile(r"цен|стоимост|порядок\s+расч", re.IGNORECASE)
 WITHOUT_VAT = re.compile(r"без\s+(?:уч[её]та\s+)?НДС|НДС\s+не\s+облага", re.IGNORECASE)
 WITH_VAT = re.compile(r"(?:с\s+уч[её]том|включая|в\s+том\s+числе)\s+НДС|с\s+НДС", re.IGNORECASE)
@@ -83,6 +97,13 @@ class DocFields:
     roles: frozenset[str] = frozenset()
     short_names: int = 0
     number: str = "нет"  # заполнен, пустой, нет
+    number_sign: str = "нет"  # «№», искажённый, нет (before the first digit in the head)
+    number_where: str = "нет"  # в строке «Договор», в следующей строке, в другой строке
+    number_blank: bool = False
+    number_in_headers: bool = False
+    number_in_requisites: bool = False
+    number_in_appendices: bool = False
+    name_forms: frozenset[str] = frozenset()
     price_sections: int = 0
     without_vat: int = 0
     with_vat: int = 0
@@ -112,6 +133,37 @@ def number_form(preamble: str) -> str:
     return "заполнен" if re.match(r"[^\s_]*\d", m.group("rest").strip()) else "пустой"
 
 
+def number_place(head: str) -> tuple[str, str, bool]:
+    """The first number with a sign in the head of the preamble: the sign, where it stands
+    relative to the «Договор» line, and whether a blank «№ ____» is there."""
+    blank = bool(SIGN_BLANK.search(head))
+    lines = head.splitlines()
+    for i, line in enumerate(lines):
+        m = SIGN_DIGIT.search(line)
+        if m is None:
+            continue
+        sign = "«№»" if m.group("sign") == "№" else "искажённый"
+        if CONTRACT_WORD.search(line[: m.start()]):
+            return sign, "в строке «Договор»", blank
+        if i > 0 and CONTRACT_WORD.search(lines[i - 1]):
+            return sign, "в следующей строке", blank
+        return sign, "в другой строке", blank
+    return "нет", "нет", blank
+
+
+def name_forms(preamble: str) -> frozenset[str]:
+    forms = set()
+    if SHORT_NAME.search(preamble):
+        forms.add("скобки «(ООО «…»)»")
+    if BRACKET_FURTHER.search(preamble):
+        forms.add("«(далее — …)»")
+    if BRACKET_NO_QUOTES.search(preamble):
+        forms.add("скобки без кавычек")
+    if ABBR_QUOTED.search(SHORT_NAME.sub("", preamble)):
+        forms.add("«ООО «…»» вне скобок")
+    return frozenset(forms) or frozenset({"нет"})
+
+
 def term_forms(main: str) -> set[str]:
     """Forms of the contract end date in sentences about the term of the contract."""
     forms: set[str] = set()
@@ -128,7 +180,9 @@ def term_forms(main: str) -> set[str]:
     return forms
 
 
-def survey_document(doc_id: str, text: str, records: Sequence[Record]) -> DocFields:
+def survey_document(
+    doc_id: str, text: str, records: Sequence[Record], headers: str = ""
+) -> DocFields:
     d = DocFields(doc_id, total=len(text))
     d.preamble, d.main, d.requisites, d.appendices = part_sizes(text, records)
     preamble = "".join(text[r.start : r.end] for r in records if r.kind == "preamble")
@@ -137,6 +191,15 @@ def survey_document(doc_id: str, text: str, records: Sequence[Record]) -> DocFie
     d.roles = frozenset(m.group(1) for m in ROLE.finditer(preamble))
     d.short_names = len(SHORT_NAME.findall(preamble))
     d.number = number_form(preamble)
+    d.number_sign, d.number_where, d.number_blank = number_place(preamble[:1500])
+    d.name_forms = name_forms(preamble)
+    d.number_in_headers = bool(CONTRACT_NUMBER.search(headers) or SIGN_DIGIT.search(headers))
+    tail = next((r for r in records if r.kind == "tail"), None)
+    if tail is not None:
+        tail_text = text[tail.start : tail.end]
+        requisites = tail_text[: d.requisites]
+        d.number_in_requisites = bool(CONTRACT_NUMBER.search(requisites))
+        d.number_in_appendices = bool(CONTRACT_NUMBER.search(tail_text[d.requisites :]))
     # a price section: its own record and every record after it up to the next section
     in_price = False
     price_parts: list[str] = []
@@ -183,6 +246,10 @@ def value_counts(values: Iterable[int], cap: int) -> str:
     ) or "—"
 
 
+def _counts(values: Iterable[str]) -> str:
+    return ", ".join(f"{k}: {v}" for k, v in Counter(values).most_common()) or "—"
+
+
 def _range(values: Sequence[int]) -> str:
     if not values:
         return "—"
@@ -221,11 +288,26 @@ def summary_lines(docs: Sequence[DocFields]) -> list[str]:
         f"  одна роль или ни одной: {_ids(d for d in docs if len(d.roles) < 2)}",
         "  краткие наименования в скобках «(ООО «…»)»: "
         + value_counts((d.short_names for d in docs), 3),
+        "  формы краткого наименования (сочетания по документам):",
+        *(f"    {' + '.join(sorted(k))}: {v}"
+          for k, v in Counter(d.name_forms for d in docs).most_common()),
         "",
         "3. Номер договора в начале преамбулы («Договор № …»)",
         "  " + (", ".join(f"{k}: {v}" for k, v in Counter(d.number for d in docs).most_common())
                 or "—"),
         f"  пустой или нет: {_ids(d for d in docs if d.number != 'заполнен')}",
+        "  первый номер со знаком в начале преамбулы (до 1500 знаков):",
+        "    знак: " + _counts(d.number_sign for d in docs),
+        "    где: " + _counts(d.number_where for d in docs),
+        f"    есть пустой «№ ___»: {sum(d.number_blank for d in docs)} из {n}",
+        f"  номер договора (знак и цифры) в колонтитулах страниц: "
+        f"{sum(d.number_in_headers for d in docs)} из {n}",
+        f"  «Договор № …» с цифрами в разделе реквизитов: "
+        f"{sum(d.number_in_requisites for d in docs)} из {n}",
+        f"  «Договор № …» с цифрами в приложениях: "
+        f"{sum(d.number_in_appendices for d in docs)} из {n}",
+        f"  нет номера ни в начале преамбулы, ни в колонтитулах: "
+        f"{_ids(d for d in docs if d.number_sign == 'нет' and not d.number_in_headers)}",
         "",
         "4. Цена",
         f"  разделов о цене по заголовку: {value_counts((d.price_sections for d in docs), 2)}",
@@ -265,7 +347,15 @@ def load_documents(conn: Any) -> list[DocFields]:
                 (doc_id,),
             ).fetchall()
         ]
-        docs.append(survey_document(doc_id, text, records))
+        headers = "\n".join(
+            line.get("text", "")
+            for (lines,) in conn.execute(
+                "SELECT lines FROM page_text WHERE document_id = %s", (doc_id,)
+            ).fetchall()
+            for line in lines
+            if line.get("role") in ("header", "footer")
+        )
+        docs.append(survey_document(doc_id, text, records, headers))
     return docs
 
 
@@ -286,7 +376,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"\nОстановлено: {exc}", file=sys.stderr)
         return 1
     lines = [
-        "Обзор полей прототипа, фича 05 — только цифры (версия 1)",
+        "Обзор полей прототипа, фича 05 — только цифры (версия 2)",
         f"Дата: {datetime.now().isoformat(timespec='minutes')}",
         "",
         *summary_lines(docs),
