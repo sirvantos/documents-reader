@@ -90,9 +90,11 @@ done/needs_review/failed ──parse ID / --all──▶ то же, заново
 
 ## Результат разбора между модулями
 
-Чистая функция `structure.parse_lines(lines, settings) -> ParseResult` (dataclass):
+Чистая функция `structure.parse_lines(lines, text_length, settings, unread_pages) -> ParseResult` (dataclass):
 записи (`ClauseRecord`: ключ, вид, номер, напечатанный номер, глубина, родитель,
 заголовок, раздел, `start`, `end`), находки (`Finding`: вид, номера, страница) и
 причина состояния. Вход — `Line` (dataclass: `start`, `end`, `page`, `text`,
-`table: bool`). Страницы и флаги добавляет слой этапа (`parsing.py`). Вывод
+`table: bool`). Номера непрочитанных страниц слой этапа (`parsing.py`) передаёт на вход; все находки
+и текст причины строит `structure.py` в одном месте (R-7). Страницы записей добавляет
+слой этапа. Вывод
 команд — `dataclass`/`TypedDict` (tech-context «Правила кода»).
