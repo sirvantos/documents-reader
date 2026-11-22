@@ -72,8 +72,8 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 
 - Spec work stays in the main session (Opus): `/speckit.specify`, `/speckit.plan`,
   `/speckit.tasks`, `/speckit.checklist`, `/speckit.constitution`.
-- Trial from feature 04 (decided 2026-11-22; keep or revert after feature 04):
-  `/speckit.clarify` and `/speckit.analyze` run on Fable.
+- `/speckit.clarify` and `/speckit.analyze` run on Fable (trial in feature 04, kept
+  by the analyst on 2026-11-22).
   - Clarify is interactive: the analyst switches the main session with `/model fable`
     before it and back to Opus after it. Analyze returns a report: the main session
     delegates it to a subagent with `model: "fable"`.
@@ -85,8 +85,11 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   - Analyze fixes LOW and MEDIUM inconsistencies itself (terms, a requirement with no
     task, a task with no requirement, wrong model tags) and brings CRITICAL findings and
     anything that changes scope or a decision to the analyst.
-  - After feature 04, record here how many questions clarify settled from the documents
-    and whether any of its answers had to be redone; then keep or revert the trial.
+  - Trial result, feature 04: clarify recorded 8 answers, 3 settled from the survey
+    numbers (`scripts/survey_structure.py` v3) and 5 by the analyst (one of them asked
+    after analyze, findings U1–U3); none had to be redone. Analyze fixed its coverage
+    and wording findings itself (`591f799`) and brought U1–U3, which changed decisions,
+    to the analyst (`a1798f9`).
 - `/speckit.tasks` tags every task with its model: `[opus]`, `[sonnet]` or `[haiku]`,
   by the rules below (after `[P]` and the story label). Implement follows the tags; the
   analyst may change them before implement starts. A task that fails review is
