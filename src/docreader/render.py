@@ -16,6 +16,7 @@ from docreader.quality import FLAG_NAMES, FLAG_ORDER
 from docreader.stages import STAGES, Stage, State
 
 if TYPE_CHECKING:
+    from docreader.clauseview import ClauseView, Outline, OutlineRecord
     from docreader.parsing import ParsedDocument, ParseRun
 
 _KIND_LABELS = (
@@ -851,3 +852,90 @@ def render_parse_text(result: ParseRun) -> str:
         total += f" (запуск {result.run_id})"
     lines.append(total)
     return "\n".join(lines)
+
+
+_OUTLINE_STATE_WORDS: dict[str, str] = {
+    State.DONE: "готово",
+    State.NEEDS_REVIEW: "требует просмотра",
+    State.FAILED: "ошибка",
+    State.PENDING: "ожидает",
+}
+_RECOGNIZED_MARK = " [распознано]"
+_UNREAD_LABEL = "—"
+
+
+def _pages_text(first: int, last: int) -> str:
+    return f"стр. {first}" if first == last else f"стр. {first}–{last}"
+
+
+def _outline_number_cell(record: OutlineRecord) -> str:
+    """The printed number indented by depth; a section also shows its title after the number."""
+    number = record.number_printed or ""
+    if record.kind == "section" and record.title:
+        number = f"{number} {record.title}" if number else record.title
+    return " " * (2 * max(record.depth - 1, 0)) + number
+
+
+def _head_without_number(record: OutlineRecord) -> str:
+    """The head after the number, which the number column already shows (contracts/cli.md)."""
+    number = record.number_printed
+    if number and record.head.startswith(number):
+        return record.head[len(number) :].lstrip()
+    return record.head
+
+
+def render_outline_text(outline: Outline) -> str:
+    """Text of `docreader outline` (contracts/cli.md «docreader outline»)."""
+    state_word = _OUTLINE_STATE_WORDS.get(outline.state, outline.state)
+    header = (
+        f"{outline.document_id} — разбор от {outline.parsed_at} "
+        f"(запуск {outline.run_id}), {state_word}"
+    )
+    if outline.reason is not None:
+        header += f" — {outline.reason}"
+    records = outline.records
+    id_width = max((len(r.id) for r in records), default=0) + 2
+    cells = [_outline_number_cell(r) for r in records]
+    cell_width = max((len(c) for c in cells), default=0) + 2
+    pages = [_pages_text(r.first_page, r.last_page) for r in records]
+    page_width = max((len(p) for p in pages), default=0) + 2
+
+    # an unread page goes after the last record that ends before it
+    unread_after: dict[int, list[int]] = {}
+    for page in sorted(outline.unread_pages):
+        anchor = max((i for i, r in enumerate(records) if r.last_page < page), default=-1)
+        unread_after.setdefault(anchor, []).append(page)
+
+    def unread_lines(anchor: int) -> list[str]:
+        return [
+            _UNREAD_LABEL.ljust(id_width) + f"страница {page} не прочитана"
+            for page in unread_after.get(anchor, [])
+        ]
+
+    lines = [header, *unread_lines(-1)]
+    for i, record in enumerate(records):
+        text = "" if record.kind == "section" else _head_without_number(record)
+        line = (
+            record.id.ljust(id_width) + cells[i].ljust(cell_width) + pages[i].ljust(page_width)
+            + text
+        ).rstrip()
+        if record.recognized:
+            line += _RECOGNIZED_MARK
+        lines.append(line)
+        lines.extend(unread_lines(i))
+    return "\n".join(lines)
+
+
+def render_clause_text(view: ClauseView) -> str:
+    """Text of `docreader clause` (contracts/cli.md «docreader clause»)."""
+    header = view.id
+    if view.section_title:
+        header += f" — {view.section_title}"
+    header += f", {_pages_text(view.first_page, view.last_page)}"
+    if view.recognized:
+        header += _RECOGNIZED_MARK
+    if not view.records:
+        return header
+    # each part is stored with its number and a final newline; parts follow one another
+    parts = [part.text.rstrip("\n") for part in view.records]
+    return "\n".join([header, "", *parts])

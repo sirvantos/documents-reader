@@ -184,5 +184,11 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   `compose.yaml` and the test fixtures) the command stops with exit 2 at the first
   scan page. Recordings: `uv run python -m tests.synthetic.record_recognition`
   (on the Mac or here, without `DOCREADER_FORBID_MODELS`).
+- `uv run docreader parse [ID…] [--all]` — structure parsing of read documents into sections
+  and clauses with ids like `D-0001/5.2` (feature 04); `uv run docreader outline ID` — the tree
+  of clause records; `uv run docreader clause D-0001/5.2 [--own]` — a clause with its
+  subclauses, or only its own text with `--own`. Output of `parse` (ids, counts, clause and
+  page numbers, reasons) may be sent to the agent; output of `outline` and `clause` contains
+  contract text, so on real contracts it is never sent (on synthetic files it may be).
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).

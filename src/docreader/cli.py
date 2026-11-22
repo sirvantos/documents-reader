@@ -10,20 +10,31 @@ from pathlib import Path
 
 import psycopg
 
-from docreader import db, parsing, reading, recognition, recognition_eval, registry, textview
+from docreader import (
+    clauseview,
+    db,
+    parsing,
+    reading,
+    recognition,
+    recognition_eval,
+    registry,
+    textview,
+)
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
-from docreader.ids import format_document_id, parse_document_id
+from docreader.ids import format_document_id, parse_clause_id, parse_document_id
 from docreader.intake import run_intake
 from docreader.render import (
     NO_READ_DOCUMENTS,
     NO_REVIEW_PAGES,
     NO_SCAN_DOCUMENTS,
+    render_clause_text,
     render_document_text,
     render_find_text,
     render_intake_json,
     render_intake_text,
     render_list_text,
+    render_outline_text,
     render_page_kinds_text,
     render_page_text,
     render_parse_text,
@@ -123,6 +134,17 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("id", metavar="ID", help="идентификатор документа, например D-0001")
     p.add_argument("--page", type=int, metavar="N", help="строки одной страницы")
     p.add_argument("--find", metavar="ФРАЗА", help="найти фразу в тексте")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("outline", help="показать оглавление разобранного документа")
+    p.add_argument("id", metavar="ID", help="идентификатор документа, например D-0001")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("clause", help="показать пункт с подпунктами")
+    p.add_argument(
+        "id", metavar="ИДЕНТИФИКАТОР", help="идентификатор пункта, например D-0001/5.2"
+    )
+    p.add_argument("--own", action="store_true", help="только собственный текст пункта")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("read-report", help="отчёт о чтении документов")
@@ -374,6 +396,26 @@ def _cmd_text(args: argparse.Namespace, settings: Settings, conn: psycopg.Connec
     return 0
 
 
+def _cmd_outline(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    seq = parse_document_id(args.id)
+    outline = clauseview.load_outline(conn, seq)
+    if args.json:
+        print(json.dumps(outline.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_outline_text(outline))
+    return 0
+
+
+def _cmd_clause(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    seq, key = parse_clause_id(args.id)
+    view = clauseview.load_clause(conn, seq, key, own=args.own)
+    if args.json:
+        print(json.dumps(view.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_clause_text(view))
+    return 0
+
+
 def _cmd_read_report(
     args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
 ) -> int:
@@ -472,6 +514,8 @@ _HANDLERS: dict[str, _Handler] = {
     "parse": _cmd_parse,
     "recognize": _cmd_recognize,
     "text": _cmd_text,
+    "outline": _cmd_outline,
+    "clause": _cmd_clause,
     "read-report": _cmd_read_report,
     "recognize-report": _cmd_recognize_report,
     "recognize-eval": _cmd_recognize_eval,
