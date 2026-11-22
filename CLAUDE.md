@@ -70,9 +70,27 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 
 ## Model routing
 
-- Spec work stays in the main session (Opus): `/speckit.specify`, `/speckit.clarify`,
-  `/speckit.plan`, `/speckit.tasks`, `/speckit.analyze`, `/speckit.checklist`,
-  `/speckit.constitution`.
+- Spec work stays in the main session (Opus): `/speckit.specify`, `/speckit.plan`,
+  `/speckit.tasks`, `/speckit.checklist`, `/speckit.constitution`.
+- Trial from feature 04 (decided 2026-11-22; keep or revert after feature 04):
+  `/speckit.clarify` and `/speckit.analyze` run on Fable.
+  - Clarify is interactive: the analyst switches the main session with `/model fable`
+    before it and back to Opus after it. Analyze returns a report: the main session
+    delegates it to a subagent with `model: "fable"`.
+  - Clarify answers a question itself only when the answer follows from a binding
+    document (constitution, `docs/tech-context.md`, `docs/field-catalog.md`, the spec
+    of an earlier feature) or from survey numbers the analyst pasted in, and records
+    the source next to the answer («решено по …»). Product decisions and anything
+    the documents do not settle go to the analyst (at most 5 questions per run).
+  - Analyze fixes LOW and MEDIUM inconsistencies itself (terms, a requirement with no
+    task, a task with no requirement, wrong model tags) and brings CRITICAL findings and
+    anything that changes scope or a decision to the analyst.
+  - After feature 04, record here how many questions clarify settled from the documents
+    and whether any of its answers had to be redone; then keep or revert the trial.
+- `/speckit.tasks` tags every task with its model: `[opus]`, `[sonnet]` or `[haiku]`,
+  by the rules below (after `[P]` and the story label). Implement follows the tags; the
+  analyst may change them before implement starts. A task that fails review is
+  re-tagged in `tasks.md`.
 - During `/speckit.implement` the main session coordinates and delegates the work.
   It reads `tasks.md`, hands each task (or a small group of tightly related tasks)
   to the `implementer` subagent, reviews the result, runs the tests, ruff and mypy, then marks the
@@ -86,7 +104,9 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
     the privacy guards, and any task whose first delegated attempt failed review.
     For feature 13 this also covers the rule that decides a page is a scan, the
     recognition-engine interface with its test fakes, and the guards that keep the
-    engine from running on this server.
+    engine from running on this server. For feature 04: the `clause` migration, the
+    rule that decides where a clause starts (valid continuation of the previous
+    number), how stable clause identifiers are built, and the `needs_review` rules.
 - Tests follow the same split (test-first):
   - Critical tasks: Opus writes both the tests and the code.
   - Default tasks: Opus writes the tests first, runs them and confirms they fail
@@ -101,6 +121,25 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   the code change.
 - If a Haiku result fails review, that kind of task moves to Sonnet from then on.
 - Independent tasks marked `[P]` may be delegated in parallel.
+
+## Delivery
+
+- Until the end-to-end prototype answers a question (features 04, 05, 07, 08, 09 in
+  the order of `docs/tech-context.md`, «Карта фич»), each feature is specified and
+  built only in its «Минимальная версия для сквозного прототипа». The rest of the
+  feature file goes into the spec as «Следующая итерация» (out of scope) and becomes
+  its own spec after the prototype works. One spec — one branch stays (constitution
+  «Порядок работы»).
+- Survey before clarify: for a feature whose rules depend on how real contracts are
+  laid out, the main session first writes `scripts/survey_<feature>.py`. It prints
+  counts and shares only — never text, names, numbers or file names of documents —
+  and has unit tests on synthetic input. The analyst runs it on the Mac and pastes
+  the numbers; clarify and the synthetic generators use them.
+- A failure found on real data is fixed test-first on synthetic data: first a
+  generator case in `tests/synthetic/` that reproduces the pattern in abstract form
+  (no real text, names or numbers) and a test that fails on it, then the fix.
+- `scripts/check.sh` runs the tests, ruff and mypy; it must pass before a task is
+  marked `[X]`.
 
 ## Project rules
 
