@@ -138,8 +138,8 @@ description: "Task list for feature 04 (branch 004): structure parsing, minimal 
 - [X] T017 [opus] Run quickstart А2 on the dev server (throwaway data dir, `docreader_demo`), compare with the expected results there, fix differences test-first; then `docker compose run --rm tests` and `docker compose run --rm lint`
 - [X] T018 [P] [haiku] Document the new commands in `CLAUDE.md` «Commands» (`docreader parse`, `outline`, `clause`; output of `parse` may be sent to the agent, output of `outline` and `clause` may not) and in `.env.example` if a variable is added (none expected)
 - [X] T019 [opus] Record the Fable trial for feature 04 in `CLAUDE.md` «Model routing» (clarify: questions settled from documents or survey numbers, questions asked, answers redone; analyze: findings fixed automatically vs brought to the analyst) and keep or revert the trial with the analyst
-- [ ] T020 [analyst] Quickstart Б1–Б3 on the Mac: `parse --all` time and summary, manual boundary check on 5 contracts incl. D-0056, identical ids after a rerun; send the numbers only
-- [ ] T021 [opus] Write the Б results into `docs/tech-context.md` (structure: time for the set, share of correct records, tail found in N of M) and the feature report; a systematic error from Б2 → a synthetic case and a failing test first (CLAUDE.md «Delivery»)
+- [X] T020 [analyst] Quickstart Б1–Б3 on the Mac: `parse --all` time and summary, manual boundary check on 5 contracts incl. D-0056, identical ids after a rerun; send the numbers only
+- [X] T021 [opus] Write the Б results into `docs/tech-context.md` (structure: time for the set, share of correct records, tail found in N of M) and the feature report; a systematic error from Б2 → a synthetic case and a failing test first (CLAUDE.md «Delivery»)
 
 ---
 
