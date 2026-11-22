@@ -28,6 +28,7 @@ GAP = "gap"
 REPEAT = "repeat"
 OUT_OF_ORDER = "out_of_order"
 HEADING_AFTER_CLAUSE = "heading_after_clause"
+NO_HEADING = "no_heading"
 UNREAD = "unread"
 # The kinds in the order of the reason (research R-7) and how each is written: a prefix
 # before its items joined with ", "; kinds without items are the prefix alone.
@@ -39,7 +40,8 @@ _REASON: dict[str, str] = {
     REPEAT: "повтор: ",
     OUT_OF_ORDER: "номер вне порядка: ",
     HEADING_AFTER_CLAUSE: "",
-    UNREAD: "не прочитана страница внутри основного текста: ",
+    NO_HEADING: "",
+    UNREAD: "не прочитана страница: ",
 }
 _KIND_ORDER = tuple(_REASON)
 _WITHOUT_ITEMS = frozenset({NO_NUMBERING, NO_TAIL})
@@ -154,7 +156,9 @@ def parse_lines(
     starts: list[_Start] = []
     accepted: set[tuple[int, ...]] = set()
     headed_sections: set[int] = set()
-    unheaded_sections: dict[int, str] = {}  # section number -> key of its first clause
+    # section number -> key and page of its first clause, for sections without a heading
+    unheaded_sections: dict[int, tuple[str, int]] = {}
+    late_headings: set[int] = set()  # sections whose heading came after their clause
     current: tuple[int, ...] = (0,)
     tail: Line | None = None
     tail_number = 0
@@ -191,14 +195,18 @@ def parse_lines(
             if len(number) == 1:
                 headed_sections.add(number[0])
             elif number[0] not in headed_sections:
-                unheaded_sections.setdefault(number[0], clause_key(number))
+                unheaded_sections.setdefault(number[0], (clause_key(number), line.page))
             current = number
         elif number in accepted:
-            findings.append(Finding(REPEAT, f"{clause_key(number)} {where}"))
+            # A repeat is the current record or one of its ancestors; any other accepted
+            # number is a reference to an earlier clause and stays silently (FR-005).
+            if number == current[: len(number)]:
+                findings.append(Finding(REPEAT, f"{clause_key(number)} {where}"))
         elif len(number) == 1 and number[0] == current[0] and number[0] in unheaded_sections:
-            first = unheaded_sections[number[0]]
+            first, _ = unheaded_sections[number[0]]
             text = f"заголовок раздела {number[0]} после пункта {first} {where}"
             findings.append(Finding(HEADING_AFTER_CLAUSE, text))
+            late_headings.add(number[0])
         elif number > current:
             text = f"{clause_key(number)} после {clause_key(current)} {where}"
             findings.append(Finding(OUT_OF_ORDER, text))
@@ -210,10 +218,13 @@ def parse_lines(
     else:
         if tail is None:
             findings.append(Finding(NO_TAIL, ""))
-        main = [r for r in records if r.kind in ("section", "clause")]
-        first_page, last_page = main[0].first_page, main[-1].last_page
+        for section, (_, page) in unheaded_sections.items():
+            if section not in late_headings:  # a late heading has its own finding
+                text = f"нет заголовка раздела {section} (стр. {page})"
+                findings.append(Finding(NO_HEADING, text))
+        # An unread page counts in the preamble and the main text, not in the tail (FR-007 г).
         for page in sorted(set(unread_pages)):
-            if first_page < page < last_page:
+            if tail is None or page < tail.page:
                 findings.append(Finding(UNREAD, f"стр. {page}"))
     ordered = tuple(sorted(findings, key=lambda f: _KIND_ORDER.index(f.kind)))
     return ParseResult(records, ordered, _reason(ordered))

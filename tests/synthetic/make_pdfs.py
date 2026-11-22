@@ -1212,6 +1212,33 @@ def make_structured_contract(path: str | Path) -> Path:
     return _write(path, _pdf(draw))
 
 
+STRUCTURED_BLANK_PAGES: tuple[tuple[str, ...] | None, ...] = (
+    ("1. Предмет договора", "1.1. Подрядчик выполняет работы,"),
+    None,
+    (
+        "которые продолжаются после пустой страницы.",
+        "1.2. Срок работ — один месяц.",
+        "2. Адреса и реквизиты сторон",
+        "Заказчик: ООО «Альфа», ИНН 0000000000",
+    ),
+)
+
+
+def make_structured_blank_page(path: str | Path) -> Path:
+    """Three pages: clause 1.1 runs from page 1 across a blank page 2 to page 3 (T028).
+
+    Text per page: STRUCTURED_BLANK_PAGES (None — the blank page). Fictional data.
+    """
+
+    def draw(c: canvas.Canvas) -> None:
+        for page in STRUCTURED_BLANK_PAGES:
+            if page is not None:
+                _ru_page(c, page)
+            c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
 # --- demo set ------------------------------------------------------------------
 
 

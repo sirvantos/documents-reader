@@ -184,3 +184,18 @@ US1 + US2 (T001–T013) — разбор целиком: этого достат
 3. US2 → преамбула, хвост, покрытие; Б1 на Mac можно запускать.
 4. US3 → `outline`/`clause`; Б2 и Б3.
 5. Polish → документы, итог испытания Fable, результаты Б.
+
+## Phase 7: Convergence
+
+Решения clarify 2026-11-22 (F1, U1, U2, U3, D2 анализа) против кода T001–T019. Правило
+начала пункта, `needs_review` и приватность — критические задачи (CLAUDE.md «Model
+routing»): тесты и код пишет основная сессия, сначала тест на синтетике.
+
+- [X] T022 [opus] CRITICAL: keep exception text out of the `failed` reason — `_error_reason` in `src/docreader/parsing.py` writes only `ошибка разбора: <ExceptionType>` (no message, no document text); failing test first in `tests/integration/test_parse.py` (the monkeypatched exception carries a recognisable message that must not appear in the reason, the text output or `--json`) per Constitution I, FR-007 (contradicts)
+- [X] T023 [opus] Restrict «повтор» to the current branch in `src/docreader/structure.py`: a rejected number equal to `current[:len(number)]` (the current record or one of its ancestors) is a repeat with a finding; any other already accepted number («1.2» inside section 5, «5.1» inside «5.3») stays in the text silently; failing unit tests first in `tests/unit/test_structure.py` (both cases; the repeated «6.» inside «6.1» of T001 is still a repeat) per FR-005, FR-007 (в) (contradicts)
+- [X] T024 [opus] Add the finding «нет заголовка раздела N (стр. P)» (new kind after `heading_after_clause` in the reason order) for a section whose first clause was accepted without a heading line («6.3 → 7.1»); failing unit tests first; update the expected reason for T001 in `tests/integration/test_parse.py` («нет заголовка раздела 5 (стр. 4)») per FR-007 (з), Edge «Заголовок раздела не распознан» (missing)
+- [X] T025 [opus] Flag unread pages in the preamble: an unread page before the page where the tail starts (any page when there is no tail) gives the finding, a page inside or after the tail gives none; reason text «не прочитана страница: стр. N»; failing unit tests first (preamble page, main-text page, tail page, no tail) per FR-007 (г), Edge «Страница не прочитана» (partial)
+- [X] T026 [opus] Unit test that a requisites heading after a gap larger than `max_gap` (section 6, then «14. Адреса и реквизиты сторон») starts the tail and gives «пропуск: после 6 идёт 14 (стр. N)»; fix `structure.py` only if it fails per FR-013 (partial)
+- [X] T027 [sonnet] Mark pages with the `page_flag` code `low_recognition_quality` in `outline` (text and `--json`) next to the `[распознано]` mark, in `src/docreader/clauseview.py` and `src/docreader/render.py`; the main session writes the failing test in `tests/integration/test_outline_clause.py` first (flag set directly in the fixture) and the implementer must not edit it per Edge «Текст получен распознаванием», FR-012 (partial)
+- [X] T028 [opus] Synthetic cases and tests: a clause that continues across an unread page stays one record with both pages; a page flagged `empty` gives no outline mark and no finding (extend `make_structured_contract` only by adding a separate generator if a new layout is needed; do not change T001's pages) per Edge «Страница не прочитана», Edge «Пустая страница» (partial)
+- [X] T029 [opus] Update `research.md` R-3 (repeat = current branch, other accepted numbers are references), R-4 (no `max_gap` limit for the requisites heading), R-7 (new kind «нет заголовка раздела», «не прочитана страница: стр. N», `failed` reason = exception type only) and `contracts/cli.md` (examples and the «что можно присылать агенту» note) to match spec.md, clarify session 2026-11-22 per plan: research R-3/R-4/R-7, contracts/cli.md (contradicts)

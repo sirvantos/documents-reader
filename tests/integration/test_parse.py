@@ -26,8 +26,9 @@ EXPECTED_KEYS = [
 ]
 EXPECTED_REASON = (
     "пропуск: после 5.2 идёт 5.4 (стр. 4); повтор: 6 (стр. 4); "
-    "не прочитана страница внутри основного текста: стр. 3"
+    "нет заголовка раздела 5 (стр. 4); не прочитана страница: стр. 3"
 )
+SECRET = "Подрядчик ООО «Бета»"  # stands for document text inside an exception message
 NOTHING = "Нечего разбирать: все документы разобраны (заново: docreader parse --all)"
 
 
@@ -215,7 +216,7 @@ def test_failure_of_one_document_does_not_stop_the_others(cli, db, tmp_path, mon
     def flaky(*args, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise RuntimeError("сбой разбора")
+            raise RuntimeError(f"сбой разбора у строки «{SECRET}»")
         return original(*args, **kwargs)
 
     monkeypatch.setattr(structure, "parse_lines", flaky)
@@ -223,9 +224,21 @@ def test_failure_of_one_document_does_not_stop_the_others(cli, db, tmp_path, mon
     states = {d["document_id"]: d["state"] for d in data["documents"]}
     assert states == {first: "failed", second: "needs_review"}
     state, reason, _ = stage(db, first, "structure")
-    assert state == "failed" and "RuntimeError" in reason and "сбой разбора" in reason
+    # Constitution I, FR-007: only the kind of error, never the exception text
+    assert (state, reason) == ("failed", "ошибка разбора: RuntimeError")
+    assert SECRET not in json.dumps(data, ensure_ascii=False)
     assert rows(db, first) == []
     assert rows(db, second) != []
+
+
+def test_failure_text_output_has_no_exception_text(cli, db, structured, monkeypatch):
+    def broken(*args, **kwargs):
+        raise ValueError(f"строка «{SECRET}»")
+
+    monkeypatch.setattr(structure, "parse_lines", broken)
+    result = cli("parse")
+    assert "ошибка разбора: ValueError" in result.stdout
+    assert SECRET not in result.stdout + result.stderr
 
 
 def test_failed_document_is_parsed_again_by_default(cli, db, structured):
@@ -286,3 +299,15 @@ def test_text_without_numbering_is_one_preamble(cli, db, tmp_path):
     assert cli("parse").exit_code == 0
     assert [r["key"] for r in rows(db, doc)] == ["преамбула"]
     assert stage(db, doc, "structure")[:2] == ("needs_review", "нумерация не найдена")
+
+
+def test_blank_page_inside_a_clause_is_not_a_finding(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_structured_blank_page])
+    assert cli("read").exit_code == 0
+    assert cli("parse").exit_code == 0
+    records = by_key(db, doc)
+    assert list(records) == ["1", "1.1", "1.2", "реквизиты"]
+    assert (records["1.1"]["first_page"], records["1.1"]["last_page"]) == (1, 3)
+    assert stage(db, doc, "structure")[:2] == ("done", None)  # Edge «Пустая страница»
+    outline = cli("outline", doc).stdout
+    assert "страница 2" not in outline

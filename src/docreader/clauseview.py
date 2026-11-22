@@ -11,6 +11,7 @@ from psycopg.rows import dict_row
 from docreader.errors import UserError
 from docreader.ids import PREAMBLE_KEY, TAIL_KEY, format_clause_id, format_document_id
 from docreader.parsing import UNREAD_FLAGS
+from docreader.quality import LOW_QUALITY
 from docreader.registry import _not_found, find_document
 from docreader.stages import Stage
 
@@ -35,6 +36,7 @@ class OutlineRecord:
     first_page: int
     last_page: int
     recognized: bool
+    low_quality: bool
     head: str
 
 
@@ -124,6 +126,17 @@ def _recognized_pages(conn: psycopg.Connection, doc_id: str) -> list[int]:
     ]
 
 
+def _low_quality_pages(conn: psycopg.Connection, doc_id: str) -> list[int]:
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT page_number FROM page_flag WHERE document_id = %s AND code = %s"
+            " ORDER BY page_number",
+            (doc_id, LOW_QUALITY),
+        )
+    ]
+
+
 def _any_in(pages: list[int], first: int, last: int) -> bool:
     return any(first <= p <= last for p in pages)
 
@@ -149,6 +162,7 @@ def load_outline(conn: psycopg.Connection, seq: int) -> Outline:
         )
     ]
     recognized = _recognized_pages(conn, doc_id)
+    low_quality = _low_quality_pages(conn, doc_id)
     records = [
         OutlineRecord(
             id=format_clause_id(doc_id, r["key"]),
@@ -165,6 +179,7 @@ def load_outline(conn: psycopg.Connection, seq: int) -> Outline:
             first_page=r["first_page"],
             last_page=r["last_page"],
             recognized=_any_in(recognized, r["first_page"], r["last_page"]),
+            low_quality=_any_in(low_quality, r["first_page"], r["last_page"]),
             head=_head(text[r["start"] : r["end"]]),
         )
         for r in rows

@@ -19,7 +19,6 @@ from docreader.stages import RunStage, Stage, State
 
 # Page flags of pages without text (research R-7): inside the main text they need a review.
 UNREAD_FLAGS = ("scan_unread", "scan_no_text", "unreadable")
-_MAX_ERROR_LEN = 300
 
 
 @dataclass(frozen=True)
@@ -203,9 +202,9 @@ def _write(
 
 
 def _error_reason(exc: Exception) -> str:
-    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
-    text = f"ошибка разбора: {type(exc).__name__}" + (f": {detail}" if detail else "")
-    return text[:_MAX_ERROR_LEN]
+    # Only the kind of error: an exception message may quote document text, and the
+    # output of `parse` may be sent to the agent (Constitution I, FR-007).
+    return f"ошибка разбора: {type(exc).__name__}"
 
 
 def _parse_document(

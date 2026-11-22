@@ -120,7 +120,8 @@ def test_outline_json(cli, parsed):
     first = data["records"][0]
     assert set(first) == {
         "id", "key", "kind", "number_printed", "depth", "parent", "title", "section_number",
-        "section_title", "start", "end", "first_page", "last_page", "recognized", "head",
+        "section_title", "start", "end", "first_page", "last_page", "recognized",
+        "low_quality", "head",
     }
     assert first["id"] == f"{parsed}/преамбула" and first["kind"] == "preamble"
 
@@ -209,3 +210,48 @@ def test_stale_parse(cli, db, parsed):
         assert (
             f"Разбор устарел: текст изменён — выполните docreader parse {parsed}" in result.stderr
         )
+
+
+# --- low recognition quality (T027, Edge «Текст получен распознаванием») ---------------------
+
+
+LOW_MARK = "[низкое качество распознавания]"
+
+
+@pytest.fixture
+def low_quality(db, parsed) -> str:
+    """Page 2 (already marked recognised) also has the low-quality flag of feature 13."""
+    db.execute(
+        "INSERT INTO page_flag (document_id, page_number, code, reason)"
+        " VALUES (%s, 2, 'low_recognition_quality', 'оценка ниже порога')",
+        (parsed,),
+    )
+    return parsed
+
+
+def test_load_outline_low_quality(db, low_quality):
+    outline = clauseview.load_outline(db, seq_of(low_quality))
+    by_key = {r.key: r for r in outline.records}
+    assert by_key["2.2"].low_quality and by_key["1.2.2"].low_quality  # page 2 in their pages
+    assert not by_key["1.1"].low_quality and not by_key["4"].low_quality
+
+
+def test_outline_without_the_flag_has_no_low_quality_mark(cli, db, parsed):
+    outline = clauseview.load_outline(db, seq_of(parsed))
+    assert not any(r.low_quality for r in outline.records)
+    assert LOW_MARK not in cli("outline", parsed).stdout
+
+
+def test_outline_text_low_quality(cli, low_quality):
+    lines = cli("outline", low_quality).stdout.splitlines()
+    by_id = {line.split()[0]: line for line in lines[1:] if line.startswith(low_quality)}
+    assert "[распознано]" in by_id[f"{low_quality}/2.2"]
+    assert LOW_MARK in by_id[f"{low_quality}/2.2"]
+    assert LOW_MARK not in by_id[f"{low_quality}/1.1"]
+
+
+def test_outline_json_low_quality(cli, low_quality):
+    data = json.loads(cli("outline", low_quality, "--json").stdout)
+    by_key = {r["key"]: r for r in data["records"]}
+    assert by_key["2.2"]["low_quality"] is True
+    assert by_key["1.1"]["low_quality"] is False

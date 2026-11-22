@@ -214,7 +214,15 @@ def test_missing_section_heading() -> None:
     first = p.record("2.1")
     assert (first.parent_key, first.section_number, first.section_title) == (None, None, None)
     assert p.record("2.2").parent_key is None
-    assert p.result.findings == ()
+    # FR-007 (з): the lost heading is not silent (clarify 2026-11-22, U1)
+    assert p.reason == "нет заголовка раздела 2 (стр. 1)"
+
+
+def test_missing_headings_of_several_sections_are_joined() -> None:
+    p = parse(
+        (1, "1.1. Пункт"), (2, "2.1. Пункт"), (3, "3. Цена"), (3, "3.1. Оплата"), req(4),
+    )
+    assert p.reason == "нет заголовка раздела 1 (стр. 1), нет заголовка раздела 2 (стр. 2)"
 
 
 def test_descent_with_a_missing_middle_level() -> None:
@@ -315,6 +323,39 @@ def test_repeat_is_rejected_with_a_finding() -> None:
     assert p.own("1.1") == "1.1. Закон\n1. Ответственность сторон\n"
 
 
+def test_repeat_of_the_current_clause_or_its_parent() -> None:
+    p = parse(
+        (3, "1. Предмет"), (3, "1.1. Работы"), (3, "1.1.1. Подготовка"),
+        (3, "1.1 Работы выполняются в срок"),  # the parent of the current 1.1.1
+        (3, "1.1.1. Подготовка"),  # the current record itself
+        (3, "1.2. Срок"),
+        req(2),
+    )
+    assert p.keys() == ["1", "1.1", "1.1.1", "1.2", "реквизиты"]
+    assert p.reason == "повтор: 1.1 (стр. 3), 1.1.1 (стр. 3)"
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "1.2 настоящего договора определяет срок.",  # an earlier clause of another section
+        "2.1 настоящего договора применяется.",  # an earlier sibling of the current 2.3
+        "1. Предмет договора, указанный выше.",  # an earlier section heading
+    ],
+)
+def test_already_accepted_number_outside_the_branch_is_a_reference(reference: str) -> None:
+    p = parse(
+        (1, "1. Предмет"), (1, "1.1. Работы"), (1, "1.2. Срок"),
+        (2, "2. Цена"), (2, "2.1. Части"), (2, "2.2. Аванс"), (2, "2.3. Оплата"),
+        (2, reference),
+        (2, "2.4. Расчёт"),
+        req(3),
+    )
+    assert p.keys() == ["1", "1.1", "1.2", "2", "2.1", "2.2", "2.3", "2.4", "реквизиты"]
+    assert reference in p.own("2.3")
+    assert p.result.findings == ()  # FR-005: a reference does not change the state
+
+
 def test_section_heading_after_its_clause() -> None:
     p = parse(
         (11, "1. Ответственность"), (11, "1.1. Закон"),
@@ -372,40 +413,61 @@ def test_record_pages_across_a_page_boundary() -> None:
     assert (p.record("реквизиты").first_page, p.record("реквизиты").last_page) == (3, 3)
 
 
-def test_unread_page_inside_the_main_text() -> None:
+def test_unread_pages_before_the_tail_are_findings() -> None:
     p = parse(
         (2, "1. Предмет"), (2, "1.1. Работы"), (4, "1.2. Срок"), req(2, page=6),
         (7, "Приложение № 1"),
         unread=(1, 3, 5, 8),
     )
-    # 1 is before the main text, 5 is between it and the tail, 8 is in the tail
-    assert p.reason == "не прочитана страница внутри основного текста: стр. 3"
+    # 1 is before the main text, 3 inside it, 5 before the tail page; 8 is in the tail
+    assert p.reason == "не прочитана страница: стр. 1, стр. 3, стр. 5"
 
 
-def test_unread_pages_of_one_kind_are_joined() -> None:
-    p = parse((1, "1. Предмет"), (3, "1.1. Работы"), (5, "1.2. Срок"), req(2, page=6),
-              unread=(2, 4))
-    assert p.reason == "не прочитана страница внутри основного текста: стр. 2, стр. 4"
+def test_unread_page_in_the_preamble() -> None:
+    p = parse(
+        (1, "Договор подряда № 1"), (3, "1. Предмет"), (3, "1.1. Работы"), req(2, page=3),
+        unread=(2,),
+    )
+    assert p.keys()[0] == "преамбула"
+    assert p.reason == "не прочитана страница: стр. 2"  # FR-007 (г), clarify 2026-11-22 U3
+
+
+def test_unread_page_without_a_tail() -> None:
+    p = parse((1, "1. Предмет"), (1, "1.1. Работы"), unread=(2,))
+    assert p.reason == "раздел реквизитов не найден; не прочитана страница: стр. 2"
+
+
+def test_clause_across_an_unread_page_stays_one_record() -> None:
+    p = parse(
+        (2, "1. Предмет"), (2, "1.1. Работы выполняются"), (4, "в два этапа."),
+        (4, "1.2. Срок"), req(2, page=5),
+        unread=(3,),
+    )
+    assert p.keys() == ["1", "1.1", "1.2", "реквизиты"]
+    assert (p.record("1.1").first_page, p.record("1.1").last_page) == (2, 4)
 
 
 def test_reason_kinds_in_order() -> None:
     p = parse(
         (1, "1. Предмет"), (1, "1.1. Работы"), (1, "1.3. Срок"), (1, "1.3. Срок"),
         (1, "1.9. Споры"), (3, "2.1. Цена"), (3, "2. Цена"), (4, "2.2. Оплата"),
+        (4, "3.1. Пункт без заголовка"),
         (5, "9. Адреса и реквизиты сторон"), (6, "10. Ответственность"),
         unread=(2,),
         max_gap=1,
     )
     assert p.kinds() == [
-        "after_tail", "gap", "gap", "repeat", "out_of_order", "heading_after_clause", "unread",
+        "after_tail", "gap", "gap", "repeat", "out_of_order", "heading_after_clause",
+        "no_heading", "unread",
     ]
     assert p.reason == (
         "после начала хвоста идёт раздел 10 (стр. 6); "
-        "пропуск: после 1.1 идёт 1.3 (стр. 1), после 2.2 идёт 9 (стр. 5); "
+        "пропуск: после 1.1 идёт 1.3 (стр. 1), после 3.1 идёт 9 (стр. 5); "
         "повтор: 1.3 (стр. 1); "
         "номер вне порядка: 1.9 после 1.3 (стр. 1); "
         "заголовок раздела 2 после пункта 2.1 (стр. 3); "
-        "не прочитана страница внутри основного текста: стр. 2"
+        "нет заголовка раздела 3 (стр. 4); "
+        "не прочитана страница: стр. 2"
     )
 
 
@@ -472,6 +534,16 @@ def test_requisites_heading_with_a_skipped_number() -> None:
     p = parse((1, "1. Сроки"), (1, "1.1. Начало"), (2, "4. Реквизиты сторон"))
     assert p.keys()[-1] == "реквизиты"
     assert p.reason == "пропуск: после 1.1 идёт 4 (стр. 2)"
+
+
+def test_requisites_heading_after_a_gap_larger_than_max_gap() -> None:
+    p = parse(
+        (1, "1. Сроки"), (1, "1.1. Начало"), (2, "14. Адреса и реквизиты сторон"),
+        (2, "Заказчик: ООО «Альфа»"),
+        max_gap=5,
+    )
+    assert p.keys() == ["1", "1.1", "реквизиты"]  # FR-013: no max_gap limit for the tail
+    assert p.reason == "пропуск: после 1.1 идёт 14 (стр. 2)"
 
 
 def test_section_continuing_after_the_tail_start() -> None:

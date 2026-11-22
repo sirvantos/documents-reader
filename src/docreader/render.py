@@ -861,6 +861,7 @@ _OUTLINE_STATE_WORDS: dict[str, str] = {
     State.PENDING: "ожидает",
 }
 _RECOGNIZED_MARK = " [распознано]"
+_LOW_QUALITY_MARK = " [низкое качество распознавания]"
 _UNREAD_LABEL = "—"
 
 
@@ -921,6 +922,8 @@ def render_outline_text(outline: Outline) -> str:
         ).rstrip()
         if record.recognized:
             line += _RECOGNIZED_MARK
+        if record.low_quality:
+            line += _LOW_QUALITY_MARK
         lines.append(line)
         lines.extend(unread_lines(i))
     return "\n".join(lines)

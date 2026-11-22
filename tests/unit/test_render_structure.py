@@ -141,6 +141,7 @@ def _rec(
     head: str = "",
     title: str | None = None,
     recognized: bool = False,
+    low_quality: bool = False,
 ) -> OutlineRecord:
     return OutlineRecord(
         id=f"{DOC}/{key}",
@@ -157,6 +158,7 @@ def _rec(
         first_page=first,
         last_page=last,
         recognized=recognized,
+        low_quality=low_quality,
         head=head,
     )
 
@@ -247,6 +249,19 @@ def test_outline_recognized_mark() -> None:
     )
     assert lines[1].endswith(" [распознано]")
     assert "[распознано]" not in lines[2]
+
+
+def test_outline_low_quality_mark_follows_recognized_mark() -> None:
+    lines = _lines(
+        _outline(
+            [
+                _rec("2.2", number="2.2.", head="x", recognized=True, low_quality=True),
+                _rec("1.1", number="1.1.", head="y"),
+            ]
+        )
+    )
+    assert lines[1].endswith(" [распознано] [низкое качество распознавания]")
+    assert "низкое" not in lines[2]
 
 
 def test_outline_unread_page_between_records() -> None:
@@ -368,7 +383,7 @@ def test_outline_head_does_not_repeat_the_number() -> None:
             id=f"D-0001/{key}", key=key, kind=kind, number_printed=number,
             depth=key.count(".") + 1 if number else 0, parent=None, title=None,
             section_number=None, section_title=None, start=0, end=1, first_page=1,
-            last_page=1, recognized=False, head=head,
+            last_page=1, recognized=False, low_quality=False, head=head,
         )
 
     outline = Outline(
