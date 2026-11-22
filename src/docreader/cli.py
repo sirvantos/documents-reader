@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psycopg
 
-from docreader import db, reading, recognition, recognition_eval, registry, textview
+from docreader import db, parsing, reading, recognition, recognition_eval, registry, textview
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
 from docreader.ids import format_document_id, parse_document_id
@@ -26,6 +26,7 @@ from docreader.render import (
     render_list_text,
     render_page_kinds_text,
     render_page_text,
+    render_parse_text,
     render_read_report_csv,
     render_read_report_text,
     render_read_text,
@@ -92,6 +93,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "ids", nargs="*", metavar="ID", help="идентификаторы (по умолчанию — непрочитанные)"
     )
     p.add_argument("--all", action="store_true", help="перечитать все документы реестра")
+    p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("parse", help="разобрать структуру документов")
+    p.add_argument(
+        "ids", nargs="*", metavar="ID", help="идентификаторы (по умолчанию — неразобранные)"
+    )
+    p.add_argument("--all", action="store_true", help="разобрать все прочитанные документы")
     p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
@@ -267,6 +276,31 @@ def _cmd_read(args: argparse.Namespace, settings: Settings, conn: psycopg.Connec
     return 0
 
 
+NOTHING_TO_PARSE = (
+    "Нечего разбирать: все документы разобраны (заново: docreader parse --all)"
+)
+
+
+def _cmd_parse(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.all and args.ids:
+        raise UserError("Нельзя указать --all вместе с идентификаторами")
+    seqs = [parse_document_id(i) for i in args.ids] or None
+    result = parsing.parse_documents(
+        conn, settings, seqs, all_documents=args.all, label=args.label
+    )
+    if result.run_id is None and not result.documents and not result.skipped:
+        print(NOTHING_TO_PARSE)
+        return 0
+    if args.json:
+        print(json.dumps(result.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_parse_text(result))
+    if result.interrupted:
+        print("Прервано", file=sys.stderr)
+        return 130
+    return 0
+
+
 NOTHING_TO_RECOGNIZE = (
     "Нечего распознавать: все страницы-сканы распознаны "
     "(заново: docreader recognize --all --force)"
@@ -435,6 +469,7 @@ _HANDLERS: dict[str, _Handler] = {
     "reclassify": _cmd_reclassify,
     "page-kinds-check": _cmd_page_kinds_check,
     "read": _cmd_read,
+    "parse": _cmd_parse,
     "recognize": _cmd_recognize,
     "text": _cmd_text,
     "read-report": _cmd_read_report,

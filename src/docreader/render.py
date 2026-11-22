@@ -10,9 +10,13 @@ import io
 import json
 from datetime import datetime
 from pathlib import PurePath
+from typing import TYPE_CHECKING
 
 from docreader.quality import FLAG_NAMES, FLAG_ORDER
 from docreader.stages import STAGES, Stage, State
+
+if TYPE_CHECKING:
+    from docreader.parsing import ParsedDocument, ParseRun
 
 _KIND_LABELS = (
     ("text", "текст"),
@@ -804,3 +808,46 @@ def render_review_csv(pages: list[dict]) -> str:
         for p in pages
     ]
     return _csv_text(rows)
+
+
+_PARSE_STATE_WORDS = {
+    "done": "готово",
+    "needs_review": "требует просмотра",
+    "failed": "ошибка",
+}
+_PARSE_STATE_WIDTH = 17
+_PARSE_FAILED_WORD = "ошибка"
+
+
+def _page_text(page: int | None) -> str:
+    return "—" if page is None else str(page)
+
+
+def _parse_document_line(doc: ParsedDocument) -> str:
+    if doc.state == "failed":
+        line = f"{doc.document_id}  {_PARSE_FAILED_WORD:<{_PARSE_STATE_WIDTH}}  "
+        return line + doc.reason if doc.reason else line.rstrip()
+    word = _PARSE_STATE_WORDS.get(doc.state, doc.state)
+    line = (
+        f"{doc.document_id}  {word:<{_PARSE_STATE_WIDTH}}  "
+        f"разделов {doc.sections}, пунктов {doc.clauses}, "
+        f"стр. {_page_text(doc.first_page)}–{_page_text(doc.last_page)}"
+    )
+    if doc.reason is not None:
+        line += f" — {doc.reason}"
+    return line
+
+
+def render_parse_text(result: ParseRun) -> str:
+    """Text of `docreader parse` (contracts/cli.md); no text of the contracts."""
+    lines = [_parse_document_line(doc) for doc in result.documents]
+    lines += [f"{item.document_id}  пропущен           {item.reason}" for item in result.skipped]
+    totals = result.totals
+    total = (
+        f"Итого: разобрано {totals['parsed']}, требует просмотра {totals['needs_review']}, "
+        f"ошибок {totals['failed']}, пропущено {totals['skipped']}"
+    )
+    if result.run_id is not None:
+        total += f" (запуск {result.run_id})"
+    lines.append(total)
+    return "\n".join(lines)
