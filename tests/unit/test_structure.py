@@ -177,13 +177,13 @@ def test_own_text_runs_to_the_next_record_of_any_level() -> None:
     p = parse(
         (1, "1. Предмет"),
         (1, "1.1. Работы"),
-        (1, "продолжение пункта"),
+        (1, "продолжение пункта."),
         (1, "1.1.1. Подпункт"),
         (1, "1.2. Срок"),
         req(2),
     )
     assert p.own("1") == "1. Предмет\n"
-    assert p.own("1.1") == "1.1. Работы\nпродолжение пункта\n"
+    assert p.own("1.1") == "1.1. Работы\nпродолжение пункта.\n"
     assert p.own("1.1.1") == "1.1.1. Подпункт\n"
     assert p.own("1.2") == "1.2. Срок\n"
 
@@ -326,7 +326,7 @@ def test_repeat_is_rejected_with_a_finding() -> None:
 def test_repeat_of_the_current_clause_or_its_parent() -> None:
     p = parse(
         (3, "1. Предмет"), (3, "1.1. Работы"), (3, "1.1.1. Подготовка"),
-        (3, "1.1 Работы выполняются в срок"),  # the parent of the current 1.1.1
+        (3, "1.1 Работы выполняются в срок."),  # the parent of the current 1.1.1
         (3, "1.1.1. Подготовка"),  # the current record itself
         (3, "1.2. Срок"),
         req(2),
@@ -354,6 +354,58 @@ def test_already_accepted_number_outside_the_branch_is_a_reference(reference: st
     assert p.keys() == ["1", "1.1", "1.2", "2", "2.1", "2.2", "2.3", "2.4", "реквизиты"]
     assert reference in p.own("2.3")
     assert p.result.findings == ()  # FR-005: a reference does not change the state
+
+
+@pytest.mark.parametrize(
+    ("before", "number_line"),
+    [
+        ("в порядке, указанном пунктом", "1.2 настоящего Договора."),  # own branch
+        ("с последствиями, указанными в пунктах 1.1,", "4.2 настоящего Договора."),  # forward
+        ("по правилам статьи", "99.1 Кодекса."),  # a law article
+        ("согласно п.", "9.1 настоящего Договора."),
+        ("в соответствии с ч.", "2.1 настоящего Договора."),
+        ("по правилам раздела", "12. настоящего Договора."),
+        ("с учётом требований главы", "12 и 13 Кодекса."),
+        ("по правилам пунктов 1.1 и", "1.2 настоящего Договора."),  # after a conjunction
+        ("указанных в пунктах 1.1,", "2.1 настоящего Договора."),  # would continue numbering
+    ],
+)
+def test_wrapped_reference_after_an_unfinished_line_is_silent(
+    before: str, number_line: str
+) -> None:
+    # A reference that the line break moved to the start of a line (diagnosis 2026-11-22):
+    # the previous line ends with a reference word or a comma; FR-005 — no finding.
+    p = parse(
+        (1, "1. Предмет"), (1, "1.1. Работы"), (1, "1.2. Срок работ"),
+        (1, "1.2.1. Работы оплачиваются"), (1, before), (1, number_line),
+        (1, "1.2.2. Остаток оплачивается по акту."),
+        req(2),
+    )
+    assert p.keys() == ["1", "1.1", "1.2", "1.2.1", "1.2.2", "реквизиты"]
+    assert number_line in p.own("1.2.1")
+    assert p.result.findings == ()
+
+
+@pytest.mark.parametrize("ending", ["Первая часть", "Общие положения раздела 1", "Пункт"])
+def test_heading_like_endings_do_not_block_the_next_clause(ending: str) -> None:
+    p = parse((1, "1. Предмет"), (1, f"1.1. {ending}"), (1, "1.1.1. Подпункт"), req(2))
+    assert p.keys() == ["1", "1.1", "1.1.1", "реквизиты"]
+
+
+def test_clause_after_a_conjunction_still_starts() -> None:
+    # a heading line lost by recognition may leave «… и» right before a real clause
+    p = parse((1, "1. Предмет"), (1, "1.1. Работы и"), (1, "1.2. Срок"), req(2))
+    assert p.keys() == ["1", "1.1", "1.2", "реквизиты"]
+
+
+def test_number_after_a_finished_line_is_still_a_finding() -> None:
+    p = parse(
+        (1, "1. Предмет"), (1, "1.1. Работы"), (1, "Работы выполняются в срок."),
+        (1, "14. Ответственность сторон"),  # a lost dot: «1.4.» read as «14.»
+        (1, "1.2. Срок"),
+        req(2),
+    )
+    assert p.reason == "номер вне порядка: 14 после 1.1 (стр. 1)"
 
 
 def test_section_heading_after_its_clause() -> None:

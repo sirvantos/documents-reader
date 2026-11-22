@@ -20,6 +20,18 @@ from docreader.ids import PREAMBLE_KEY, TAIL_KEY, clause_key
 _NUMBER = re.compile(r"(?P<num>[1-9]\d{0,2}(?:\.[1-9]\d{0,2})*)(?P<dot>\.?)(?=\s|$|[^\W\d_])")
 # A unit right after the number makes it an amount, not a clause («5.3 млн», R-2).
 _UNIT = re.compile(r"(?:млн|млрд|тыс|руб|коп|р\.|%|кг|тонн|км|мм|см|м²|м³|м2|м3|шт)", re.I)
+# A line that ends with a reference word or a comma: a number at the start of the next line
+# continues the reference («…указанном пунктом» / «N.M Договора»), research R-3.
+# Such a number never starts a record (FR-005). After «и», «или», «либо» a real clause may
+# follow (a heading line lost by recognition), so there the number is only kept out of the
+# findings.
+_REFERENCE_END = re.compile(
+    r"(?:,|(?:^|\s)(?:(?:пп?|ст|ч)\."
+    r"|(?:под)?пункт(?:а|у|ом|е|ы|ов|ам|ами|ах)|стать(?:и|ей|ёй|е|ям|ями|ях)"
+    r"|раздел(?:а|у|ом|е|ов|ам|ами|ах)|глав(?:ы|е|ой|ам|ами|ах)|част(?:и|ью|ям|ями|ях)))"
+    r"\s*$"
+)  # lowercase only: inside a sentence; «1.1. Пункт» is a heading, not a reference
+_CONJUNCTION_END = re.compile(r"(?:^|\s)(?:и|или|либо)\s*$")
 
 NO_NUMBERING = "no_numbering"
 NO_TAIL = "no_tail"
@@ -164,7 +176,9 @@ def parse_lines(
     tail_number = 0
     after_tail_checked = False
 
+    previous: Line | None = None
     for line in lines:
+        before, previous = previous, line
         if not line.line_start or line.table:
             continue
         cand = candidate(line.text)
@@ -185,6 +199,8 @@ def parse_lines(
                 findings.append(Finding(GAP, f"{_after(current)} идёт {number[0]} {where}"))
             tail, tail_number = line, number[0]
             continue
+        if before is not None and _REFERENCE_END.search(before.text):
+            continue  # a wrapped reference stays in the text silently, whatever its number
         step = _step(current, number, max_step)
         if step is not None:
             if step > 1:
@@ -197,6 +213,8 @@ def parse_lines(
             elif number[0] not in headed_sections:
                 unheaded_sections.setdefault(number[0], (clause_key(number), line.page))
             current = number
+        elif before is not None and _CONJUNCTION_END.search(before.text):
+            pass  # «пунктами 3.1 и» / «3.2 …»: most likely a reference, no finding
         elif number in accepted:
             # A repeat is the current record or one of its ancestors; any other accepted
             # number is a reference to an earlier clause and stays silently (FR-005).

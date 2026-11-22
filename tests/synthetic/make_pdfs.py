@@ -1239,6 +1239,36 @@ def make_structured_blank_page(path: str | Path) -> Path:
     return _write(path, _pdf(draw))
 
 
+WRAPPED_REFERENCES_PAGE: tuple[str, ...] = (
+    "1. Предмет договора",
+    "1.1. Подрядчик выполняет работы.",
+    "1.2. Аванс выплачивается в порядке, указанном пунктом",
+    "1.2 настоящего Договора.",  # a reference to the current clause
+    "1.3. Неустойка начисляется по правилам статьи",
+    "99.1 Кодекса.",  # a law article, far ahead
+    "1.4. Последствия, указанные в пунктах 1.1,",
+    "2.1 настоящего Договора, применяются.",  # a forward reference
+    "2. Цена договора",
+    "2.1. Цена определяется сметой.",
+    "3. Адреса и реквизиты сторон",
+    "Заказчик: ООО «Альфа», ИНН 0000000000",
+)
+
+
+def make_wrapped_references(path: str | Path) -> Path:
+    """One page whose references were moved to the start of a line by the line break.
+
+    Abstract form of a pattern found on real contracts (feature 04, 2026-11-22): the line
+    before ends with «пунктом», «статьи» or «пунктах N.N,». Lines: WRAPPED_REFERENCES_PAGE.
+    """
+
+    def draw(c: canvas.Canvas) -> None:
+        _ru_page(c, WRAPPED_REFERENCES_PAGE)
+        c.showPage()
+
+    return _write(path, _pdf(draw))
+
+
 # --- demo set ------------------------------------------------------------------
 
 

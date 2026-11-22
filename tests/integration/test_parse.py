@@ -311,3 +311,12 @@ def test_blank_page_inside_a_clause_is_not_a_finding(cli, db, tmp_path):
     assert stage(db, doc, "structure")[:2] == ("done", None)  # Edge «Пустая страница»
     outline = cli("outline", doc).stdout
     assert "страница 2" not in outline
+
+
+def test_wrapped_references_do_not_flag_the_document(cli, db, tmp_path):
+    (doc,) = add_files(cli, tmp_path / "in", [mk.make_wrapped_references])
+    assert cli("read").exit_code == 0
+    assert cli("parse").exit_code == 0
+    assert [r["key"] for r in rows(db, doc)] == ["1", "1.1", "1.2", "1.3", "1.4", "2", "2.1",
+                                                 "реквизиты"]
+    assert stage(db, doc, "structure")[:2] == ("done", None)
