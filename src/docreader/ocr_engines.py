@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from docreader.config import RecognitionSettings
 from docreader.errors import EnvironmentProblem
+from docreader.guards import FORBID_MODELS_ENV, models_forbidden  # noqa: F401 - FORBID_MODELS_ENV re-exported
 from docreader.ocr import EngineLine, EngineOutput, PixelBox, RecognitionEngine
 
 if TYPE_CHECKING:
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
 
 EngineFactory = Callable[[RecognitionSettings, Path], RecognitionEngine]
 
-FORBID_MODELS_ENV = "DOCREADER_FORBID_MODELS"
 # Set before an engine library is imported; libraries that would download a model or
 # send telemetry read them (principle I).
 OFFLINE_ENV = {
@@ -219,7 +219,7 @@ def load_engine(settings: RecognitionSettings, data_dir: Path) -> RecognitionEng
         raise EnvironmentProblem(
             f"Неизвестный движок распознавания «{name}» — известные: {known}"
         )
-    if os.environ.get(FORBID_MODELS_ENV, "").strip():
+    if models_forbidden():
         raise EnvironmentProblem(
             "На этой машине движок распознавания не запускается (DOCREADER_FORBID_MODELS)"
         )

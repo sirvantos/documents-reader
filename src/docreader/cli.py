@@ -13,6 +13,8 @@ import psycopg
 from docreader import (
     clauseview,
     db,
+    extraction,
+    fieldview,
     parsing,
     reading,
     recognition,
@@ -28,8 +30,11 @@ from docreader.render import (
     NO_READ_DOCUMENTS,
     NO_REVIEW_PAGES,
     NO_SCAN_DOCUMENTS,
+    NOTHING_TO_EXTRACT,
     render_clause_text,
     render_document_text,
+    render_extract_text,
+    render_fields_text,
     render_find_text,
     render_intake_json,
     render_intake_text,
@@ -115,6 +120,17 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
+    p = sub.add_parser("extract", help="извлечь поля договоров")
+    p.add_argument(
+        "ids",
+        nargs="*",
+        metavar="ID",
+        help="идентификаторы (по умолчанию — договоры с незаполненными полями)",
+    )
+    p.add_argument("--all", action="store_true", help="извлечь из всех доступных договоров")
+    p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
     p = sub.add_parser("recognize", help="распознать страницы-сканы")
     p.add_argument(
         "ids",
@@ -137,6 +153,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("outline", help="показать оглавление разобранного документа")
+    p.add_argument("id", metavar="ID", help="идентификатор документа, например D-0001")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("fields", help="показать поля договора")
     p.add_argument("id", metavar="ID", help="идентификатор документа, например D-0001")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
@@ -323,6 +343,28 @@ def _cmd_parse(args: argparse.Namespace, settings: Settings, conn: psycopg.Conne
     return 0
 
 
+def _cmd_extract(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.all and args.ids:
+        raise UserError("Нельзя указать --all вместе с идентификаторами")
+    seqs = [parse_document_id(i) for i in args.ids] or None
+    result = extraction.extract_documents(
+        conn, settings, seqs, all_documents=args.all, label=args.label
+    )
+    if result.run_id is None and not result.documents and not result.skipped:
+        print(NOTHING_TO_EXTRACT)
+        return 0
+    if args.json:
+        print(json.dumps(result.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_extract_text(result))
+    if result.interrupted:
+        print("Прервано", file=sys.stderr)
+        return 130
+    if result.stopped is not None:
+        return 2
+    return 0
+
+
 NOTHING_TO_RECOGNIZE = (
     "Нечего распознавать: все страницы-сканы распознаны "
     "(заново: docreader recognize --all --force)"
@@ -403,6 +445,16 @@ def _cmd_outline(args: argparse.Namespace, settings: Settings, conn: psycopg.Con
         print(json.dumps(outline.to_json(), ensure_ascii=False, indent=2))
     else:
         print(render_outline_text(outline))
+    return 0
+
+
+def _cmd_fields(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    seq = parse_document_id(args.id)
+    view = fieldview.load_fields(conn, seq)
+    if args.json:
+        print(json.dumps(view.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_fields_text(view))
     return 0
 
 
@@ -512,9 +564,11 @@ _HANDLERS: dict[str, _Handler] = {
     "page-kinds-check": _cmd_page_kinds_check,
     "read": _cmd_read,
     "parse": _cmd_parse,
+    "extract": _cmd_extract,
     "recognize": _cmd_recognize,
     "text": _cmd_text,
     "outline": _cmd_outline,
+    "fields": _cmd_fields,
     "clause": _cmd_clause,
     "read-report": _cmd_read_report,
     "recognize-report": _cmd_recognize_report,

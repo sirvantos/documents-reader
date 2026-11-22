@@ -474,3 +474,135 @@ def test_clause_run_is_restricted_and_document_cascades(db) -> None:
         db.execute("DELETE FROM run WHERE id = %s", (run_id,))
     db.execute("DELETE FROM document WHERE id = 'D-0001'")
     assert db.execute("SELECT count(*) FROM clause").fetchone()[0] == 0
+
+
+# --- 0005_extraction (feature 05, task T003) -------------------------------------------
+
+
+def _extraction_run(db) -> int:
+    return db.execute(
+        "INSERT INTO run (stage, code_version, settings) VALUES ('extraction', 'test', '{}') "
+        "RETURNING id"
+    ).fetchone()[0]
+
+
+_FOUND_ROW = {
+    "field": "contract_number",
+    "result": "found",
+    "value_text": "№ ДП-17/2026",
+    "value_normalized": "ДП-17/2026",
+    "quote": "ДОГОВОР ПОДРЯДА № ДП-17/2026",
+    "quote_start": 0,
+    "quote_end": 27,
+    "clause_key": "преамбула",
+    "page": 1,
+    "pages": [1],
+    "reason": None,
+    "proposed_value": "№ ДП-17/2026",
+    "proposed_quote": None,
+    "proposed_clause": "преамбула",
+    "sha": HASH,
+}
+_EMPTY = {
+    "value_text": None,
+    "value_normalized": None,
+    "quote": None,
+    "quote_start": None,
+    "quote_end": None,
+    "clause_key": None,
+    "page": None,
+    "pages": None,
+    "reason": None,
+    "proposed_value": None,
+    "proposed_quote": None,
+    "proposed_clause": None,
+}
+
+
+def _insert_field(db, run_id: int, **overrides) -> None:
+    row = {**_FOUND_ROW, **overrides}
+    db.execute(
+        "INSERT INTO field_value (document_id, field, result, value_text, value_normalized,"
+        " quote, quote_start, quote_end, clause_key, page, pages, reason, proposed_value,"
+        " proposed_quote, proposed_clause, source_text_sha256, run_id)"
+        " VALUES ('D-0001', %(field)s, %(result)s, %(value_text)s, %(value_normalized)s,"
+        " %(quote)s, %(quote_start)s, %(quote_end)s, %(clause_key)s, %(page)s, %(pages)s,"
+        " %(reason)s, %(proposed_value)s, %(proposed_quote)s, %(proposed_clause)s, %(sha)s,"
+        " %(run_id)s)",
+        {**row, "run_id": run_id},
+    )
+
+
+def test_extraction_migration_is_listed_as_applied(db) -> None:
+    versions = {r[0] for r in db.execute("SELECT version FROM schema_migrations")}
+    assert "0005_extraction" in versions
+
+
+def test_field_value_accepts_each_result(db) -> None:
+    _seed_page(db)
+    run_id = _extraction_run(db)
+    _insert_field(db, run_id)
+    _insert_field(db, run_id, field="customer_name_short", result="not_found", **_EMPTY)
+    _insert_field(
+        db, run_id, field="contractor_name_short", result="rejected",
+        **{**_EMPTY, "reason": "цитата не найдена", "proposed_value": "ООО «Бета»",
+           "proposed_quote": "ООО «Бета»", "proposed_clause": "преамбула"},
+    )
+    _insert_field(
+        db, run_id, field="amount_without_vat", result="failed",
+        **{**_EMPTY, "reason": "ответ модели не по форме после 2 повторов"},
+    )
+    assert db.execute("SELECT count(*) FROM field_value").fetchone()[0] == 4
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"field": "signing_date"},  # not a prototype field
+        {"result": "maybe"},
+        {"sha": "z" * 64},
+        # found needs the quote and its place, and no reason
+        {"quote": None},
+        {"quote_start": None},
+        {"clause_key": None},
+        {"pages": None},
+        {"value_normalized": None},
+        {"reason": "лишняя причина"},
+        {"quote_start": 5, "quote_end": 5},
+        {"quote_start": -1},
+        # not_found carries nothing
+        {"result": "not_found", **_EMPTY, "reason": "причина"},
+        {"result": "not_found", **_EMPTY, "proposed_value": "1 рубль"},
+        {"result": "not_found", **_EMPTY, "proposed_clause": "2.1"},
+        {"result": "not_found"},  # value and quote of a found row
+        # rejected needs a reason and no accepted value
+        {"result": "rejected", **_EMPTY},
+        {"result": "rejected", "reason": "цитата не найдена"},  # still has value_text etc.
+        # failed needs a reason and nothing else
+        {"result": "failed", **_EMPTY},
+        {"result": "failed", **_EMPTY, "reason": "x", "proposed_value": "1"},
+    ],
+)
+def test_field_value_rejects_bad_rows(db, overrides) -> None:
+    _seed_page(db)
+    run_id = _extraction_run(db)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_field(db, run_id, **overrides)
+
+
+def test_field_value_is_one_row_per_field(db) -> None:
+    _seed_page(db)
+    run_id = _extraction_run(db)
+    _insert_field(db, run_id)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_field(db, run_id)
+
+
+def test_field_value_run_is_restricted_and_document_cascades(db) -> None:
+    _seed_page(db)
+    run_id = _extraction_run(db)
+    _insert_field(db, run_id)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        db.execute("DELETE FROM run WHERE id = %s", (run_id,))
+    db.execute("DELETE FROM document WHERE id = 'D-0001'")
+    assert db.execute("SELECT count(*) FROM field_value").fetchone()[0] == 0

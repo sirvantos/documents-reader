@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import tomllib
@@ -14,6 +15,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.conninfo import conninfo_to_dict
@@ -76,6 +78,29 @@ class StructureSettings:
     requisites_pattern: str = r"реквизит|подписи\s+сторон|адреса\s+сторон|юридические\s+адреса"
 
 
+EXTRACTION_MODES = ("md_json", "json", "json_schema")
+
+
+@dataclass(frozen=True)
+class ExtractionSettings:
+    """Values of the [extraction] section (feature 05, research R-11).
+
+    `base_url` may only point to this machine (`is_local_model_url`, principle I); it is
+    checked here when the file is read and again by `llm.load_client`.
+    """
+
+    base_url: str = "http://127.0.0.1:8080/v1"
+    model: str = "qwen3.6-27b-4bit"
+    mode: str = "md_json"
+    max_retries: int = 2
+    timeout_s: int = 1800
+    max_shown_chars: int = 150000
+    temperature: float = 0.0
+    seed: int = 0
+    max_tokens: int = 2048
+    extra_body: dict = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path
@@ -86,6 +111,7 @@ class Settings:
     reading: ReadingSettings = field(default_factory=ReadingSettings)
     recognition: RecognitionSettings = field(default_factory=RecognitionSettings)
     structure: StructureSettings = field(default_factory=StructureSettings)
+    extraction: ExtractionSettings = field(default_factory=ExtractionSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -106,6 +132,10 @@ class Settings:
             "reading": asdict(self.reading),
             "recognition": asdict(self.recognition),
             "structure": asdict(self.structure),
+            # base_url is not recorded: it says where the server ran, not how fields were got
+            "extraction": {
+                k: v for k, v in asdict(self.extraction).items() if k != "base_url"
+            },
         }
 
 
@@ -179,6 +209,27 @@ def _check_local_database(url: str, env: Mapping[str, str]) -> None:
             "База данных должна быть локальной (Unix-сокет, localhost, 127.0.0.1 или ::1), "
             f"получено: {', '.join(problems)} — исправьте DOCREADER_DATABASE_URL / PGHOST"
         )
+
+
+def is_local_model_url(url: str) -> bool:
+    """True when `url` is http(s) to localhost or a loopback IP (the model server, R-1).
+
+    No user part, no other host: the language model is reached only on this machine
+    (principle I). Used by `[extraction] base_url` and by `llm.load_client`.
+    """
+    try:
+        parts = urlsplit(url.strip())
+        host = parts.hostname
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not host or "@" in parts.netloc:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 # --- settings.toml ---------------------------------------------------------------
@@ -274,9 +325,38 @@ _SCHEMA: dict[str, dict[str, tuple[str, type, Callable[[Any], bool], str]]] = {
         ),
     },
 }
+_SCHEMA["extraction"] = {
+    # Keys of [extraction] map one-to-one to ExtractionSettings fields (research R-11).
+    "base_url": (
+        "base_url",
+        str,
+        is_local_model_url,
+        "адрес http(s) на этой машине: localhost, 127.0.0.1 или ::1 (принцип I)",
+    ),
+    "model": ("model", str, lambda v: bool(v.strip()), "непустая строка"),
+    "mode": (
+        "mode",
+        str,
+        lambda v: v in EXTRACTION_MODES,
+        "одно из: " + ", ".join(EXTRACTION_MODES),
+    ),
+    "max_retries": ("max_retries", int, lambda v: 0 <= v <= 5, "целое от 0 до 5"),
+    "timeout_s": ("timeout_s", int, lambda v: 10 <= v <= 7200, "целое от 10 до 7200"),
+    "max_shown_chars": (
+        "max_shown_chars",
+        int,
+        lambda v: 1000 <= v <= 1_000_000,
+        "целое от 1000 до 1000000",
+    ),
+    "temperature": ("temperature", float, lambda v: 0 <= v <= 2, "число от 0 до 2"),
+    "seed": ("seed", int, lambda v: v >= 0, "целое ≥ 0"),
+    "max_tokens": ("max_tokens", int, lambda v: 256 <= v <= 16384, "целое от 256 до 16384"),
+    "extra_body": ("extra_body", dict, lambda v: True, "таблица TOML"),
+}
 READING_TABLE = "reading"
 RECOGNITION_TABLE = "recognition"
 STRUCTURE_TABLE = "structure"
+EXTRACTION_TABLE = "extraction"
 
 
 def _type_matches(kind: type, value: Any) -> bool:
@@ -285,6 +365,8 @@ def _type_matches(kind: type, value: Any) -> bool:
         return isinstance(value, bool)
     if kind is str:
         return isinstance(value, str)
+    if kind is dict:
+        return isinstance(value, dict)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False
     return kind is float or isinstance(value, int)
@@ -307,6 +389,7 @@ def _read_settings_file(data_dir: Path) -> dict:
     reading_values: dict = {}
     recognition_values: dict = {}
     structure_values: dict = {}
+    extraction_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
@@ -318,6 +401,8 @@ def _read_settings_file(data_dir: Path) -> dict:
             target = recognition_values
         elif table == STRUCTURE_TABLE:
             target = structure_values
+        elif table == EXTRACTION_TABLE:
+            target = extraction_values
         else:
             target = values
         for key, value in entries.items():
@@ -336,4 +421,6 @@ def _read_settings_file(data_dir: Path) -> dict:
         values["recognition"] = RecognitionSettings(**recognition_values)
     if STRUCTURE_TABLE in doc:
         values["structure"] = StructureSettings(**structure_values)
+    if EXTRACTION_TABLE in doc:
+        values["extraction"] = ExtractionSettings(**extraction_values)
     return values

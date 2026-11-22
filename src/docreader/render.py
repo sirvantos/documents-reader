@@ -12,11 +12,15 @@ from datetime import datetime
 from pathlib import PurePath
 from typing import TYPE_CHECKING
 
+from docreader.fields import Result
+from docreader.fields import spec as field_spec
 from docreader.quality import FLAG_NAMES, FLAG_ORDER
 from docreader.stages import STAGES, Stage, State
 
 if TYPE_CHECKING:
     from docreader.clauseview import ClauseView, Outline, OutlineRecord
+    from docreader.extraction import ExtractedDocument, ExtractRun
+    from docreader.fieldview import FieldsView, FieldView
     from docreader.parsing import ParsedDocument, ParseRun
 
 _KIND_LABELS = (
@@ -854,6 +858,66 @@ def render_parse_text(result: ParseRun) -> str:
     return "\n".join(lines)
 
 
+NOTHING_TO_EXTRACT = (
+    "Нечего извлекать: поля всех договоров заполнены (заново: docreader extract --all)"
+)
+_EXTRACT_STATE_WORDS = {
+    "done": "готово",
+    "needs_review": "требует просмотра",
+    "failed": "ошибка",
+}
+_EXTRACT_STATE_WIDTH = 17
+_EXTRACT_FAILED_WORD = "ошибка"
+
+
+def _field_labels(names: list[str]) -> str:
+    return ", ".join(field_spec(name).label for name in names)
+
+
+def _extract_document_line(doc: ExtractedDocument) -> str:
+    if doc.state == "failed":
+        line = f"{doc.document_id}  {_EXTRACT_FAILED_WORD:<{_EXTRACT_STATE_WIDTH}}  "
+        return line + doc.reason if doc.reason else line.rstrip()
+    word = _EXTRACT_STATE_WORDS.get(doc.state, doc.state)
+    not_found = f" ({_field_labels(doc.not_found_fields)})" if doc.not_found_fields else ""
+    rejected = f" ({_field_labels(doc.rejected_fields)})" if doc.rejected_fields else ""
+    line = (
+        f"{doc.document_id}  {word:<{_EXTRACT_STATE_WIDTH}}  "
+        f"найдено {doc.found}, не найдено {doc.not_found}{not_found}, "
+        f"отклонено {doc.rejected}{rejected}"
+    )
+    if doc.reason is not None:
+        line += f" — {doc.reason}"
+    return line
+
+
+def render_extract_text(result: ExtractRun) -> str:
+    """Text of `docreader extract` (contracts/cli.md «docreader extract»).
+
+    Field values and quotes are never printed: the result carries none of them.
+    """
+    if not result.documents and not result.skipped and result.stopped is None:
+        return NOTHING_TO_EXTRACT
+    lines = [_extract_document_line(doc) for doc in result.documents]
+    lines += [f"{item.document_id}  пропущен           {item.reason}" for item in result.skipped]
+    if result.stopped is not None:
+        lines.append(f"Остановлено на {result.stopped.document_id}: {result.stopped.reason}")
+    totals = result.totals
+    total = (
+        f"Итого: извлечено {totals['extracted']}, требует просмотра {totals['needs_review']}, "
+        f"ошибок {totals['failed']}, пропущено {totals['skipped']}; "
+        f"полей найдено {totals['fields_found']}, не найдено {totals['fields_not_found']}, "
+        f"отклонено {totals['fields_rejected']}"
+    )
+    if result.run_id is not None:
+        details = (
+            f"запуск {result.run_id}, модель {result.model}, "
+            f"подсказка {result.prompt_version}"
+        )
+        total += f" ({details})"
+    lines.append(total)
+    return "\n".join(lines)
+
 _OUTLINE_STATE_WORDS: dict[str, str] = {
     State.DONE: "готово",
     State.NEEDS_REVIEW: "требует просмотра",
@@ -942,3 +1006,84 @@ def render_clause_text(view: ClauseView) -> str:
     # each part is stored with its number and a final newline; parts follow one another
     parts = [part.text.rstrip("\n") for part in view.records]
     return "\n".join([header, "", *parts])
+
+
+_FIELDS_STATE_WORDS: dict[str, str] = {
+    State.DONE: "готово",
+    State.NEEDS_REVIEW: "требует просмотра",
+    State.FAILED: "ошибка",
+    State.PENDING: "ожидает",
+}
+_FIELDS_RESULT_WORDS: dict[str, str] = {
+    Result.FOUND: "найдено",
+    Result.NOT_FOUND: "не найдено",
+    Result.REJECTED: "отклонено",
+    Result.FAILED: "ошибка",
+}
+_FIELDS_LABEL_WIDTH = 20
+_FIELDS_RESULT_WIDTH = 12
+_FIELDS_INDENT = " " * (_FIELDS_LABEL_WIDTH + _FIELDS_RESULT_WIDTH)
+_FIELDS_LOW_QUALITY_MARK = " [низкое качество распознавания]"
+
+
+def _one_line(text: str) -> str:
+    """A quote on one line: every line break becomes a space."""
+    return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
+def _field_block(view: FieldsView, field: FieldView) -> list[str]:
+    """Lines of one field in `fields` output (contracts/cli.md «docreader fields»)."""
+    word = _FIELDS_RESULT_WORDS.get(field.result, field.result)
+    head = f"{field.label:<{_FIELDS_LABEL_WIDTH}}{word:<{_FIELDS_RESULT_WIDTH}}"
+    if field.result == Result.NOT_FOUND:
+        return [f"{field.label:<{_FIELDS_LABEL_WIDTH}}{word}"]
+    if field.result == Result.FOUND:
+        line = (
+            f"{head}{field.value_normalized or ''}"
+            f"  (как в тексте: «{field.value_text or ''}»)"
+        )
+        if field.low_quality:
+            line += _FIELDS_LOW_QUALITY_MARK
+        if field.clause_id:
+            where = field.clause_id
+            if field.page is not None:
+                where += f", стр. {field.page}"
+        else:
+            where = f"пункт не найден в разборе — выполните docreader extract {view.document_id}"
+        return [
+            line,
+            _FIELDS_INDENT + where,
+            _FIELDS_INDENT + f"«{_one_line(field.quote or '')}»",
+        ]
+    if field.result == Result.REJECTED:
+        lines = [f"{head}{field.reason or ''}"]
+        proposed = f"модель: «{field.proposed_value or ''}»"
+        if field.proposed_clause:
+            proposed += f", пункт {field.proposed_clause}"
+        lines.append(_FIELDS_INDENT + proposed)
+        if field.proposed_quote:
+            lines.append(
+                _FIELDS_INDENT + f"цитата модели: «{_one_line(field.proposed_quote)}»"
+            )
+        return lines
+    return [f"{head}{field.reason or ''}"]
+
+
+def render_fields_text(view: FieldsView) -> str:
+    """Text of `docreader fields` (contracts/cli.md «docreader fields»)."""
+    state_word = _FIELDS_STATE_WORDS.get(view.state, view.state)
+    started = view.run_started_at.strftime("%Y-%m-%d")
+    header = (
+        f"{view.document_id} — извлечение от {started} "
+        f"(запуск {view.run_id}, модель {view.model or '—'}, "
+        f"подсказка {view.prompt_version or '—'}), {state_word}"
+    )
+    lines = [header]
+    if view.reason is not None:
+        lines.append(f"  {view.reason}")
+    if not view.fields:
+        return "\n".join(lines)
+    lines.append("")
+    for field in view.fields:
+        lines.extend(_field_block(view, field))
+    return "\n".join(lines)

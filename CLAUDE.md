@@ -181,7 +181,7 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 - `docker compose run --rm tests` — full test suite in containers (throwaway PostgreSQL 17
   in memory, no internet access, repo mounted read-only); extra pytest arguments go at the
   end (`docker compose run --rm tests -k note -x`); `docker compose down` stops the database.
-  After changing dependencies, rebuild with `docker compose build tests`.
+  After changing dependencies, rebuild both images with `docker compose build tests lint`.
 - `uv run pytest tests/unit` — unit tests only; no database needed.
 - `uv run ruff check .` and `uv run mypy` — linter and type checker; both must pass
   before a task is marked `[X]` (constitution «Порядок работы», «Правила кода» in
@@ -204,5 +204,13 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   subclauses, or only its own text with `--own`. Output of `parse` (ids, counts, clause and
   page numbers, reasons) may be sent to the agent; output of `outline` and `clause` contains
   contract text, so on real contracts it is never sent (on synthetic files it may be).
+- `uv run docreader extract [ID…] [--all]` — the six prototype fields of parsed contracts
+  with a program-checked quote (feature 05); needs the local model server (`[extraction]` in
+  `settings.toml`, address on this machine only) and stops with exit 2 here
+  (`DOCREADER_FORBID_MODELS`). `uv run docreader fields ID` — the fields of one contract with
+  values and quotes. Output of `extract` (ids, states, field names, counts, reasons) may be
+  sent to the agent; output of `fields` contains contract text, so on real contracts it is
+  never sent. Recordings of model answers: `python -m tests.synthetic.record_extraction`
+  (synthetic files only; on the Mac, where the model runs).
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).

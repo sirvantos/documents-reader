@@ -45,6 +45,8 @@ REGISTRY_TABLES = (
     "page_recognition",
     # feature 04 (structure)
     "clause",
+    # feature 05 (extraction)
+    "field_value",
 )
 LIBPQ_ENV = ("PGHOST", "PGHOSTADDR", "PGSERVICE", "PGDATABASE")
 
@@ -95,7 +97,7 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
 # --- recognition engine guard (feature 13, research R-4) ----------------------------
 
-FORBID_MODELS_ENV = "DOCREADER_FORBID_MODELS"
+from docreader.guards import FORBID_MODELS_ENV  # noqa: E402 - shared with the code
 
 
 @pytest.fixture(autouse=True)
@@ -120,6 +122,26 @@ def use_engine(monkeypatch: pytest.MonkeyPatch):
 
 
 # --- database --------------------------------------------------------------------
+
+
+@pytest.fixture
+def use_model(monkeypatch: pytest.MonkeyPatch):
+    """`use_model(fake)` makes `llm.load_client` use the fake's transport (feature 05).
+
+    `fake` is a `ScriptedModel` or `RecordedModel` from tests/fakes/llm.py; the real
+    `openai` client and Instructor run on it, no socket is opened.
+    """
+    from docreader import llm
+
+    real = llm.load_client
+
+    def install(model):
+        monkeypatch.setattr(
+            llm, "load_client", lambda settings, transport=None: real(settings, model.transport)
+        )
+        return model
+
+    return install
 
 
 @pytest.fixture(scope="session")

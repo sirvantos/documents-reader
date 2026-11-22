@@ -239,4 +239,15 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "max_gap": 5,
             "requisites_pattern": r"реквизит|подписи\s+сторон|адреса\s+сторон|юридические\s+адреса",
         },
+        "extraction": {  # feature 05; base_url is not recorded
+            "model": "qwen3.6-27b-4bit",
+            "mode": "md_json",
+            "max_retries": 2,
+            "timeout_s": 1800,
+            "max_shown_chars": 150000,
+            "temperature": 0.0,
+            "seed": 0,
+            "max_tokens": 2048,
+            "extra_body": {},
+        },
     }

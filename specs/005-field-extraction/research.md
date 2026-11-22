@@ -17,8 +17,8 @@ JSON в тексте ответа, форму проверяет код (Pydanti
 или исключение.
 
 Граница подмены в тестах — HTTP-транспорт клиента: `openai.OpenAI(base_url=…,
-http_client=httpx.Client(transport=…))`. В автотестах вместо сетевого транспорта
-стоит `httpx.MockTransport` из `tests/fakes/llm.py`: настоящие `openai` и Instructor
+http_client=httpx2.Client(transport=…))`. В автотестах вместо сетевого транспорта
+стоит `httpx2.MockTransport` из `tests/fakes/llm.py`: настоящие `openai` и Instructor
 работают как на ноутбуке (разбор ответа, повторы), сокетов нет (защита `_no_network`
 в `tests/conftest.py` не задета).
 
@@ -380,17 +380,22 @@ field_value` → `INSERT` шести строк → `stages.set_state`. Запр
 ## R-12. Зависимости и лицензии
 
 **Decision.** В основные зависимости — `instructor` (MIT) и `openai` (Apache-2.0);
-вместе с ними приходят `pydantic` (MIT) и `httpx` (BSD-3). Все — чистый Python или
+вместе с ними приходят `pydantic` (MIT) и `httpx2` (BSD-3). `openai` 3.x построен на `httpx2` (преемник `httpx` от авторов pydantic; T001, 2026-11-22): транспорт тестов — `httpx2.MockTransport`, обычный `httpx` проекту не нужен. Все — чистый Python или
 готовые колёса для macOS arm64 и Linux x86_64. Модели в них нет, в Docker они ставятся
 (тесты уровней 1–2 их используют). Импорт `instructor` и `openai` — только
 в `llm.py`. Версии фиксирует `uv.lock`; после изменения — `docker compose build tests`.
 
-Телеметрия (принцип I): у `openai` её нет; у Instructor — **[проверить]** в первой
-задаче по исходникам установленного пакета (поиск отправки аналитики); если есть —
-отключить до импорта в `llm.py` и записать в tech-context.
+Телеметрия (принцип I) — **проверено 2026-11-22 (T001)** на `instructor` 1.17.0
+и `openai` 3.3.0: в исходниках нет отправки аналитики (`posthog`, `telemetry`,
+`analytics`, `sentry` и подобного не найдено); единственный сетевой вызов вне клиента —
+`instructor/cli/usage.py` (команда `instructor usage`, запрос расхода к OpenAI), она
+вызывается только вручную из командной строки Instructor, проект её не использует.
+Импорт обоих пакетов при запрещённых сокетах соединений не открывает. Отключать
+нечего. Instructor приносит и `aiohttp`, `requests`, `rich`, `typer` — в коде проекта
+они не импортируются.
 
 **Rationale.** Решение tech-context «Ответы модели по форме — Instructor»; принцип VIII
-(одна зависимость на задачу) — `openai` и `httpx` приходят с Instructor.
+(одна зависимость на задачу) — `openai` и `httpx2` приходят с Instructor.
 
 ## R-13. Скорость, память, режим рассуждений — **[проверить]** на ноутбуке
 

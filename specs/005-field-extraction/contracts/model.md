@@ -6,7 +6,7 @@
 ## `docreader/llm.py` — единственное место, где импортируются `openai` и `instructor`
 
 ```text
-load_client(settings: ExtractionSettings, transport: httpx.BaseTransport | None = None) -> ModelClient
+load_client(settings: ExtractionSettings, transport: httpx2.BaseTransport | None = None) -> ModelClient
     DOCREADER_FORBID_MODELS задана и transport не передан → EnvironmentProblem (код 2)
     base_url не локальный → EnvironmentProblem — и с переданным transport (та же функция,
     что проверяет адрес при загрузке настроек; защита от настроек, собранных в обход загрузки)
@@ -34,9 +34,9 @@ ModelClient.extract(messages: list[dict], response_model: type[T]) -> T
 ## Поддельные модели — `tests/fakes/llm.py`
 
 ```text
-ScriptedModel(*answers: str | Exception) -> httpx.MockTransport-фабрика
+ScriptedModel(*answers: str | Exception) -> httpx2.MockTransport-фабрика
     отвечает на POST /chat/completions по порядку: строка → ответ сервера с этим
-    content; исключение httpx (ConnectError, ReadTimeout) → исключение транспорта;
+    content; исключение httpx2 (ConnectError, ReadTimeout) → исключение транспорта;
     GET /models → {"data": [{"id": "fake-model"}]}
     .requests — список тел запросов (для проверки подсказки и параметров)
 

@@ -42,7 +42,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-APPENDIX_LINE = re.compile(r"(?m)^\s*приложение(?:\s|$)", re.IGNORECASE)
+from docreader.extraction_text import APPENDIX_LINE  # one rule for survey and work
+
 ROLE = re.compile(r"\b(Заказчик|Подрядчик)")
 SHORT_NAME = re.compile(
     r"\(\s*(?:ОАО|ООО|АО|ПАО|ЗАО|НАО|ФГУП|ГУП|МУП|ИП)\s*[«\"“][^»\"”]{1,60}[»\"”]\s*\)"

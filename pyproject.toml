@@ -9,6 +9,10 @@ dependencies = [
     "pymorphy3>=2.0.6",
     "pymorphy3-dicts-ru>=2.4.417150.4580142",
     "pillow",
+    "instructor>=1.17.0",
+    "openai>=3.3.0",
+    "pydantic>=2.14.4",
+    "httpx2>=2.16.2",
 ]
 
 [project.scripts]

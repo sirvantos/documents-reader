@@ -159,7 +159,7 @@ docs/
   `docreader/llm.py` — Instructor (режим `md_json`, повторы при ответе не по форме)
   поверх клиента `openai` с явным адресом `[extraction] base_url` (только петлевой)
   и выключенными сетевыми повторами SDK. Тесты подменяют HTTP-транспорт клиента
-  (`httpx.MockTransport`): `ScriptedModel` — ответы, написанные в тесте (уровень 1),
+  (`httpx2.MockTransport`): `ScriptedModel` — ответы, написанные в тесте (уровень 1),
   `RecordedModel` — ответы, записанные с реальной модели (уровень 2), `tests/fakes/llm.py`.
   `DOCREADER_FORBID_MODELS` запрещает настоящий транспорт, как и движок распознавания
   (общая константа — `docreader/guards.py`). Записи —
