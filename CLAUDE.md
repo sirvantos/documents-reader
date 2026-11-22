@@ -59,12 +59,20 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
 - Exception (constitution 4.2.2, «Исключение: одиннадцать договоров в tests/samples/»): the
   eleven real contracts listed there by SHA-256 may be opened, read and recognised here
   until the branch `003-scan-recognition` is merged into `develop` (constitution 4.2.2; then
-  delete them and everything derived from them here) — check `sha256sum` first. Never commit them or anything derived
+  delete them and everything derived from them here; expired: `003` is merged) — check `sha256sum` first. Never commit them or anything derived
   from them (`tests/samples/` is git-ignored), never make `tests/recordings/` from
   them, never copy their text, numbers, names or requisites into code, tests, specs or
   docs. Work on them in a throwaway data dir with the `docreader_demo` database. No other
   real contract is allowed. A new one is added only by a constitution amendment on the
   owner's decision (its SHA-256 in the table); a permission in chat alone does not open it.
+- Exception (constitution 4.3.0, «Исключение: пять договоров для фичи 04»): five real
+  contracts in `tests/samples/`, each named `<sha256>.pdf` and listed in the constitution by SHA-256, may be
+  opened, read, recognised and parsed here to debug feature 04 and for quickstart Б2, until
+  `004-structure-parsing` is merged into `develop` (then delete them and everything derived).
+  Check `sha256sum` first. Same limits as above: never commit them or anything derived, no
+  `tests/recordings/` from them, no text, numbers, names or requisites in code, tests, specs or
+  docs — reproduce a failure with an abstract synthetic case; throwaway data dir and
+  `docreader_demo` only.
 - Do not run pipeline commands against real data; the analyst does that in their
   own terminal.
 
