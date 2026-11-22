@@ -8,6 +8,7 @@ metadata:
   source: "templates/commands/clarify.md"
 user-invocable: true
 disable-model-invocation: false
+model: fable
 ---
 
 
@@ -140,6 +141,16 @@ Execution steps:
     - If more than 5 categories remain unresolved, select the top 5 by (Impact * Uncertainty) heuristic.
 
 5. Sequential questioning loop (interactive):
+    - **Project override (documents-reader):** this skill runs on the model set in its
+      frontmatter only until the current turn ends; a new user message returns the
+      session to its own model. So ask every question with the `AskUserQuestion` tool,
+      one question per call, and never end the turn between questions: the whole loop,
+      the integration of answers and the final report happen in one turn. Map the
+      format below onto the tool: the question text is the `**Question:**` line plus
+      the "Why it matters" sentence; the options are the table rows (2–4 of them),
+      the recommended or suggested one first with « (Recommended)» at the end of its
+      label and its reasoning in its description; a short free-form answer comes
+      through the tool's «Other». Do not print the Markdown table or the reply hint.
     - Present EXACTLY ONE question at a time.
     - **Question writing quality (applies to every question, MC or short-answer):**
        - Lead with `**Question:**` followed by a full interrogative that ends with `?`. The question text before the `?` must make sense on its own.

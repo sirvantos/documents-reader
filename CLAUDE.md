@@ -74,9 +74,12 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   `/speckit.tasks`, `/speckit.checklist`, `/speckit.constitution`.
 - `/speckit.clarify` and `/speckit.analyze` run on Fable (trial in feature 04, kept
   by the analyst on 2026-11-22).
-  - Clarify is interactive: the analyst switches the main session with `/model fable`
-    before it and back to Opus after it. Analyze returns a report: the main session
-    delegates it to a subagent with `model: "fable"`.
+  - The model is set in the skills' frontmatter, no manual switch: clarify has
+    `model: fable` and asks its questions with `AskUserQuestion` inside one turn (the
+    override ends with the turn); analyze has `model: fable`, `context: fork`,
+    `background: false` and runs as a subagent. Spec Kit generates
+    `.claude/skills/speckit-*`: after a Spec Kit upgrade, restore these frontmatter
+    fields and the «Project override» paragraph in clarify's step 5.
   - Clarify answers a question itself only when the answer follows from a binding
     document (constitution, `docs/tech-context.md`, `docs/field-catalog.md`, the spec
     of an earlier feature) or from survey numbers the analyst pasted in, and records
