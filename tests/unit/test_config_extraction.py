@@ -22,7 +22,7 @@ DEFAULTS = {
     "temperature": 0.0,
     "seed": 0,
     "max_tokens": 2048,
-    "extra_body": {},
+    "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
 }
 
 

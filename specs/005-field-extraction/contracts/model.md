@@ -59,7 +59,7 @@ RecordedModel(variant: str) -> транспорт по записи tests/record
   "served_model": "…",
   "quantization": "4 бита",
   "server": "llama.cpp server b…",
-  "settings": {"mode": "md_json", "temperature": 0.0, "seed": 0, "max_tokens": 2048, "extra_body": {}},
+  "settings": {"mode": "md_json", "temperature": 0.0, "seed": 0, "max_tokens": 2048, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}},
   "recorded_at": "2026-11-27T10:15:00+03:00",
   "exchanges": [
     {"request_sha256": "…", "attempt": 1, "response": {"…": "тело ответа сервера как есть"}}

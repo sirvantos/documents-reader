@@ -248,6 +248,6 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "temperature": 0.0,
             "seed": 0,
             "max_tokens": 2048,
-            "extra_body": {},
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
         },
     }

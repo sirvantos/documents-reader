@@ -98,7 +98,11 @@ class ExtractionSettings:
     temperature: float = 0.0
     seed: int = 0
     max_tokens: int = 2048
-    extra_body: dict = field(default_factory=dict)
+    # Qwen3 thinks before answering by default: the thoughts eat max_tokens before the JSON
+    # (seen on the Mac with mlx_lm.server, 2026-11-23). `extra_body = {}` sends nothing.
+    extra_body: dict = field(
+        default_factory=lambda: {"chat_template_kwargs": {"enable_thinking": False}}
+    )
 
 
 @dataclass(frozen=True)

@@ -62,13 +62,13 @@ D-0001», код 1. Полный путь с ответами модели пр�
 llama-server -m <путь к весам>.gguf --host 127.0.0.1 --port 8080 -c 49152 --jinja
 ```
 
-В `settings.toml` папки данных — раздел `[extraction]` (research R-11); для отключения
-рассуждений Qwen на llama.cpp:
+Рассуждения Qwen отключены по умолчанию (`[extraction] extra_body`, research R-11).
+Имя модели на сервере должно совпадать с `[extraction] model` (`qwen3.6-27b-4bit`):
+`curl -s http://127.0.0.1:8080/v1/models`. Для MLX — запуск из папки с весами по
+короткому имени, иначе имя — полный путь с именем пользователя:
 
-```toml
-[extraction]
-model = "qwen3.6-27b-4bit"
-extra_body = { chat_template_kwargs = { enable_thinking = false } }
+```bash
+cd ~/models && mlx_lm.server --model qwen3.6-27b-4bit --host 127.0.0.1 --port 8080
 ```
 
 ```bash

@@ -370,7 +370,7 @@ field_value` → `INSERT` шести строк → `stages.set_state`. Запр
 | `temperature` | float | 0.0 | 0–2 |
 | `seed` | int | 0 | ≥ 0 |
 | `max_tokens` | int | 2048 | 256–16384 |
-| `extra_body` | table | `{}` | передаётся серверу как есть (например, отключение рассуждений, R-13) |
+| `extra_body` | table | `{chat_template_kwargs = {enable_thinking = false}}` | передаётся серверу как есть; по умолчанию отключает рассуждения Qwen (R-13); `{}` — ничего не передавать |
 
 `ExtractionSettings` в `config.py` (как `StructureSettings`); всё, кроме `base_url`,
 пишется в `run.settings`; `run.model` — `model` (и `id`, который вернул
@@ -407,7 +407,8 @@ field_value` → `INSERT` шести строк → `stages.set_state`. Запр
 
 Qwen3 по умолчанию пишет рассуждения перед ответом: это время и токены. Способ
 отключить зависит от сервера (`chat_template_kwargs` у llama.cpp) — задаётся
-`extra_body` без изменения кода. Замер Б3 quickstart: время на одном договоре, память,
+`extra_body` без изменения кода. С 2026-11-23 отключение — значение по умолчанию: на Mac
+с `mlx_lm.server` рассуждения съедали `max_tokens` до JSON (ответ не по форме после 3 попыток). Замер Б3 quickstart: время на одном договоре, память,
 доля пригодных ответов с рассуждениями и без. Итог — в tech-context («Языковая модель»,
 «Способ запуска модели»).
 
