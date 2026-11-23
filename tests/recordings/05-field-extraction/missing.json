@@ -1,0 +1,53 @@
+{
+ "variant": "missing",
+ "generator_version": 1,
+ "prompt_version": "05.1",
+ "prompt_sha256": "fccff4c79e09e9e6a74ee8a4b2629f165dc676b71c0b84a70605813bbac4527e",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx-lm 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 2048,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-23T11:56:40+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "3f87d1b3ca2fa070f0cfe5a6c1d763976e44f905088fa27977c82247e85c2f13",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-711e0d0e-8c74-45c8-b7d6-c8b20fa4ead9",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795434933,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"contract_number\": {\n    \"found\": true,\n    \"value\": \"ДП-17/2026\",\n    \"quote\": \"ДОГОВОР ПОДРЯДА № ДП-17/2026\",\n    \"clause\": \"преамбула\"\n  },\n  \"customer_name_short\": {\n    \"found\": true,\n    \"value\": \"ООО «Альфа»\",\n    \"quote\": \"Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), именуемое в дальнейшем Заказчик\",\n    \"clause\": \"преамбула\"\n  },\n  \"contractor_name_short\": {\n    \"found\": true,\n    \"value\": \"ООО «Бета»\",\n    \"quote\": \"ООО «Бета», именуемое в дальнейшем Подрядчик\",\n    \"clause\": \"преамбула\"\n  },\n  \"amount_without_vat\": {\n    \"found\": true,\n    \"value\": \"1 200 000 рублей\",\n    \"quote\": \"Цена договора составляет 1 200 000 рублей без НДС, ставка НДС 20%.\",\n    \"clause\": \"2.1\"\n  },\n  \"amount_with_vat\": {\n    \"found\": false,\n    \"value\": null,\n    \"quote\": null,\n    \"clause\": null\n  },\n  \"contract_end_date\": {\n    \"found\": false,\n    \"value\": null,\n    \"quote\": null,\n    \"clause\": null\n  },\n  \"other_party\": {\n    \"found\": false,\n    \"quote\": null,\n    \"clause\": null\n  }\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1824,
+     "completion_tokens": 403,
+     "total_tokens": 2227,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}

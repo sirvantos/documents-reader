@@ -1,0 +1,53 @@
+{
+ "variant": "three_parties",
+ "generator_version": 1,
+ "prompt_version": "05.1",
+ "prompt_sha256": "fccff4c79e09e9e6a74ee8a4b2629f165dc676b71c0b84a70605813bbac4527e",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx-lm 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 2048,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-23T12:02:00+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "230bebe0f7c011f1b33661ab340a4cabafa448c9df0842f002b1374b3e366d81",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-b5881c4f-bf6b-4dd7-bfee-f98052472a2d",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795435240,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"contract_number\": {\n    \"found\": true,\n    \"value\": \"ДП-17/2026\",\n    \"quote\": \"ДОГОВОР ПОДРЯДА № ДП-17/2026\",\n    \"clause\": \"преамбула\"\n  },\n  \"customer_name_short\": {\n    \"found\": true,\n    \"value\": \"ООО «Альфа»\",\n    \"quote\": \"Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), именуемое в дальнейшем Заказчик\",\n    \"clause\": \"преамбула\"\n  },\n  \"contractor_name_short\": {\n    \"found\": true,\n    \"value\": \"ООО «Бета»\",\n    \"quote\": \"ООО «Бета», именуемое в дальнейшем Подрядчик\",\n    \"clause\": \"преамбула\"\n  },\n  \"amount_without_vat\": {\n    \"found\": true,\n    \"value\": \"1 200 000 рублей 00 копеек\",\n    \"quote\": \"Цена договора составляет 1 200 000 (один миллион двести тысяч) рублей 00 копеек без НДС\",\n    \"clause\": \"2.1\"\n  },\n  \"amount_with_vat\": {\n    \"found\": true,\n    \"value\": \"1 440 000 рублей 00 копеек\",\n    \"quote\": \"всего с НДС 1 440 000 (один миллион четыреста сорок тысяч) рублей 00 копеек\",\n    \"clause\": \"2.1\"\n  },\n  \"contract_end_date\": {\n    \"found\": true,\n    \"value\": \"25 марта 2027 г.\",\n    \"quote\": \"Договор действует по 25 марта 2027 г.\",\n    \"clause\": \"4.1\"\n  },\n  \"other_party\": {\n    \"found\": true,\n    \"quote\": \"ООО «Гамма», именуемое в дальнейшем Поручитель\",\n    \"clause\": \"преамбула\"\n  }\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1907,
+     "completion_tokens": 519,
+     "total_tokens": 2426,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}
