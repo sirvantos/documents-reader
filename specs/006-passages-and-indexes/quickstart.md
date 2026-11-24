@@ -12,7 +12,7 @@
 
 ```bash
 sudo apt install postgresql-17-pgvector
-psql postgresql:///postgres -Atc "SELECT default_version, trusted FROM pg_available_extension_versions WHERE name = 'vector' ORDER BY 1 DESC LIMIT 1"
+psql postgresql:///postgres -Atc "SELECT version, trusted FROM pg_available_extension_versions WHERE name = 'vector' ORDER BY 1 DESC LIMIT 1"
 # trusted = f → один раз от суперпользователя:
 sudo -u postgres psql -d template1 -c 'CREATE EXTENSION IF NOT EXISTS vector'
 sudo -u postgres psql -d docreader_demo -c 'CREATE EXTENSION IF NOT EXISTS vector'
@@ -54,7 +54,7 @@ uv run --env-file "$DEMO/.env" docreader passage D-0001/2.1; echo "код $?"
 
 ```bash
 brew install pgvector llama.cpp
-psql postgresql:///postgres -Atc "SELECT default_version, trusted FROM pg_available_extension_versions WHERE name = 'vector' ORDER BY 1 DESC LIMIT 1"
+psql postgresql:///postgres -Atc "SELECT version, trusted FROM pg_available_extension_versions WHERE name = 'vector' ORDER BY 1 DESC LIMIT 1"
 # trusted = f → CREATE EXTENSION vector в template1 и в базе docreader от суперпользователя
 # веса BGE-M3 в GGUF (F16 или Q8_0) — скачать заранее в папку моделей, вне репозитория
 llama-server -m ~/models/bge-m3-Q8_0.gguf --embedding --pooling cls -c 8192 -ub 8192 \
