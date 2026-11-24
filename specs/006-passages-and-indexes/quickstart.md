@@ -121,12 +121,14 @@ curl -s http://127.0.0.1:8082/v1/rerank -H 'Content-Type: application/json' \
 ### Б4. Весь набор (SC-001–SC-004)
 
 ```bash
+REPORTS=~/docreader-data/reports   # папка отчётов в каталоге данных, как в Б4 фичи 05
+mkdir -p "$REPORTS"
 caffeinate -i uv run --env-file .env docreader index --all --label "07 полный прогон" --json \
-  > ~/…/reports/index-07-full.json; echo "код $?"
-uv run --env-file .env python scripts/quickstart_passages.py --report ~/…/reports/index-07-full.json
-uv run --env-file .env docreader index --all --json > ~/…/reports/index-07-rerun.json
-uv run --env-file .env python scripts/quickstart_passages.py --report ~/…/reports/index-07-rerun.json \
-  --compare ~/…/reports/index-07-full.json
+  > "$REPORTS"/index-07-full.json; echo "код $?"
+uv run --env-file .env python scripts/quickstart_passages.py --report "$REPORTS"/index-07-full.json
+uv run --env-file .env docreader index --all --json > "$REPORTS"/index-07-rerun.json
+uv run --env-file .env python scripts/quickstart_passages.py --report "$REPORTS"/index-07-rerun.json \
+  --compare "$REPORTS"/index-07-full.json
 ```
 
 Скрипт печатает только числа: договоры по состояниям; отрывки по частям; записи обоих
