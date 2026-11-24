@@ -180,8 +180,8 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   integration tests fail. `real_model` tests are excluded by default.
 - PostgreSQL extension `vector` (pgvector) is needed by migration 0006 (feature 07): on this
   dev server the PGDG package `postgresql-17-pgvector` with `CREATE EXTENSION vector` run once
-  in `template1` by `postgres` (the role here is not a superuser); on the Mac `brew install
-  pgvector`; in Docker the database image is `pgvector/pgvector:pg17`.
+  in `template1` by `postgres` (the role here is not a superuser); on the Mac
+  pgvector built from source for `postgresql@17` (the Homebrew bottle targets only @18/@19); in Docker the database image is `pgvector/pgvector:pg17`.
 - `docker compose run --rm tests` — full test suite in containers (throwaway PostgreSQL 17
   in memory, no internet access, repo mounted read-only); extra pytest arguments go at the
   end (`docker compose run --rm tests -k note -x`); `docker compose down` stops the database.

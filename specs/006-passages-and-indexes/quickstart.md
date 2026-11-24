@@ -53,7 +53,7 @@ uv run --env-file "$DEMO/.env" docreader passage D-0001/2.1; echo "код $?"
 ### Б0. Установка — **[проверить]** (R-1, R-10)
 
 ```bash
-brew install pgvector llama.cpp
+brew install llama.cpp   # pgvector для postgresql@17 — сборка из исходников (tech-context, «Запуск PostgreSQL»)
 psql postgresql:///postgres -Atc "SELECT version, trusted FROM pg_available_extension_versions WHERE name = 'vector' ORDER BY 1 DESC LIMIT 1"
 # trusted = f → CREATE EXTENSION vector в template1 и в базе docreader от суперпользователя
 # веса BGE-M3 в GGUF (F16 или Q8_0) — скачать заранее в папку моделей, вне репозитория
