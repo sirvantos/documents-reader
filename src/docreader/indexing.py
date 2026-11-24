@@ -16,15 +16,18 @@ No reason, no output line and no exception message carries a label or contract t
 
 from __future__ import annotations
 
+import time
+from bisect import bisect_right
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 
 import psycopg
 
-from docreader import stages
-from docreader.errors import UserError
+from docreader import embedding, extraction_text, passages, runs, stages, wordforms
+from docreader.config import Settings
+from docreader.errors import ModelUnavailable, UserError
 from docreader.ids import format_document_id
-from docreader.stages import Stage, State
+from docreader.stages import RunStage, Stage, State
 
 TRUNCATED = "отрывок длиннее предела модели"
 NO_PASSAGES = "нет отрывков"
@@ -240,3 +243,207 @@ def passages_current(conn: psycopg.Connection, doc_id: str) -> bool:
     ).fetchone()
     total, stale = row if row is not None else (0, 0)
     return total > 0 and stale == 0
+
+
+# --- the stage: `docreader index` ------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class IndexedDocument:
+    """One line of the `index` output (contracts/cli.md); no labels, no text."""
+
+    document_id: str
+    state: str
+    reason: str | None
+    passages: int
+    word_entries: int
+    vectors: int
+    truncated: int
+    seconds: float
+
+
+@dataclass(frozen=True)
+class Stopped:
+    """The search model server stopped answering on this document: the run ended there."""
+
+    document_id: str
+    reason: str
+
+
+@dataclass
+class IndexRun:
+    """Result of one `index` command (contracts/cli.md «docreader index»)."""
+
+    run_id: int | None = None
+    model: str | None = None
+    served_model: str | None = None
+    dims: int | None = None
+    documents: list[IndexedDocument] = field(default_factory=list)
+    skipped: list[SkippedDocument] = field(default_factory=list)
+    interrupted: bool = False
+    stopped: Stopped | None = None
+
+    @property
+    def totals(self) -> dict[str, int]:
+        states = [d.state for d in self.documents]
+        return {
+            "indexed": states.count(State.DONE),
+            "needs_review": states.count(State.NEEDS_REVIEW),
+            "failed": states.count(State.FAILED),
+            "skipped": len(self.skipped),
+            "passages": sum(d.passages for d in self.documents),
+        }
+
+    def to_json(self) -> dict:
+        return {
+            "run_id": self.run_id,
+            "model": self.model,
+            "served_model": self.served_model,
+            "dims": self.dims,
+            "documents": [asdict(d) for d in self.documents],
+            "skipped": [asdict(s) for s in self.skipped],
+            "totals": self.totals,
+            "interrupted": self.interrupted,
+            "stopped": asdict(self.stopped) if self.stopped else None,
+        }
+
+
+def _error_reason(exc: Exception) -> str:
+    # Only the kind of error: a message may quote contract text (Constitution I).
+    if isinstance(exc, embedding.EmbeddingRequestError):
+        return f"ошибка построения векторов: {type(exc).__name__}"
+    return f"ошибка индексации: {type(exc).__name__}"
+
+
+def _failed(doc_id: str, reason: str, seconds: float) -> IndexedDocument:
+    return IndexedDocument(doc_id, State.FAILED, reason, 0, 0, 0, 0, seconds)
+
+
+def _index_document(
+    conn: psycopg.Connection,
+    settings: Settings,
+    embedder: embedding.Embedder,
+    run_id: int,
+    doc_id: str,
+) -> IndexedDocument:
+    """Index one document. Raises ModelUnavailable (the run stops) and nothing else
+    from the model; any other failure becomes a `failed` line."""
+    started = time.monotonic()
+    cfg = settings.embedding
+    try:
+        text, sha = conn.execute(
+            "SELECT text, text_sha256 FROM document_text WHERE document_id = %s", (doc_id,)
+        ).fetchone() or ("", "")
+        rows = conn.execute(
+            "SELECT key, kind, depth, start, end_, section_number, section_title, run_id"
+            " FROM clause WHERE document_id = %s ORDER BY ordinal",
+            (doc_id,),
+        ).fetchall()
+        records = [passages.ClauseRecord(*row[:7]) for row in rows]
+        structure_run = rows[0][7] if rows else 0
+        by_key = {r.key: r for r in records}
+        spans = conn.execute(
+            "SELECT start, page_number FROM text_span WHERE document_id = %s ORDER BY start",
+            (doc_id,),
+        ).fetchall()
+        starts = [s for s, _ in spans]
+
+        def page_of(offset: int) -> int:
+            return spans[max(bisect_right(starts, offset) - 1, 0)][1]
+
+        tail = next((r for r in records if r.kind == "tail"), None)
+        tail_end = extraction_text.shown_end(text, tail.start) if tail else len(text)
+        cuts = passages.cut(text, records, tail_end)
+        passage_rows: list[PassageRow] = []
+        inputs: list[str] = []
+        truncated_flags: list[bool] = []
+        for ordinal, span in enumerate(cuts):
+            record = by_key[span.key]
+            label = passages.label(doc_id, record)
+            body = text[span.start : span.end]
+            text_in, was_cut = embedding_input(label, body, cfg.max_chars)
+            inputs.append(text_in)
+            truncated_flags.append(was_cut)
+            passage_rows.append(
+                PassageRow(
+                    clause_key=span.key,
+                    ordinal=ordinal,
+                    part=span.part,
+                    start=span.start,
+                    end=span.end,
+                    first_page=page_of(span.start),
+                    last_page=page_of(span.end - 1),
+                    label=label,
+                    lemmas=wordforms.lemmatize(label + "\n" + body),
+                    source_text_sha256=sha,
+                    structure_run_id=structure_run,
+                )
+            )
+        embedded = embedder.embed(inputs)  # outside any transaction
+        vector_rows = [
+            VectorRow(p.clause_key, cfg.model, vec, len(text_in), was_cut)
+            for p, vec, text_in, was_cut in zip(
+                passage_rows, embedded, inputs, truncated_flags, strict=True
+            )
+        ]
+        keys = [p.clause_key for p in passage_rows]
+        cut_keys = {p.clause_key for p, f in zip(passage_rows, truncated_flags, strict=True) if f}
+        state, reason = index_state(keys, cut_keys, doc_id)
+        store_document(conn, doc_id, passage_rows, vector_rows, state, reason, run_id)
+    except ModelUnavailable:
+        raise
+    except Exception as exc:  # one document's failure must not stop the others
+        reason = _error_reason(exc)
+        with conn.transaction():
+            stages.set_state(conn, doc_id, Stage.INDEXING, State.FAILED, reason, run_id)
+        return _failed(doc_id, reason, time.monotonic() - started)
+    return IndexedDocument(
+        doc_id, state, reason, len(passage_rows), len(passage_rows), len(vector_rows),
+        len(cut_keys), time.monotonic() - started,
+    )
+
+
+def index_documents(
+    conn: psycopg.Connection,
+    settings: Settings,
+    seqs: Sequence[int] | None,
+    all_documents: bool = False,
+    label: str | None = None,
+) -> IndexRun:
+    """Index the chosen documents (contracts/cli.md «docreader index»); T017.
+
+    Nothing to index → `run_id` None. A stopped model server ends the run with `stopped`
+    set; the caller exits with code 2.
+    """
+    if seqs and all_documents:
+        raise UserError("Нельзя указать --all вместе с идентификаторами")
+    chosen, skipped = select_documents(conn, seqs, all_documents)
+    result = IndexRun(skipped=skipped)
+    if not chosen:
+        return result
+    embedder = embedding.load_embedder(settings.embedding)
+    info = embedder.check()
+    run_settings = {
+        **settings.settings_for_run(),
+        "served_model": info.served_model,
+        "dims": info.dims,
+    }
+    run_id = runs.start_run(conn, RunStage.INDEXING, run_settings, label)
+    conn.execute("UPDATE run SET model = %s WHERE id = %s", (settings.embedding.model, run_id))
+    result.run_id = run_id
+    result.model = settings.embedding.model
+    result.served_model = info.served_model
+    result.dims = info.dims
+    try:
+        for doc_id in chosen:
+            try:
+                result.documents.append(_index_document(conn, settings, embedder, run_id, doc_id))
+            except ModelUnavailable as exc:
+                # it follows «Остановлено на D-0004: » in the output, so lower-case it
+                message = str(exc)
+                result.stopped = Stopped(doc_id, message[:1].lower() + message[1:])
+                break
+    except KeyboardInterrupt:
+        result.interrupted = True
+    runs.finish_run(conn, run_id)
+    return result

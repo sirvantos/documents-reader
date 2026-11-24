@@ -21,7 +21,9 @@ if TYPE_CHECKING:
     from docreader.clauseview import ClauseView, Outline, OutlineRecord
     from docreader.extraction import ExtractedDocument, ExtractRun
     from docreader.fieldview import FieldsView, FieldView
+    from docreader.indexing import IndexedDocument, IndexRun
     from docreader.parsing import ParsedDocument, ParseRun
+    from docreader.passageview import PassageView
 
 _KIND_LABELS = (
     ("text", "текст"),
@@ -1086,4 +1088,68 @@ def render_fields_text(view: FieldsView) -> str:
     lines.append("")
     for field in view.fields:
         lines.extend(_field_block(view, field))
+    return "\n".join(lines)
+
+
+NOTHING_TO_INDEX = (
+    "Нечего индексировать: индексы всех договоров построены (заново: docreader index --all)"
+)
+
+
+def _index_document_line(doc: IndexedDocument) -> str:
+    word = _EXTRACT_STATE_WORDS.get(doc.state, doc.state)
+    prefix = f"{doc.document_id}  {word:<{_EXTRACT_STATE_WIDTH}}  "
+    if doc.state == "failed":
+        return prefix + doc.reason if doc.reason else prefix.rstrip()
+    line = (
+        f"{prefix}отрывков {doc.passages}, по словам {doc.word_entries}, "
+        f"по смыслу {doc.vectors}"
+    )
+    if doc.reason is not None:
+        line += f" — {doc.reason}"
+    return line
+
+
+def render_index_text(result: IndexRun) -> str:
+    """Text of `docreader index` (contracts/cli.md «docreader index»); no labels, no text."""
+    if not result.documents and not result.skipped and result.stopped is None:
+        return NOTHING_TO_INDEX
+    lines = [_index_document_line(doc) for doc in result.documents]
+    lines += [f"{item.document_id}  пропущен           {item.reason}" for item in result.skipped]
+    if result.stopped is not None:
+        lines.append(f"Остановлено на {result.stopped.document_id}: {result.stopped.reason}")
+    totals = result.totals
+    total = (
+        f"Итого: готово {totals['indexed']}, требует просмотра {totals['needs_review']}, "
+        f"ошибок {totals['failed']}, пропущено {totals['skipped']}; "
+        f"отрывков {totals['passages']}"
+    )
+    if result.run_id is not None:
+        total += f" (запуск {result.run_id}, модель {result.model}, размерность {result.dims})"
+    lines.append(total)
+    return "\n".join(lines)
+
+
+_PART_NAMES = {"preamble": "преамбула", "main": "основной текст", "tail": "реквизиты"}
+
+
+def render_passage_text(view: PassageView) -> str:
+    """Text of `docreader passage` (contracts/cli.md «docreader passage»)."""
+    if view.first_page == view.last_page:
+        pages = f"стр. {view.first_page}"
+    else:
+        pages = f"стр. {view.first_page}–{view.last_page}"
+    part = _PART_NAMES.get(view.part, view.part)
+    lines = [
+        f"{view.clause_id} — {pages}, {part} "
+        f"(индексация: запуск {view.run_id}, {view.run_date})",
+        f"Метка: {view.label}",
+        "В индексе по словам: да" if view.word_index else "В индексе по словам: нет",
+    ]
+    for vec in view.vectors:
+        line = f"В индексе по смыслу: {vec.model}, размерность {vec.dims}"
+        if vec.truncated:
+            line += f" (вход обрезан до {vec.input_chars} знаков)"
+        lines.append(line)
+    lines += ["Текст:", view.text]
     return "\n".join(lines)

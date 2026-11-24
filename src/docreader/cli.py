@@ -15,7 +15,9 @@ from docreader import (
     db,
     extraction,
     fieldview,
+    indexing,
     parsing,
+    passageview,
     reading,
     recognition,
     recognition_eval,
@@ -31,11 +33,13 @@ from docreader.render import (
     NO_REVIEW_PAGES,
     NO_SCAN_DOCUMENTS,
     NOTHING_TO_EXTRACT,
+    NOTHING_TO_INDEX,
     render_clause_text,
     render_document_text,
     render_extract_text,
     render_fields_text,
     render_find_text,
+    render_index_text,
     render_intake_json,
     render_intake_text,
     render_list_text,
@@ -43,6 +47,7 @@ from docreader.render import (
     render_page_kinds_text,
     render_page_text,
     render_parse_text,
+    render_passage_text,
     render_read_report_csv,
     render_read_report_text,
     render_read_text,
@@ -129,6 +134,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--all", action="store_true", help="извлечь из всех доступных договоров")
     p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("index", help="нарезать договоры на отрывки и построить индексы")
+    p.add_argument(
+        "ids",
+        nargs="*",
+        metavar="ID",
+        help="идентификаторы (по умолчанию — договоры без актуальных индексов)",
+    )
+    p.add_argument("--all", action="store_true", help="перестроить индексы всех договоров")
+    p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("passage", help="показать один отрывок")
+    p.add_argument("id", metavar="ID", help="идентификатор пункта, например D-0001/5.2")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("recognize", help="распознать страницы-сканы")
@@ -365,6 +385,28 @@ def _cmd_extract(args: argparse.Namespace, settings: Settings, conn: psycopg.Con
     return 0
 
 
+def _cmd_index(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.all and args.ids:
+        raise UserError("Нельзя указать --all вместе с идентификаторами")
+    seqs = [parse_document_id(i) for i in args.ids] or None
+    result = indexing.index_documents(
+        conn, settings, seqs, all_documents=args.all, label=args.label
+    )
+    if result.run_id is None and not result.documents and not result.skipped:
+        print(NOTHING_TO_INDEX)
+        return 0
+    if args.json:
+        print(json.dumps(result.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_index_text(result))
+    if result.interrupted:
+        print("Прервано", file=sys.stderr)
+        return 130
+    if result.stopped is not None:
+        return 2
+    return 0
+
+
 NOTHING_TO_RECOGNIZE = (
     "Нечего распознавать: все страницы-сканы распознаны "
     "(заново: docreader recognize --all --force)"
@@ -468,6 +510,15 @@ def _cmd_clause(args: argparse.Namespace, settings: Settings, conn: psycopg.Conn
     return 0
 
 
+def _cmd_passage(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    view = passageview.load_passage(conn, args.id)
+    if args.json:
+        print(json.dumps(view.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_passage_text(view))
+    return 0
+
+
 def _cmd_read_report(
     args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
 ) -> int:
@@ -565,11 +616,13 @@ _HANDLERS: dict[str, _Handler] = {
     "read": _cmd_read,
     "parse": _cmd_parse,
     "extract": _cmd_extract,
+    "index": _cmd_index,
     "recognize": _cmd_recognize,
     "text": _cmd_text,
     "outline": _cmd_outline,
     "fields": _cmd_fields,
     "clause": _cmd_clause,
+    "passage": _cmd_passage,
     "read-report": _cmd_read_report,
     "recognize-report": _cmd_recognize_report,
     "recognize-eval": _cmd_recognize_eval,
