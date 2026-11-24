@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 PassageKey = tuple[str, int]
 
@@ -70,3 +71,51 @@ def rrf(
     ]
     fused.sort(key=lambda item: (-item[1], item[0]))
     return fused
+
+
+# --- the decision on the reranker (FR-014) ----------------------------------------------
+
+
+@dataclass(frozen=True)
+class VariantStats:
+    """The result of one variant of the measurement (without or with the reranker)."""
+
+    questions: int  # questions without an error in the set
+    top1: int  # the answer at place 1
+    top5: int  # the answer among the first five
+    median_s: float
+    max_s: float
+
+
+def _seconds(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",")
+
+
+def _limit(value: float) -> str:
+    return f"{value:g}".replace(".", ",")
+
+
+def decide(off: VariantStats, on: VariantStats, limit_s: float = 10.0) -> tuple[str, str]:
+    """Keep the reranker on by default or disable it (FR-014; data-model.md).
+
+    `keep` if with it more answers are among the first five, or as many and more at
+    place 1, and in both cases its median time is at most `limit_s`; otherwise
+    `disable`. The reason names the numbers. The shares are compared by counts: both
+    variants run on the same questions.
+    """
+    if on.questions == 0 or off.questions == 0:
+        return "disable", "нет вопросов без ошибок"
+    if on.top5 > off.top5:
+        gain = f"в первых пяти {on.top5} против {off.top5}"
+    elif on.top5 == off.top5 and on.top1 > off.top1:
+        gain = f"в первых пяти поровну ({on.top5}), на первом месте {on.top1} против {off.top1}"
+    elif on.top5 == off.top5:
+        return "disable", (
+            f"без улучшения: в первых пяти {on.top5} и {off.top5}, "
+            f"на первом месте {on.top1} против {off.top1}"
+        )
+    else:
+        return "disable", f"без улучшения: в первых пяти {on.top5} против {off.top5}"
+    if on.median_s > limit_s:
+        return "disable", f"медленно: медиана {_seconds(on.median_s)} с > {_limit(limit_s)} с"
+    return "keep", f"{gain}, медиана {_seconds(on.median_s)} с ≤ {_limit(limit_s)} с"

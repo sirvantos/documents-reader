@@ -22,6 +22,7 @@ from docreader import (
     recognition,
     recognition_eval,
     registry,
+    search,
     textview,
 )
 from docreader.config import Settings, load_settings
@@ -59,6 +60,7 @@ from docreader.render import (
     render_recognize_text,
     render_review_csv,
     render_review_text,
+    render_search_text,
     render_show_text,
     render_verify_text,
 )
@@ -149,6 +151,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("passage", help="показать один отрывок")
     p.add_argument("id", metavar="ID", help="идентификатор пункта, например D-0001/5.2")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("search", help="найти отрывки по словам и по смыслу")
+    p.add_argument("query", metavar="ЗАПРОС", help="слова для поиска")
+    p.add_argument("--no-rerank", action="store_true", help="без реранкера на этот запуск")
+    p.add_argument("--results", type=int, metavar="N", help="сколько отрывков показать")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("recognize", help="распознать страницы-сканы")
@@ -519,6 +527,21 @@ def _cmd_passage(args: argparse.Namespace, settings: Settings, conn: psycopg.Con
     return 0
 
 
+def _cmd_search(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    result = search.search(
+        conn,
+        settings,
+        args.query,
+        rerank=False if args.no_rerank else None,
+        results=args.results,
+    )
+    if args.json:
+        print(json.dumps(result.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render_search_text(result), end="")
+    return 0
+
+
 def _cmd_read_report(
     args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
 ) -> int:
@@ -623,6 +646,7 @@ _HANDLERS: dict[str, _Handler] = {
     "fields": _cmd_fields,
     "clause": _cmd_clause,
     "passage": _cmd_passage,
+    "search": _cmd_search,
     "read-report": _cmd_read_report,
     "recognize-report": _cmd_recognize_report,
     "recognize-eval": _cmd_recognize_eval,

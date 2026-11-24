@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from docreader.indexing import IndexedDocument, IndexRun
     from docreader.parsing import ParsedDocument, ParseRun
     from docreader.passageview import PassageView
+    from docreader.search import Hit, SearchResult
 
 _KIND_LABELS = (
     ("text", "текст"),
@@ -1153,3 +1154,52 @@ def render_passage_text(view: PassageView) -> str:
         lines.append(line)
     lines += ["Текст:", view.text]
     return "\n".join(lines)
+
+
+_SEARCH_TEXT_INDENT = "   "
+_SEARCH_NOTHING_FOUND = "Ничего не найдено"
+
+
+def _search_header(result: SearchResult) -> str:
+    where = f" в {result.document_id}" if result.document_id else " по всем договорам"
+    reranker = f"реранкер {result.reranker_model}" if result.reranked else "без реранкера"
+    seconds = f"{result.seconds:.1f}".replace(".", ",")
+    return (
+        f"Запрос{where}, {reranker} — результатов {len(result.hits)} "
+        f"(кандидатов по словам {result.word_candidates}, по смыслу {result.vector_candidates}), "
+        f"{seconds} с"
+    )
+
+
+def _search_hit_lines(hit: Hit) -> list[str]:
+    head = f"{hit.place}. {hit.clause_id}"
+    if hit.first_page is not None:
+        if hit.first_page == hit.last_page or hit.last_page is None:
+            head += f"  стр. {hit.first_page}"
+        else:
+            head += f"  стр. {hit.first_page}–{hit.last_page}"
+    lines = [head]
+    if hit.rerank_score is not None:
+        lines.append(f"  оценка {hit.rerank_score:.3f}")
+    word = "—" if hit.word_place is None else str(hit.word_place)
+    vector = "—" if hit.vector_place is None else str(hit.vector_place)
+    lines.append(f"  (слова {word}, смысл {vector}, слияние {hit.fused_place})")
+    lines.append(f"{_SEARCH_TEXT_INDENT}{hit.label}")
+    lines += [f"{_SEARCH_TEXT_INDENT}{line}" for line in hit.text.splitlines()]
+    return lines
+
+
+def render_search_text(result: SearchResult) -> str:
+    """Text of `docreader search` (contracts/cli.md «docreader search»)."""
+    lines = [_search_header(result)]
+    lines += [f"! {warning}" for warning in result.warnings]
+    if not result.hits:
+        lines.append(_SEARCH_NOTHING_FOUND)
+        return "\n".join(lines) + "\n"
+    lines.append("")
+    blocks = [_search_hit_lines(hit) for hit in result.hits]
+    for position, block in enumerate(blocks):
+        if position:
+            lines.append("")
+        lines += block
+    return "\n".join(lines) + "\n"

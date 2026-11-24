@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from docreader.ranking import bm25, rrf
+from docreader.ranking import VariantStats, bm25, decide, rrf
 
 
 def key(doc: str, ordinal: int) -> tuple[str, int]:
@@ -134,3 +134,56 @@ def test_empty_lists() -> None:
     assert rrf([[], []], k=60) == []
     a = key("D-0001", 0)
     assert [k for k, _, _ in rrf([[], [a]], k=60)] == [a]
+
+
+# --- decide (FR-014, task T017) --------------------------------------------------------
+
+
+def stats(top1: int, top5: int, median_s: float, questions: int = 17) -> VariantStats:
+    return VariantStats(questions=questions, top1=top1, top5=top5, median_s=median_s, max_s=9.0)
+
+
+def test_keep_when_more_in_first_five() -> None:
+    verdict, reason = decide(stats(9, 14, 0.2), stats(12, 16, 1.6))
+    assert verdict == "keep"
+    assert reason == "в первых пяти 16 против 14, медиана 1,60 с ≤ 10 с"
+
+
+def test_keep_on_equal_first_five_and_more_first_places() -> None:
+    verdict, reason = decide(stats(9, 16, 0.2), stats(11, 16, 2.0))
+    assert verdict == "keep"
+    assert reason == (
+        "в первых пяти поровну (16), на первом месте 11 против 9, медиана 2,00 с ≤ 10 с"
+    )
+
+
+def test_disable_on_equal_first_five_and_equal_or_fewer_first_places() -> None:
+    assert decide(stats(9, 16, 0.2), stats(9, 16, 2.0))[0] == "disable"
+    verdict, reason = decide(stats(9, 16, 0.2), stats(8, 16, 2.0))
+    assert verdict == "disable"
+    assert reason == "без улучшения: в первых пяти 16 и 16, на первом месте 8 против 9"
+
+
+def test_disable_when_fewer_in_first_five() -> None:
+    verdict, reason = decide(stats(9, 15, 0.2), stats(14, 14, 1.0))
+    assert verdict == "disable"
+    assert reason == "без улучшения: в первых пяти 14 против 15"
+
+
+def test_median_exactly_at_the_limit_keeps() -> None:
+    assert decide(stats(9, 14, 0.2), stats(12, 16, 10.0))[0] == "keep"
+
+
+def test_median_above_the_limit_disables() -> None:
+    verdict, reason = decide(stats(9, 14, 0.2), stats(12, 16, 10.01))
+    assert verdict == "disable"
+    assert reason == "медленно: медиана 10,01 с > 10 с"
+
+
+def test_custom_limit() -> None:
+    assert decide(stats(9, 14, 0.2), stats(12, 16, 4.0), limit_s=3.0)[0] == "disable"
+
+
+def test_no_questions_disables() -> None:
+    verdict, reason = decide(stats(0, 0, 0.0, questions=0), stats(0, 0, 0.0, questions=0))
+    assert (verdict, reason) == ("disable", "нет вопросов без ошибок")
