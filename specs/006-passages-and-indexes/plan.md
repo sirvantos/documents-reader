@@ -98,7 +98,7 @@ BGE-M3 в GGUF (R-1).
 | 2 | tech-context: «модель поиска — через функцию „тексты → векторы“; вид интерфейса — в плане фичи 07» | `embedding.py` поверх локального `/v1/embeddings` (`llama-server`), подделки — подмена транспорта | R-1, R-2 | tech-context, «Модели в автотестах» |
 | 3 | Набросок `passage`: пункт, метка, текст для поиска по словам, вектор, поля для фильтров | `passage` (место, страницы, метка, `lemmas`, `tsv`) и `passage_vector` (модель, вектор); без полей-фильтров | R-5, R-6; поля-фильтры — следующая итерация | data-model.md; набросок в tech-context обновлён |
 | 4 | Часть B: команды `index build`, `index report`, `passage` | `index`, `passage` | R-11; отчёт — следующая итерация | contracts/cli.md |
-| 5 | Спецификация FR-006: без аргументов — «ожидает» или «ошибка» | Плюс договоры, чьи отрывки построены по другому запуску разбора | FR-007 и US2-4: повторный `parse` не сбрасывает поздние этапы (R-7) | research.md R-7 |
+| 5 | Спецификация FR-006: без аргументов — «ожидает» или «ошибка» | Плюс договоры, чьи отрывки построены по другому запуску разбора | FR-007 и US2-4: повторный `parse` не сбрасывает поздние этапы (R-7) | research.md R-7; spec.md FR-006 дополнен |
 | 6 | compose.yaml: образ базы `postgres:17` | `pgvector/pgvector:pg17` | Миграция 0006 требует расширение (R-10) | compose.yaml |
 
 ## Project Structure
@@ -128,7 +128,8 @@ src/docreader/
 ├── embedding.py            # новый: клиент модели поиска (openai, /v1/embeddings), защиты, check/embed
 ├── indexing.py             # новый: этап — выбор договоров, нарезка, обрезка, векторы, запись, состояние
 ├── passageview.py          # новый: загрузка для passage (сверка отпечатка и запуска разбора)
-├── llm.py                  # ModelUnavailable — общий с embedding.py (без изменения поведения)
+├── errors.py               # + ModelUnavailable (переносится из llm.py, общий с embedding.py)
+├── llm.py                  # ModelUnavailable импортируется из errors.py (без изменения поведения)
 ├── stages.py               # + RunStage.INDEXING
 ├── config.py               # + EmbeddingSettings, раздел [embedding]
 ├── render.py               # + вывод index и passage
@@ -144,6 +145,8 @@ compose.yaml                # образ базы pgvector/pgvector:pg17
 tests/
 ├── fakes/embedding.py                 # новый: HashEmbedder, FailingEmbedder, DownEmbedder
 ├── conftest.py                        # + фикстура use_embedder
+├── synthetic/make_pdfs.py             # + make_passage_contract, PASSAGE_TRUTH
+├── unit/test_make_passages.py         # новый: страницы синтетического договора
 ├── unit/test_passages.py              # новый: нарезка, метка, покрытие
 ├── unit/test_wordforms.py             # новый
 ├── unit/test_embedding_guard.py       # новый: FORBID, петлевой адрес, ответ не по форме, недоступность
@@ -152,8 +155,9 @@ tests/
 ├── unit/test_render_indexing.py       # новый: вывод index и passage
 ├── unit/test_quickstart_passages.py   # новый
 ├── integration/test_migrate.py        # + миграция 0006, CHECK, каскад
+├── integration/test_passages_contract.py  # новый: нарезка синтетического договора = PASSAGE_TRUTH
 ├── integration/test_index.py          # новый: выбор, замена, состояния, остановка, удаление документа
-├── integration/test_index_store.py    # новый: запись отрывков и векторов — замена, откат
+├── integration/test_index_store.py    # новый: запись отрывков и векторов — замена, откат; выбор договоров, устаревание
 ├── integration/test_passage.py        # новый: вывод, устаревание, раздел без текста
 └── real_model/test_embedding_server.py  # новый: только Mac
 ```
@@ -164,8 +168,9 @@ tests/
 в `embedding.py`; слой этапа повторяет устройство `extraction.py`. Синтетические договоры —
 уже имеющиеся `make_structured_contract` (фича 04) и `make_extraction_contracts`
 (фича 05): в них есть разделы только с заголовком, пункты и подпункты, реквизиты
-и приложение; недостающие случаи (раздел с текстом после заголовка, пункт без раздела)
-добавляются отдельным вариантом генератора.
+и приложение; недостающий случай — раздел с текстом после заголовка — добавляется
+отдельным генератором `make_passage_contract`; пункт без раздела (в наборе таких нет,
+обзор v1) проверяется модульным тестом на записях, собранных вручную.
 
 ## Тесты
 
@@ -216,7 +221,7 @@ tests/
   FORBID, петлевой адрес (поэтому и раздел `[embedding]` настроек целиком).
 
 Остальное — `[sonnet]` (тесты пишет Opus): `wordforms.py`, слой этапа `indexing.py`
-без записи, `passageview.py`, `scripts/quickstart_passages.py`. Вывод команд, разбор
+без записи, выбора договоров и проверки устаревания, `passageview.py`, `scripts/quickstart_passages.py`. Вывод команд, разбор
 аргументов CLI и вариант синтетического генератора — `[haiku]` (механические задачи
 по CLAUDE.md).
 
