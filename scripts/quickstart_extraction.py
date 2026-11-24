@@ -163,15 +163,17 @@ def collect(conn: psycopg.Connection) -> Report:
     report.states = dict(Counter(s[1] for s in statuses))
     report.party_marks = sum(1 for s in statuses if s[2] and PARTIES in s[2])
 
-    scanned = {
+    # A contract with a text layer has at least one text-layer page: a mixed contract with
+    # some recognized scan pages is still one of them (Б5, clarification Q6).
+    with_text_layer = {
         r[0]
         for r in conn.execute(
-            "SELECT DISTINCT document_id FROM page_text WHERE source = 'recognized'"
+            "SELECT DISTINCT document_id FROM page WHERE kind = 'text'"
         ).fetchall()
     }
     report.review = pick_review(
         [
-            {"document_id": s[0], "text_layer": s[0] not in scanned, "state": s[1]}
+            {"document_id": s[0], "text_layer": s[0] in with_text_layer, "state": s[1]}
             for s in statuses
         ]
     )

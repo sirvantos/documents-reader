@@ -54,6 +54,25 @@ def test_collect_and_render(cli, db, tmp_path, use_model) -> None:
     assert "ДП-17/2026" not in out and "Альфа" not in out and ".pdf" not in out
 
 
+def test_a_contract_with_some_recognized_pages_keeps_its_text_layer(
+    cli, db, tmp_path, use_model
+) -> None:
+    # A mixed contract (text-layer pages plus a few recognized scans) is one of the
+    # text-layer contracts of Б5, not a scan (spec, clarification Q6).
+    a, b = add_variants(cli, tmp_path / "in", "base", "missing")
+    use_model(ScriptedModel(answer(), missing_answer()))
+    assert cli("extract").exit_code == 0
+    db.execute(
+        "UPDATE page SET kind = 'scan' WHERE document_id = %s AND page_number = 1", (a,)
+    )
+    db.execute(
+        "UPDATE page_text SET source = 'recognized' WHERE document_id = %s AND page_number = 1",
+        (a,),
+    )
+    report = qs.collect(db)
+    assert report.review == [a, b]  # both text-layer contracts, no scans
+
+
 def test_clause_mismatch_is_counted(cli, db, tmp_path, use_model) -> None:
     (doc,) = add_variants(cli, tmp_path / "in", "base")
     use_model(ScriptedModel(answer()))
