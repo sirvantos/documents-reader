@@ -1555,6 +1555,34 @@ def make_passage_contract(path: str | Path) -> Path:
     return _write(Path(path), _extraction_pdf(_PASSAGE_PAGES))
 
 
+# The expected passages of `make_passage_contract` after add, read and parse (feature 07,
+# research R-3; task T009): clause key → text of the passage. Written by the main session
+# from the lines above: no passage for the heading-only sections 1 and 3; section 2 keeps
+# only the line after its heading; the requisites stop before «Приложение № 1» (the tail
+# starts at «4. Адреса …», so there is no record 4). The preamble keeps the line breaks
+# of its wrapping on the page.
+PASSAGE_TRUTH: dict[str, str] = {
+    "преамбула": (
+        "ДОГОВОР ПОДРЯДА\n№ ДП-17/2026\nг. Энск\n"
+        "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»),\n"
+        "именуемое в дальнейшем Заказчик, и ООО «Бета», именуемое в\n"
+        "дальнейшем Подрядчик, заключили настоящий договор:"
+    ),
+    "1.1": "1.1. Подрядчик выполняет работы по ремонту здания.",
+    "1.1.1": "1.1.1. Работы выполняются в два этапа.",
+    "1.1.2": "1.1.2. Не применяется.",
+    "2": "Цена определяется сметой и не меняется.",
+    "2.1": "2.1. Цена договора составляет 1 200 000 рублей без НДС.",
+    "3.1": "3.1. За просрочку Подрядчик уплачивает неустойку 0,1% за каждый день.",
+    "3.2": "3.2. Размер неустойки не превышает 10% цены.",
+    "реквизиты": (
+        "4. Адреса и реквизиты сторон\n"
+        "Заказчик: ООО «Альфа», ИНН 0000000000\n"
+        "Подрядчик: ООО «Бета», ИНН 0000000001"
+    ),
+}
+
+
 # --- demo set ------------------------------------------------------------------
 
 

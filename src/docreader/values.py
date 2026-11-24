@@ -26,6 +26,7 @@ from decimal import Decimal
 from functools import cache
 from typing import Any
 
+from docreader import wordforms
 from docreader.fields import Kind
 from docreader.textnorm import compare_form
 
@@ -183,11 +184,8 @@ def _normalize_name(value: str) -> str:
     return result
 
 
-@cache
 def _analyzer() -> Any:
-    import pymorphy3  # loads the dictionary package from disk; no network
-
-    return pymorphy3.MorphAnalyzer()
+    return wordforms.analyzer()  # one analyzer per process, shared with the word index
 
 
 @cache
