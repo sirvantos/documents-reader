@@ -166,6 +166,28 @@ def use_embedder(monkeypatch: pytest.MonkeyPatch):
     return install
 
 
+@pytest.fixture
+def use_reranker(monkeypatch: pytest.MonkeyPatch):
+    """`use_reranker(fake)` makes `reranker.load_reranker` use the fake's transport (feature 08).
+
+    `fake` is a `TableReranker`, `FailingReranker` or `DownReranker` from
+    tests/fakes/reranker.py; the real `httpx2` client runs on it, no socket is opened.
+    """
+    from docreader import reranker
+
+    real = reranker.load_reranker
+
+    def install(fake):
+        monkeypatch.setattr(
+            reranker,
+            "load_reranker",
+            lambda settings, transport=None: real(settings, fake.transport),
+        )
+        return fake
+
+    return install
+
+
 @pytest.fixture(scope="session")
 def _test_database() -> Iterator[str]:
     admin_url = os.environ.get(TEST_DB_ENV, "").strip()

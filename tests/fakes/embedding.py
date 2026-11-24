@@ -136,3 +136,37 @@ class DownEmbedder:
     def _handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests += 1
         raise httpx2.ConnectError("connection refused", request=request)
+
+
+class TopicEmbedder(HashEmbedder):
+    """Vectors by topics, so that texts on one topic are close without common words.
+
+    `topics` maps a topic to its marker substrings; each topic is one axis. The vector of
+    a text is 1 on every axis whose marker occurs in the lower-cased text, plus
+    `0.01 * hash_vector(text)` (it tells texts without topics apart), normalised.
+    `dims` must be at least the number of topics. Same protocol and `.inputs` as
+    `HashEmbedder` (feature 08, research R-8).
+    """
+
+    def __init__(
+        self,
+        topics: dict[str, list[str]],
+        dims: int = 16,
+        served_model: str = FAKE_EMBEDDER_ID,
+    ) -> None:
+        if dims < len(topics):
+            raise ValueError("dims must be at least the number of topics")
+        super().__init__(dims, served_model)
+        self.topics = [[m.lower() for m in markers] for markers in topics.values()]
+
+    def topic_vector(self, text: str) -> list[float]:
+        lowered = text.lower()
+        noise = hash_vector(text, self.dims)
+        vector = [0.01 * x for x in noise]
+        for axis, markers in enumerate(self.topics):
+            if any(m in lowered for m in markers):
+                vector[axis] += 1.0
+        return unit(vector)
+
+    def _vectors(self, texts: list[str]) -> list[list[float]]:
+        return [self.topic_vector(t) for t in texts]

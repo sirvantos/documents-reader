@@ -42,3 +42,34 @@ def lemmatize(text: str) -> str:
         for word in (m.group() for m in _WORD.finditer(text))
     ]
     return " ".join(forms)
+
+
+# Parts of speech that carry no meaning of their own in a search query (research R-2).
+_FUNCTION_POS = frozenset({"PREP", "CONJ", "PRCL", "INTJ"})
+
+
+def _is_function_word(word: str) -> bool:
+    return analyzer().parse(_fold_yo(word.lower()))[0].tag.POS in _FUNCTION_POS
+
+
+def query_terms(query: str) -> list[str]:
+    """The words of a search query as the word index stores them (feature 08, R-1, R-2).
+
+    The same dictionary forms as `lemmatize`, lower-cased, in order, without repeats and
+    without prepositions, conjunctions, particles and interjections. Words with a digit
+    are kept as written, lower-cased.
+    """
+    terms: list[str] = []
+    seen: set[str] = set()
+    for match in _WORD.finditer(query):
+        word = match.group()
+        if _HAS_DIGIT.search(word):
+            term = word.lower()
+        elif _is_function_word(word):
+            continue
+        else:
+            term = _normal_form(word)
+        if term not in seen:
+            seen.add(term)
+            terms.append(term)
+    return terms

@@ -122,6 +122,32 @@ class EmbeddingSettings:
 
 
 @dataclass(frozen=True)
+class SearchSettings:
+    """Values of the [search] section (feature 08, research R-9)."""
+
+    candidates: int = 30  # candidates of each way of search
+    rrf_k: int = 60
+    rerank_candidates: int = 30  # how many first fused candidates the reranker reads
+    results: int = 8  # never above rerank_candidates
+
+
+@dataclass(frozen=True)
+class RerankerSettings:
+    """Values of the [reranker] section (feature 08, research R-9).
+
+    `base_url` may only point to this machine (`is_local_model_url`, principle I); it is
+    checked here when the file is read and again by `reranker.load_reranker`.
+    """
+
+    enabled: bool = True  # analyst's decision 2026-11-24; kept or dropped by measurement
+    base_url: str = "http://127.0.0.1:8082/v1"
+    model: str = "bge-reranker-v2-m3"
+    timeout_s: int = 60
+    # at most this many characters of query, label and text in one pair (research R-7)
+    max_chars: int = 16000
+
+
+@dataclass(frozen=True)
 class Settings:
     data_dir: Path
     database_url: str
@@ -133,6 +159,8 @@ class Settings:
     structure: StructureSettings = field(default_factory=StructureSettings)
     extraction: ExtractionSettings = field(default_factory=ExtractionSettings)
     embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
+    search: SearchSettings = field(default_factory=SearchSettings)
+    reranker: RerankerSettings = field(default_factory=RerankerSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -392,11 +420,37 @@ _SCHEMA["embedding"] = {
         "max_chars", int, lambda v: 1 <= v <= 1_000_000, "целое от 1 до 1000000"
     ),
 }
+_SCHEMA["search"] = {
+    # Keys of [search] map one-to-one to SearchSettings fields (feature 08, research R-9).
+    "candidates": ("candidates", int, lambda v: 1 <= v <= 500, "целое от 1 до 500"),
+    "rrf_k": ("rrf_k", int, lambda v: 1 <= v <= 1000, "целое от 1 до 1000"),
+    "rerank_candidates": (
+        "rerank_candidates", int, lambda v: 1 <= v <= 200, "целое от 1 до 200"
+    ),
+    "results": ("results", int, lambda v: 1 <= v <= 200, "целое от 1 до 200"),
+}
+_SCHEMA["reranker"] = {
+    # Keys of [reranker] map one-to-one to RerankerSettings fields (research R-9).
+    "enabled": ("enabled", bool, lambda v: True, "true или false"),
+    "base_url": (
+        "base_url",
+        str,
+        is_local_model_url,
+        "адрес http(s) на этой машине: localhost, 127.0.0.1 или ::1 (принцип I)",
+    ),
+    "model": ("model", str, lambda v: bool(v.strip()), "непустая строка"),
+    "timeout_s": ("timeout_s", int, lambda v: 1 <= v <= 3600, "целое от 1 до 3600"),
+    "max_chars": (
+        "max_chars", int, lambda v: 1 <= v <= 1_000_000, "целое от 1 до 1000000"
+    ),
+}
 READING_TABLE = "reading"
 RECOGNITION_TABLE = "recognition"
 STRUCTURE_TABLE = "structure"
 EXTRACTION_TABLE = "extraction"
 EMBEDDING_TABLE = "embedding"
+SEARCH_TABLE = "search"
+RERANKER_TABLE = "reranker"
 
 
 def _type_matches(kind: type, value: Any) -> bool:
@@ -431,6 +485,8 @@ def _read_settings_file(data_dir: Path) -> dict:
     structure_values: dict = {}
     extraction_values: dict = {}
     embedding_values: dict = {}
+    search_values: dict = {}
+    reranker_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
@@ -446,6 +502,10 @@ def _read_settings_file(data_dir: Path) -> dict:
             target = extraction_values
         elif table == EMBEDDING_TABLE:
             target = embedding_values
+        elif table == SEARCH_TABLE:
+            target = search_values
+        elif table == RERANKER_TABLE:
+            target = reranker_values
         else:
             target = values
         for key, value in entries.items():
@@ -468,4 +528,14 @@ def _read_settings_file(data_dir: Path) -> dict:
         values["extraction"] = ExtractionSettings(**extraction_values)
     if EMBEDDING_TABLE in doc:
         values["embedding"] = EmbeddingSettings(**embedding_values)
+    if SEARCH_TABLE in doc:
+        search = SearchSettings(**search_values)
+        if search.results > search.rerank_candidates:
+            raise bad(
+                f"search.results = {search.results}: нужно не больше "
+                f"search.rerank_candidates ({search.rerank_candidates})"
+            )
+        values["search"] = search
+    if RERANKER_TABLE in doc:
+        values["reranker"] = RerankerSettings(**reranker_values)
     return values

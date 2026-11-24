@@ -1583,6 +1583,85 @@ PASSAGE_TRUTH: dict[str, str] = {
 }
 
 
+# --- search contracts (feature 007 hybrid search, T001) -----------------------
+
+# The clause that all three search contracts share word for word (T001): it holds the words
+# «срок» and «оплата» and the marker «оплат» of the `payment` topic (T008).
+_SEARCH_CLAUSE_PAYMENT = "2.2. Срок оплаты товара составляет 30 дней с даты поставки."
+_SEARCH_TAIL = (
+    "5. Адреса и реквизиты сторон",
+    "Заказчик: ООО «Альфа», ИНН 0000000000",
+    "Подрядчик: ООО «Бета», ИНН 0000000001",
+)
+
+_SEARCH_PAGES: dict[str, tuple[tuple[str, ...], ...]] = {
+    "search-a": (
+        (
+            "ДОГОВОР ПОСТАВКИ № ДП-17/2026",
+            _PREAMBLE_BASE,
+            "1. Предмет договора",
+            "1.1. Поставщик передаёт товар по договору № ДП-17/2026.",
+            "2. Цена и порядок расчётов",
+            "2.1. Цена договора составляет 500 000 рублей.",
+            _SEARCH_CLAUSE_PAYMENT,
+        ),
+        (
+            "3. Ответственность",
+            "3.1. За просрочку поставки Поставщик уплачивает неустойку 0,1% за каждый день.",
+            "4. Гарантия",
+            "4.1. Гарантийный срок составляет 12 месяцев.",
+            *_SEARCH_TAIL,
+        ),
+    ),
+    "search-b": (
+        (
+            "ДОГОВОР ПОСТАВКИ",
+            _PREAMBLE_BASE,
+            "1. Предмет договора",
+            "1.1. Поставщик поставляет оборудование.",
+            "2. Цена и порядок расчётов",
+            _SEARCH_CLAUSE_PAYMENT,
+        ),
+        (
+            "2.3. Покупатель перечисляет денежные средства на счёт Поставщика.",
+            "3. Порядок приёмки",
+            "3.1. Приёмка проводится на складе Покупателя.",
+            *_SEARCH_TAIL,
+        ),
+    ),
+    "search-c": (
+        (
+            "ДОГОВОР ПОСТАВКИ",
+            _PREAMBLE_BASE,
+            "1. Предмет договора",
+            "1.1. Поставщик поставляет запасные части.",
+            "2. Цена и порядок расчётов",
+            _SEARCH_CLAUSE_PAYMENT,
+        ),
+        (
+            "3. Форс-мажор",
+            "3.1. Стороны освобождаются от ответственности при обстоятельствах "
+            "непреодолимой силы.",
+            *_SEARCH_TAIL,
+        ),
+    ),
+}
+
+
+def make_search_contracts(directory: str | Path) -> list[Path]:
+    """Writes the three synthetic contracts of feature 007 (T001) into the folder.
+
+    `search-a.pdf`, `search-b.pdf`, `search-c.pdf`; returns the paths in this order (they
+    become D-0001…D-0003 when added in this order). Text layer only.
+    """
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    return [
+        _write(root / f"{name}.pdf", _extraction_pdf(_SEARCH_PAGES[name]))
+        for name in ("search-a", "search-b", "search-c")
+    ]
+
+
 # --- demo set ------------------------------------------------------------------
 
 
