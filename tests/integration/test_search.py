@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import json
 
+import httpx2
 import pytest
 
 from docreader import embedding, search
 from docreader.config import load_settings
+from tests.fakes.reranker import DownReranker, FailingReranker, TableReranker
 from tests.integration.test_search_scope import index_search_contracts
 
 ORIGINAL_LOAD_EMBEDDER = embedding.load_embedder
@@ -296,3 +298,133 @@ def test_document_errors_before_any_model(
     assert message in result.stderr
     assert result.stdout == ""
     assert len(fake.inputs) == before
+
+
+# --- US3: the reranker (task T014) -------------------------------------------------------
+
+RERANK_DOWN = (
+    "Реранкер недоступен по адресу http://127.0.0.1:8082/v1 — запустите его "
+    "или выполните поиск с --no-rerank"
+)
+RERANK_FORBIDDEN = "На этой машине реранкер не запускается (DOCREADER_FORBID_MODELS)"
+STOPPED = "поиск остановлен"
+
+
+def run_rerank(cli, *args, code: int = 0) -> dict:
+    result = cli("search", *args, "--json")
+    assert result.exit_code == code, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_reranker_orders_by_its_scores(cli, indexed, use_reranker) -> None:
+    fake = use_reranker(TableReranker({"перечисл": 9.0, "30 дней": 5.0}))
+    report = run_rerank(cli, "срок оплаты", "--document", "D-0002")
+    assert report["reranked"] is True and report["reranker_model"] == "fake-reranker"
+    assert ids(report)[:2] == ["D-0002/2.3", "D-0002/2.2"]
+    assert [h["rerank_score"] for h in report["hits"][:2]] == [9.0, 5.0]
+    assert [h["place"] for h in report["hits"]] == list(range(1, len(report["hits"]) + 1))
+    # equal scores keep the fused order
+    rest = report["hits"][2:]
+    assert all(h["rerank_score"] == 0.0 for h in rest)
+    assert [h["fused_place"] for h in rest] == sorted(h["fused_place"] for h in rest)
+    assert len(fake.requests) == 2  # check() and one scoring request
+
+
+def test_reranker_reads_the_fused_candidates(cli, indexed, use_reranker) -> None:
+    fake = use_reranker(TableReranker())
+    plain = run(cli, "срок оплаты", "--results", "30")
+    run_rerank(cli, "срок оплаты")
+    sent = fake.requests[-1]
+    assert sent["query"] == "срок оплаты"
+    assert sent["documents"] == [h["label"] + "\n" + h["text"] for h in plain["hits"]]
+    assert len(sent["documents"]) == min(30, plain["vector_candidates"])
+
+
+def test_rerank_candidates_setting_limits_what_it_reads(
+    cli, data_dir, indexed, use_reranker
+) -> None:
+    fake = use_reranker(TableReranker())
+    (data_dir / "settings.toml").write_text(
+        "[search]\nrerank_candidates = 4\nresults = 3\n", encoding="utf-8"
+    )
+    report = run_rerank(cli, "срок оплаты")
+    assert len(fake.requests[-1]["documents"]) == 4
+    assert len(report["hits"]) == 3
+
+
+def test_no_rerank_does_not_call_it(cli, indexed, use_reranker) -> None:
+    fake = use_reranker(TableReranker({"перечисл": 9.0}))
+    report = run(cli, "срок оплаты", "--document", "D-0002")
+    assert fake.requests == []
+    assert report["reranked"] is False
+    assert all(h["place"] == h["fused_place"] for h in report["hits"])
+
+
+def test_disabled_in_settings_not_used(cli, data_dir, indexed, use_reranker) -> None:
+    fake = use_reranker(TableReranker())
+    (data_dir / "settings.toml").write_text("[reranker]\nenabled = false\n", encoding="utf-8")
+    report = run_rerank(cli, "срок оплаты")
+    assert fake.requests == [] and report["reranked"] is False
+
+
+def test_query_cut_for_the_reranker_warned(cli, data_dir, indexed, use_reranker) -> None:
+    fake = use_reranker(TableReranker())
+    (data_dir / "settings.toml").write_text("[reranker]\nmax_chars = 40\n", encoding="utf-8")
+    report = run_rerank(cli, "срок оплаты товара")
+    assert fake.requests[-1]["query"] == "срок оплаты товара"[:10]
+    assert (
+        "запрос длиннее предела реранкера (10 знаков) — оценки по его началу"
+        in report["warnings"]
+    )
+
+
+def test_text_output_shows_score(cli, indexed, use_reranker) -> None:
+    use_reranker(TableReranker({"перечисл": 9.0}))
+    result = cli("search", "срок оплаты", "--document", "D-0002")
+    assert result.exit_code == 0, result.stderr
+    assert "реранкер fake-reranker" in result.stdout
+    assert "оценка 9.000" in result.stdout
+
+
+def test_reranker_down_stops(cli, indexed, use_reranker) -> None:
+    use_reranker(DownReranker())
+    result = cli("search", "МАРКЕР-6602 срок оплаты")
+    assert result.exit_code == 2
+    assert RERANK_DOWN in result.stderr
+    assert result.stdout == "" and "МАРКЕР-6602" not in result.stderr
+
+
+@pytest.mark.parametrize("kind", ["http_500", "wrong_count", "bad_index", "not_json",
+                                  "timeout", "connect"])
+def test_reranker_failure_stops_without_hits(cli, indexed, use_reranker, kind: str) -> None:
+    use_reranker(FailingReranker(kind))
+    result = cli("search", "МАРКЕР-6603 срок оплаты", "--json")
+    assert result.exit_code == 2
+    assert result.stdout == "" and "МАРКЕР-6603" not in result.stderr
+
+
+class _FailsOnScoring(TableReranker):
+    """Answers the probe of check(), then one score fewer than documents."""
+
+    def _respond(self, request, documents):
+        answer = self._answer(documents)
+        if len(documents) > 1:
+            answer["results"] = answer["results"][:-1]
+        return httpx2.Response(200, json=answer)
+
+
+def test_reranker_wrong_answer_during_search_stops(cli, indexed, use_reranker) -> None:
+    use_reranker(_FailsOnScoring())
+    result = cli("search", "МАРКЕР-6604 срок оплаты", "--json")
+    assert result.exit_code == 2
+    assert STOPPED in result.stderr and "не по форме" in result.stderr
+    assert result.stdout == "" and "МАРКЕР-6604" not in result.stderr
+
+
+def test_reranker_forbidden_checked_before_search(cli, indexed) -> None:
+    _, fake = indexed
+    result = cli("search", "МАРКЕР-6605 срок оплаты")
+    assert result.exit_code == 2
+    assert RERANK_FORBIDDEN in result.stderr
+    assert result.stdout == ""
+    assert not [t for t in fake.inputs if "МАРКЕР-6605" in t]  # the query was not embedded

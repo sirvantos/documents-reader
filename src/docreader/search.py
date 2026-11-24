@@ -11,6 +11,7 @@ Nothing here writes to the database. No error message carries the query or contr
 
 from __future__ import annotations
 
+import dataclasses
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ from typing import Any
 import psycopg
 
 from docreader import embedding
+from docreader import reranker as reranker_client
 from docreader.config import Settings
 from docreader.errors import EnvironmentProblem, UserError
 from docreader.ids import format_clause_id, format_document_id, parse_document_id
@@ -227,6 +229,11 @@ def _load_passages(
     return {(d, o): (ck, label, fp, lp, text) for d, o, ck, label, fp, lp, text in rows}
 
 
+def _rerank_stopped(exc: Exception) -> EnvironmentProblem:
+    text = str(exc)
+    return EnvironmentProblem(f"{text[:1].upper()}{text[1:]} — поиск остановлен")
+
+
 def search(
     conn: psycopg.Connection,
     settings: Settings,
@@ -249,13 +256,18 @@ def search(
     if not 1 <= n <= cfg.rerank_candidates:
         raise UserError(f"--results: целое от 1 до {cfg.rerank_candidates}")
     use_rerank = rerank if rerank is not None else settings.reranker.enabled
-    if use_rerank:
-        # TODO(T015): the rerank path (reranker client, pairs, rerank_score) is task T015.
-        raise NotImplementedError("rerank path is task T015")
     doc = ensure_searchable(conn, settings.embedding.model, document_id)
     if embedder is None:
         embedder = embedding.load_embedder(settings.embedding)
     served_model = embedder.check().served_model
+    reranker_model: str | None = None
+    if use_rerank:
+        if reranker is None:
+            reranker = reranker_client.load_reranker(settings.reranker)
+        try:
+            reranker_model = reranker.check().served_model
+        except reranker_client.RerankRequestError as exc:
+            raise _rerank_stopped(exc) from exc
 
     started = time.perf_counter()
     warnings: list[str] = []
@@ -282,7 +294,8 @@ def search(
     vector_keys = vector_candidates(
         conn, settings.embedding.model, vector, cfg.candidates, doc
     )
-    fused = rrf([[key for key, _ in word_ranked], vector_keys], cfg.rrf_k)[:n]
+    fused = rrf([[key for key, _ in word_ranked], vector_keys], cfg.rrf_k)
+    fused = fused[: cfg.rerank_candidates if use_rerank else n]
     loaded = _load_passages(conn, [key for key, _, _ in fused])
     hits: list[Hit] = []
     for place, (key, _, (word_place, vector_place)) in enumerate(fused, start=1):
@@ -302,16 +315,36 @@ def search(
                 fused_place=place,
             )
         )
+    if use_rerank and hits:
+        pairs = [
+            reranker_client.rerank_input(query, h.label, h.text, settings.reranker.max_chars)
+            for h in hits
+        ]
+        cut_query, was_cut = pairs[0][0], pairs[0][2]
+        if was_cut:
+            warnings.append(
+                f"запрос длиннее предела реранкера ({settings.reranker.max_chars // 4} знаков)"
+                " — оценки по его началу"
+            )
+        try:
+            scores = reranker.score(cut_query, [p[1] for p in pairs])
+        except reranker_client.RerankRequestError as exc:
+            raise _rerank_stopped(exc) from exc
+        ordered = sorted(zip(hits, scores, strict=True), key=lambda hs: (-hs[1], hs[0].fused_place))
+        hits = [
+            dataclasses.replace(h, place=place, rerank_score=score)
+            for place, (h, score) in enumerate(ordered[:n], start=1)
+        ]
     elapsed = time.perf_counter() - started
     return SearchResult(
         query=query,
         document_id=doc,
-        reranked=False,
+        reranked=use_rerank,
         hits=hits,
         word_candidates=len(word_ranked),
         vector_candidates=len(vector_keys),
         warnings=warnings,
         embedding_model=served_model,
-        reranker_model=None,
+        reranker_model=reranker_model,
         seconds=round(elapsed, 3),
     )

@@ -225,5 +225,16 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   states, counts, reasons) may be sent to the agent; output of `passage` contains contract text,
   so on real contracts it is never sent (on synthetic files it may be). Test fakes of the search
   model: `tests/fakes/embedding.py` (`HashEmbedder`); no recordings.
+- `uv run docreader search "…" [--document ID] [--no-rerank] [--results N] [--json]` —
+  hybrid search (feature 08): words (BM25 over the stored word forms) and meaning (BGE-M3),
+  fused by places, then the reranker (BGE Reranker v2-m3 via `llama-server --reranking`,
+  `[reranker]` in `settings.toml`, on the Mac only; on by default, `--no-rerank` turns it
+  off); `--document` searches one contract. It needs the search model server and, unless
+  `--no-rerank`, the reranker; stops with exit 2 here (`DOCREADER_FORBID_MODELS`). Its
+  output contains contract text, so on real contracts it is never sent to the agent.
+  `scripts/quickstart_search.py --questions FILE` — the reranker measurement on the
+  analyst's questions (a TOML file in the data folder, never in the repository); its output
+  (numbers and ids only) may be sent. Test fakes: `TopicEmbedder`
+  (tests/fakes/embedding.py), `TableReranker` (tests/fakes/reranker.py); no recordings.
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).
