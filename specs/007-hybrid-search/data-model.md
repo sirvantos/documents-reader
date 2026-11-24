@@ -44,7 +44,7 @@
 | Поле | Тип | Смысл |
 |---|---|---|
 | `document_id` | str | `D-0015` |
-| `clause_key` | str | `2.2.1`, `preamble`, `tail` |
+| `clause_key` | str | `2.2.1`, `преамбула`, `реквизиты` (`ids.PREAMBLE_KEY`, `ids.TAIL_KEY`) |
 | `ordinal` | int | порядок отрывка в договоре (для равных оценок) |
 | `word_place` | int \| None | место в поиске по словам, с 1; `None` — не найден этим способом |
 | `vector_place` | int \| None | место в поиске по смыслу |

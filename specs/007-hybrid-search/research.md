@@ -160,8 +160,8 @@ quickstart Б1).
 - `tests/fakes/reranker.py`: `TableReranker(scores)` — оценка документа — значение
   первой подстроки из таблицы, найденной в документе, иначе `default`; хранит
   принятые запросы (`.requests`) для проверок «к реранкеру не обращались»;
-  `FailingReranker(kind)` — `http_500`, `wrong_count`, `bad_index`, `timeout`,
-  `connect`; `DownReranker()`.
+  `FailingReranker(kind)` — `http_500`, `wrong_count`, `bad_index`, `not_json`,
+  `timeout`, `connect`; `DownReranker()`.
 - Фикстура `use_reranker` в `tests/conftest.py`, как `use_embedder`.
 
 Записей ответов (уровень 2) нет: качество проверяет замер (история 4). Уровень 3 —

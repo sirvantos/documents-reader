@@ -87,9 +87,9 @@ CLI и функция на временной базе: приём → чтен�
 
 | # | Что было | Что в плане | Почему | Где записано |
 |---|---|---|---|---|
-| 1 | tech-context и R-5 фичи 07: ранжирование по словам (`ts_rank` или BM25) выбирается в фиче 08 | BM25 по `lemmas` в коде; `tsv` и GIN в минимальной версии не используются | Вопрос — фраза: `&`-запрос пуст, `\|`-запрос без редкости слова; разбор PostgreSQL режет номера (R-1) | research.md R-1; tech-context — при записи итогов (Б4) |
-| 2 | tech-context: реранкер — функция «вопрос, отрывки → оценки», вид — в плане | `reranker.py` поверх `llama-server` `/v1/rerank` через `httpx2`; подделки — транспорт | R-7, R-8 | contracts/reranker.md; tech-context «Модели в автотестах» — при Б4 |
-| 3 | Спецификация, особые случаи: при устаревших индексах «поиск выполняется по тому, что есть» | Ищутся только актуальные отрывки, остальные договоры — числом в предупреждении | Устаревший отрывок указывает место в прежнем тексте (принцип II, R-6) | research.md R-6 |
+| 1 | tech-context и R-5 фичи 07: ранжирование по словам (`ts_rank` или BM25) выбирается в фиче 08 | BM25 по `lemmas` в коде; `tsv` и GIN в минимальной версии не используются | Вопрос — фраза: `&`-запрос пуст, `\|`-запрос без редкости слова; разбор PostgreSQL режет номера (R-1) | research.md R-1; tech-context — задача T021 |
+| 2 | tech-context: реранкер — функция «вопрос, отрывки → оценки», вид — в плане | `reranker.py` поверх `llama-server` `/v1/rerank` через `httpx2`; подделки — транспорт | R-7, R-8 | contracts/reranker.md; tech-context «Модели в автотестах» — задача T021, итог проверки — Б4 (T025) |
+| 3 | Спецификация, особые случаи: при устаревших индексах «поиск выполняется по тому, что есть» | Ищутся только актуальные отрывки, остальные договоры — числом в предупреждении | Устаревший отрывок указывает место в прежнем тексте (принцип II, R-6) | research.md R-6; особый случай спецификации уточнён (анализ 2026-11-24) |
 | 4 | Часть B: команды `search … [--filter] [--no-rerank] [--explain]`, `search eval` | `search … [--document] [--no-rerank] [--results] [--json]`; замер — скрипт quickstart | Фильтры, пояснение и `search eval` — следующая итерация; места по способам видны и так (FR-007) | contracts/cli.md |
 | 5 | Часть B: «реранкер загружается только при включении» | Модель реранкера — отдельный сервер, его запускает аналитик; при `--no-rerank` к нему не обращаются | Решение аналитика 2026-11-24: третья команда запуска не проблема | research.md R-7 |
 
@@ -129,7 +129,7 @@ tests/
 ├── fakes/reranker.py                    # новый: TableReranker, FailingReranker, DownReranker
 ├── fakes/embedding.py                   # + TopicEmbedder
 ├── conftest.py                          # + фикстура use_reranker
-├── synthetic/make_pdfs.py               # + make_search_contracts, SEARCH_TRUTH
+├── synthetic/make_pdfs.py               # + make_search_contracts
 ├── synthetic/search_questions.toml      # новый: тестовый набор вопросов замера
 ├── unit/test_ranking.py                 # новый: bm25, rrf, равные, decide
 ├── unit/test_query_terms.py             # новый
@@ -137,6 +137,9 @@ tests/
 ├── unit/test_config_search.py           # новый: [search], [reranker]
 ├── unit/test_render_search.py           # новый
 ├── unit/test_quickstart_search.py       # новый
+├── unit/test_make_search.py             # новый: генератор синтетики
+├── unit/test_fake_embedders.py          # новый: TopicEmbedder
+├── integration/test_search_scope.py     # новый: область поиска (актуальные отрывки, договор, модель)
 ├── integration/test_search.py           # новый: CLI и функция на синтетике
 └── real_model/test_reranker_server.py   # новый: только Mac
 ```
@@ -201,9 +204,9 @@ tests/
   настроек целиком).
 
 Остальное — `[sonnet]` (тесты пишет Opus): сборка `search()` из частей,
-`scripts/quickstart_search.py`. Вывод команды, разбор аргументов CLI, генератор
-синтетических договоров и тестовый набор вопросов — `[haiku]` (механические задачи
-по CLAUDE.md).
+`scripts/quickstart_search.py` (тестовый набор вопросов — часть тестов Opus). Вывод
+команды, разбор аргументов CLI и генератор синтетических договоров — `[haiku]`
+(механические задачи по CLAUDE.md).
 
 ## Complexity Tracking
 
