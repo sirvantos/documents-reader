@@ -47,6 +47,7 @@ class Question:
     text: str
     answer: str | None
     error: str | None
+    source: str | None = None  # `field:<name>` (make_search_questions.py) or `analyst`
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ class Row:
     seconds_off: float | None
     seconds_on: float | None
     error: str | None
+    source: str | None = None
 
 
 @dataclass
@@ -120,7 +122,14 @@ def _question(number: int, entry: Any) -> Question:
         seq, key = parse_clause_id(answer)
     except UserError:
         return bad
-    return Question(number, text, format_clause_id(format_document_id(seq), key), None)
+    source = entry.get("source")
+    return Question(
+        number,
+        text,
+        format_clause_id(format_document_id(seq), key),
+        None,
+        source if isinstance(source, str) and source.strip() else None,
+    )
 
 
 def read_questions(path: Path) -> list[Question]:
@@ -208,14 +217,45 @@ def render(summary: Summary) -> list[str]:
         f"{_share(on.top5, on.questions)}",
         f"время: медиана       {_s(off.median_s)} с   {_s(on.median_s)} с",
         f"время: наибольшее    {_s(off.max_s)} с   {_s(on.max_s)} с",
-        "",
     ]
+    by_source = source_lines(summary.rows)
+    lines += by_source
+    lines.append("")
     verdict, reason = summary.decision
     if verdict == "keep":
         lines.append(f"Решение (FR-014): оставить реранкер включённым — {reason}")
     else:
         lines.append(f"Решение (FR-014): выключить реранкер по умолчанию — {reason}")
     return lines
+
+
+def _source_group(source: str | None) -> str:
+    if source is None:
+        return "без пометки"
+    if source.startswith("field:"):
+        return "поля"
+    return "аналитик" if source == "analyst" else source
+
+
+def source_lines(rows: Sequence[Row]) -> list[str]:
+    """The first-five counts of both variants by source of the question (T026), when the
+    set holds more than one source; questions with an error are left out."""
+    groups: dict[str, list[Row]] = {}
+    for r in rows:
+        if r.error is None:
+            groups.setdefault(_source_group(r.source), []).append(r)
+    if len(groups) < 2:
+        return []
+
+    def top5(places: list[int | None]) -> int:
+        return sum(1 for p in places if p is not None and p <= 5)
+
+    parts = [
+        f"{name} {top5([r.place_off for r in group])}/{top5([r.place_on for r in group])}"
+        f" из {len(group)}"
+        for name, group in sorted(groups.items())
+    ]
+    return ["в первых пяти по источникам (без / с реранкером): " + ", ".join(parts)]
 
 
 def to_json(summary: Summary) -> dict[str, Any]:
@@ -248,7 +288,7 @@ def _measure(argv_questions: list[Question]) -> Summary:
     with connect(settings) as conn:
         for q in argv_questions:
             if q.error is not None or q.answer is None:
-                rows.append(Row(q.number, None, None, None, None, None, q.error))
+                rows.append(Row(q.number, None, None, None, None, None, q.error, q.source))
                 continue
             seq, key = parse_clause_id(q.answer)
             doc = format_document_id(seq)
@@ -259,7 +299,8 @@ def _measure(argv_questions: list[Question]) -> Summary:
             ).fetchone()
             if current is None:
                 rows.append(
-                    Row(q.number, q.answer, None, None, None, None, f"нет отрывка {q.answer}")
+                    Row(q.number, q.answer, None, None, None, None, f"нет отрывка {q.answer}",
+                        q.source)
                 )
                 continue
             try:
@@ -272,7 +313,7 @@ def _measure(argv_questions: list[Question]) -> Summary:
                     results=cfg.rerank_candidates, embedder=embedder, reranker=ranker,
                 )
             except UserError as exc:
-                rows.append(Row(q.number, q.answer, None, None, None, None, str(exc)))
+                rows.append(Row(q.number, q.answer, None, None, None, None, str(exc), q.source))
                 continue
             rows.append(
                 Row(
@@ -283,6 +324,7 @@ def _measure(argv_questions: list[Question]) -> Summary:
                     off.seconds,
                     on.seconds,
                     None,
+                    q.source,
                 )
             )
     return Summary(

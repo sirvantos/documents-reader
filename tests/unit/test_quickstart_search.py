@@ -175,9 +175,43 @@ def test_json_summary() -> None:
     assert data["questions"] == 4 and data["errors"] == 1
     assert data["rows"][0] == {
         "number": 1, "answer": "D-0015/2.2.1", "place_off": 1, "place_on": 1,
-        "seconds_off": 0.21, "seconds_on": 1.62, "error": None,
+        "seconds_off": 0.21, "seconds_on": 1.62, "error": None, "source": None,
     }
     assert data["off"] == {"questions": 3, "top1": 1, "top5": 1, "median_s": 0.2, "max_s": 0.21}
     assert data["decision"] == {
         "verdict": "keep", "reason": "в первых пяти 3 против 1, медиана 1,62 с ≤ 10 с"
     }
+
+
+# --- sources of the questions (task T026) -----------------------------------------------
+
+
+def test_source_read_from_the_set(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        '[[question]]\ntext = "а"\nanswer = "D-0001/2.1"\nsource = "field:amount_with_vat"\n'
+        '[[question]]\ntext = "б"\nanswer = "D-0001/2.2"\n',
+    )
+    first, second = qs.read_questions(path)
+    assert (first.source, second.source) == ("field:amount_with_vat", None)
+
+
+def test_breakdown_by_source_only_with_two_sources() -> None:
+    rows = [
+        qs.Row(1, "D-0001/2.1", 1, 1, 0.1, 1.0, None, "field:amount_with_vat"),
+        qs.Row(2, "D-0001/2.2", 7, 2, 0.1, 1.0, None, "field:contract_number"),
+        qs.Row(3, "D-0002/4.1", None, 3, 0.1, 1.0, None, "analyst"),
+        qs.Row(4, None, None, None, None, None, "нет ответа", "analyst"),
+    ]
+    assert qs.source_lines(rows) == [
+        "в первых пяти по источникам (без / с реранкером): аналитик 0/1 из 1, поля 1/2 из 2"
+    ]
+    assert qs.source_lines(rows[:2]) == []
+
+
+def test_text_summary_holds_the_breakdown() -> None:
+    summary = _summary()
+    summary.rows[0] = qs.Row(1, "D-0015/2.2.1", 1, 1, 0.21, 1.62, None, "field:x")
+    summary.rows[1] = qs.Row(2, "D-0007/4.1", 6, 2, 0.19, 1.48, None, "analyst")
+    text = "\n".join(qs.render(summary))
+    assert "в первых пяти по источникам (без / с реранкером):" in text
