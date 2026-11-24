@@ -229,3 +229,70 @@ def test_errors_do_not_hold_the_query(cli, indexed, data_dir) -> None:
     assert result.exit_code == 2
     assert "нет векторов frida" in result.stderr
     assert "МАРКЕР-7710" not in result.stderr
+
+
+# --- US2: one document (task T012) -------------------------------------------------------
+
+
+def test_typical_clause_of_three_contracts_on_top(cli, indexed) -> None:
+    report = run(cli, "срок оплаты")
+    assert set(ids(report)[:3]) == {"D-0001/2.2", "D-0002/2.2", "D-0003/2.2"}
+
+
+def test_document_limits_every_hit(cli, indexed) -> None:
+    report = run(cli, "срок оплаты", "--document", "D-0002")
+    assert report["document_id"] == "D-0002"
+    assert report["hits"] and all(i.startswith("D-0002/") for i in ids(report))
+    assert ids(report)[0] == "D-0002/2.2"
+
+
+def test_document_in_short_form(cli, indexed) -> None:
+    assert run(cli, "срок оплаты", "--document", "d-2")["document_id"] == "D-0002"
+
+
+def test_document_with_fewer_passages_than_results(cli, db, indexed) -> None:
+    report = run(cli, "срок оплаты", "--document", "D-0003", "--results", "30")
+    count = db.execute("SELECT count(*) FROM passage WHERE document_id = 'D-0003'").fetchone()[0]
+    assert count < 30
+    assert sorted(ids(report)) == sorted(set(ids(report)))
+    assert len(ids(report)) == count
+
+
+def test_function_with_document(cli, db, indexed) -> None:
+    result = search.search(db, load_settings(), "оплата", document_id="D-0001", rerank=False)
+    assert result.document_id == "D-0001"
+    assert all(h.clause_id.startswith("D-0001/") for h in result.hits)
+
+
+def test_document_search_has_no_stale_warning(cli, indexed) -> None:
+    stale(cli, "D-0003")
+    assert run(cli, "срок оплаты", "--document", "D-0001")["warnings"] == []
+
+
+@pytest.mark.parametrize(
+    ("setup", "doc", "message"),
+    [
+        (None, "D-0099", "Документ D-0099 не найден — список документов: docreader list"),
+        ("stale", "D-0002",
+         "Отрывки устарели: текст или разбор изменились — выполните docreader index D-0002"),
+        ("new", "D-0004", "Отрывков нет: выполните docreader index D-0004"),
+    ],
+)
+def test_document_errors_before_any_model(
+    cli, tmp_path, indexed, setup, doc: str, message: str
+) -> None:
+    from tests.integration.test_read import add_files
+    from tests.synthetic import make_pdfs as mk
+
+    _, fake = indexed
+    if setup == "stale":
+        stale(cli, "D-0002")
+    elif setup == "new":
+        add_files(cli, tmp_path / "more", [mk.make_passage_contract])
+        assert cli("read").exit_code == 0 and cli("parse").exit_code == 0
+    before = len(fake.inputs)
+    result = cli("search", "срок оплаты", "--no-rerank", "--document", doc)
+    assert result.exit_code == 1
+    assert message in result.stderr
+    assert result.stdout == ""
+    assert len(fake.inputs) == before

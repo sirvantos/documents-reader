@@ -173,6 +173,12 @@ def test_parse_search_options() -> None:
     assert args.json is True
 
 
+def test_parse_search_document_option() -> None:
+    args = _build_parser().parse_args(["search", "срок", "--document", "D-0015"])
+    assert args.document == "D-0015"
+    assert _build_parser().parse_args(["search", "срок"]).document is None
+
+
 def test_parse_search_results_must_be_int() -> None:
     with pytest.raises(SystemExit):
         _build_parser().parse_args(["search", "срок", "--results", "много"])

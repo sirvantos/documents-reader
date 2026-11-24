@@ -157,6 +157,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("query", metavar="ЗАПРОС", help="слова для поиска")
     p.add_argument("--no-rerank", action="store_true", help="без реранкера на этот запуск")
     p.add_argument("--results", type=int, metavar="N", help="сколько отрывков показать")
+    p.add_argument("--document", metavar="ID", help="искать только в этом договоре (D-0015)")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("recognize", help="распознать страницы-сканы")
@@ -534,6 +535,7 @@ def _cmd_search(args: argparse.Namespace, settings: Settings, conn: psycopg.Conn
         args.query,
         rerank=False if args.no_rerank else None,
         results=args.results,
+        document_id=args.document,
     )
     if args.json:
         print(json.dumps(result.to_json(), ensure_ascii=False, indent=2))
