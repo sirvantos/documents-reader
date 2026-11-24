@@ -72,7 +72,11 @@ def apply_migrations(conn: psycopg.Connection) -> list[str]:
             with conn.transaction():
                 conn.execute(sql)
                 conn.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (version,))
-        except (psycopg.errors.InsufficientPrivilege, psycopg.errors.UndefinedFile) as exc:
+        except (
+            psycopg.errors.InsufficientPrivilege,
+            psycopg.errors.UndefinedFile,
+            psycopg.errors.FeatureNotSupported,
+        ) as exc:
             if "CREATE EXTENSION" not in sql:
                 raise
             raise _extension_problem(version, exc) from exc
@@ -82,11 +86,14 @@ def apply_migrations(conn: psycopg.Connection) -> list[str]:
 
 def _extension_problem(version: str, exc: Exception) -> EnvironmentProblem:
     """pgvector missing or not creatable by this role (feature 07, research R-10)."""
-    if isinstance(exc, psycopg.errors.UndefinedFile):
+    # not installed for this server: PostgreSQL 17 says FeatureNotSupported («extension is
+    # not available»), some builds UndefinedFile (the control file is missing)
+    if isinstance(exc, (psycopg.errors.UndefinedFile, psycopg.errors.FeatureNotSupported)):
         return EnvironmentProblem(
-            f"Миграция {version}: расширение PostgreSQL pgvector не установлено — "
-            "установите его (сервер разработки: apt install postgresql-17-pgvector; "
-            "ноутбук: brew install pgvector) и повторите docreader migrate"
+            f"Миграция {version}: расширение PostgreSQL pgvector не установлено для этого "
+            "сервера базы — установите его для той же версии PostgreSQL (сервер разработки: "
+            "apt install postgresql-17-pgvector; ноутбук: brew install pgvector для "
+            "postgresql@17) и повторите docreader migrate"
         )
     return EnvironmentProblem(
         f"Миграция {version}: у роли базы нет прав на CREATE EXTENSION vector — "

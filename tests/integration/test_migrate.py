@@ -794,6 +794,8 @@ class _NoExtensionRights:
     [
         (psycopg.errors.InsufficientPrivilege, "template1"),
         (psycopg.errors.UndefinedFile, "pgvector"),
+        # what the Mac's server raised (2026-11-24): extension "vector" is not available
+        (psycopg.errors.FeatureNotSupported, "pgvector"),
     ],
 )
 def test_extension_problem_is_an_environment_problem(
