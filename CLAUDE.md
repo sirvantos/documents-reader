@@ -178,6 +178,10 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   Integration tests need this variable: a local PostgreSQL role with CREATEDB. Each run
   creates and drops a throwaway `docreader_test_*` database. Without the variable the
   integration tests fail. `real_model` tests are excluded by default.
+- PostgreSQL extension `vector` (pgvector) is needed by migration 0006 (feature 07): on this
+  dev server the PGDG package `postgresql-17-pgvector` with `CREATE EXTENSION vector` run once
+  in `template1` by `postgres` (the role here is not a superuser); on the Mac `brew install
+  pgvector`; in Docker the database image is `pgvector/pgvector:pg17`.
 - `docker compose run --rm tests` — full test suite in containers (throwaway PostgreSQL 17
   in memory, no internet access, repo mounted read-only); extra pytest arguments go at the
   end (`docker compose run --rm tests -k note -x`); `docker compose down` stops the database.
@@ -212,5 +216,14 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   sent to the agent; output of `fields` contains contract text, so on real contracts it is
   never sent. Recordings of model answers: `python -m tests.synthetic.record_extraction`
   (synthetic files only; on the Mac, where the model runs).
+- `uv run docreader index [ID…] [--all]` — cuts parsed contracts into passages (one per parse
+  record with own text, the tail only up to the first «Приложение» line) and builds the word
+  index and the meaning index (feature 07); needs the local search model server (`[embedding]`
+  in `settings.toml`: `base_url`, `model = "bge-m3"`; `llama-server --embedding` with BGE-M3,
+  on the Mac only) and stops with exit 2 here (`DOCREADER_FORBID_MODELS`). `uv run docreader
+  passage D-0001/5.2` — one passage with its label and index entries. Output of `index` (ids,
+  states, counts, reasons) may be sent to the agent; output of `passage` contains contract text,
+  so on real contracts it is never sent (on synthetic files it may be). Test fakes of the search
+  model: `tests/fakes/embedding.py` (`HashEmbedder`); no recordings.
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).
