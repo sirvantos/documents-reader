@@ -1,0 +1,19 @@
+# The test set of the reranker measurement (feature 08, task T018) on the synthetic
+# contracts of `make_search_contracts` (D-0001…D-0003 in this order). Fictional only.
+# The analyst's real set lives in the data folder, never here (principle I).
+
+[[question]]
+text = "Какой срок оплаты?"
+answer = "D-0002/2.2"
+
+[[question]]
+text = "Куда переводить деньги?"
+answer = "D-0002/2.3"
+
+[[question]]
+text = "Какая неустойка за просрочку?"
+answer = "D-0001/3.1"
+
+[[question]]
+text = "Несуществующий пункт"
+answer = "D-0001/99.1"

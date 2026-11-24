@@ -428,3 +428,94 @@ def test_reranker_forbidden_checked_before_search(cli, indexed) -> None:
     assert RERANK_FORBIDDEN in result.stderr
     assert result.stdout == ""
     assert not [t for t in fake.inputs if "МАРКЕР-6605" in t]  # the query was not embedded
+
+
+# --- US4: the measurement script (task T018) ---------------------------------------------
+
+
+def _measurement_module():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "quickstart_search_it", root / "scripts" / "quickstart_search.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_measurement_script(cli, tmp_path, indexed, use_reranker, capsys) -> None:
+    from pathlib import Path
+
+    from docreader.runs import code_version
+
+    # in D-0002: 2.3 (9) above 2.2 (5); in D-0001: 3.1 (7) above 2.2 (5)
+    use_reranker(TableReranker({"перечисл": 9.0, "неустойк": 7.0, "30 дней": 5.0}))
+    source = Path(__file__).resolve().parents[1] / "synthetic" / "search_questions.toml"
+    questions = tmp_path / "questions" / "set.toml"
+    questions.parent.mkdir()
+    questions.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    qs = _measurement_module()
+    assert qs.main(["--questions", str(questions)]) == 0
+    out = capsys.readouterr().out
+
+    assert "Б3. Замер реранкера: 4 вопроса, ошибок в наборе 1" in out
+    assert f"версия кода: {code_version()}" in out
+    assert "модели: поиск fake-embedder, реранкер fake-reranker" in out
+    assert "настройки: кандидатов 30, rrf_k 60, реранкер читает 30" in out
+    rows = {
+        line.split()[0]: line.split()
+        for line in out.splitlines()
+        if line.strip()[:1].isdigit() and "D-" in line
+    }
+    assert rows["1"][1:2] == ["D-0002/2.2"] and rows["1"][3] == "2"  # second after rerank
+    assert rows["2"][1:2] == ["D-0002/2.3"] and rows["2"][3] == "1"
+    assert rows["3"][1:4] == ["D-0001/3.1", "1", "1"]
+    assert "ошибка в наборе: нет отрывка D-0001/99.1" in out
+    assert "из 3 (" in out  # shares over the three questions without an error
+    assert "Решение (FR-014):" in out
+    # neither the questions nor the contracts reach the output
+    for text in ("срок оплаты?", "Куда переводить", "неустойка за просрочку", "Несуществующий",
+                 "Срок оплаты товара составляет", "перечисляет денежные"):
+        assert text.lower() not in out.lower()
+    saved = list(questions.parent.glob("search-b3-summary-*.txt"))
+    assert len(saved) == 1
+    summary = saved[0].read_text(encoding="utf-8")
+    assert "Решение (FR-014):" in summary and "Куда переводить" not in summary
+    assert f"Сводка сохранена: {saved[0]}" in out
+
+
+def test_measurement_script_json(cli, tmp_path, indexed, use_reranker, capsys) -> None:
+    use_reranker(TableReranker())
+    questions = tmp_path / "set.toml"
+    questions.write_text(
+        '[[question]]\ntext = "неустойка"\nanswer = "D-0001/3.1"\n', encoding="utf-8"
+    )
+    qs = _measurement_module()
+    assert qs.main(["--questions", str(questions), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out.split("\nСводка сохранена:")[0])
+    assert data["questions"] == 1 and data["errors"] == 0
+    assert data["rows"][0]["place_off"] == 1
+    assert data["models"] == {"embedding": "fake-embedder", "reranker": "fake-reranker"}
+
+
+@pytest.mark.parametrize("content", [None, "[[question]\n", "# пусто\n"])
+def test_measurement_script_bad_file(cli, tmp_path, indexed, use_reranker, content) -> None:
+    use_reranker(TableReranker())
+    path = tmp_path / "set.toml"
+    if content is not None:
+        path.write_text(content, encoding="utf-8")
+    assert _measurement_module().main(["--questions", str(path)]) == 1
+
+
+def test_measurement_script_reranker_down(cli, tmp_path, indexed, use_reranker) -> None:
+    use_reranker(DownReranker())
+    path = tmp_path / "set.toml"
+    path.write_text('[[question]]\ntext = "x"\nanswer = "D-0001/3.1"\n', encoding="utf-8")
+    assert _measurement_module().main(["--questions", str(path)]) == 2
