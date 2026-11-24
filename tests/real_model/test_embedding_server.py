@@ -1,6 +1,7 @@
 """Level 3: the real search model server on synthetic strings (feature 07; task T022).
 
-Only on the analyst's Mac, with `llama-server --embedding` running (quickstart Б0–Б1):
+Only on the analyst's Mac, with `llama-server --embedding` running (quickstart Б0–Б1;
+`-c 8192 -b 8192 -ub 8192 -np 1` — a smaller batch refuses long inputs with HTTP 500):
 
     uv run pytest -m real_model tests/real_model/test_embedding_server.py
 
@@ -57,7 +58,10 @@ def test_check_reports_bge_m3_dims() -> None:
 def test_same_text_same_vector_of_length_one() -> None:
     client = embedding.load_embedder(_settings())
     a, b = client.embed(["Подрядчик уплачивает неустойку.", "Подрядчик уплачивает неустойку."])
-    assert a == pytest.approx(b, abs=1e-6)
+    # the GPU computes a batch with float rounding: equal up to ~1e-4, not bit for bit
+    # (seen on the Mac with llama-server, 2026-11-24); far below what search can notice
+    assert a == pytest.approx(b, abs=1e-3)
+    assert sum(x * y for x, y in zip(a, b, strict=True)) >= 0.9999  # cosine of unit vectors
     assert math.isclose(math.sqrt(sum(x * x for x in a)), 1.0, rel_tol=1e-6)
 
 

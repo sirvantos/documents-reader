@@ -57,7 +57,7 @@ brew install pgvector llama.cpp
 psql postgresql:///postgres -Atc "SELECT version, trusted FROM pg_available_extension_versions WHERE name = 'vector' ORDER BY 1 DESC LIMIT 1"
 # trusted = f → CREATE EXTENSION vector в template1 и в базе docreader от суперпользователя
 # веса BGE-M3 в GGUF (F16 или Q8_0) — скачать заранее в папку моделей, вне репозитория
-llama-server -m ~/models/bge-m3-Q8_0.gguf --embedding --pooling cls -c 8192 -ub 8192 \
+llama-server -m ~/models/bge-m3-Q8_0.gguf --embedding --pooling cls -c 8192 -b 8192 -ub 8192 -np 1 \
   --host 127.0.0.1 --port 8081
 ```
 
@@ -98,8 +98,8 @@ tech-context, «Что проверить в первый день», п. 3. В�
 
 ```bash
 mlx_lm.server --model <qwen3.6-27b-4bit> --host 127.0.0.1 --port 8080     # языковая модель (фича 05)
-llama-server -m ~/models/bge-m3-Q8_0.gguf --embedding --pooling cls -c 8192 -ub 8192 --host 127.0.0.1 --port 8081
-llama-server -m ~/models/bge-reranker-v2-m3-Q8_0.gguf --reranking -c 8192 -ub 8192 --host 127.0.0.1 --port 8082
+llama-server -m ~/models/bge-m3-Q8_0.gguf --embedding --pooling cls -c 8192 -b 8192 -ub 8192 -np 1 --host 127.0.0.1 --port 8081
+llama-server -m ~/models/bge-reranker-v2-m3-Q8_0.gguf --reranking -c 8192 -b 8192 -ub 8192 -np 1 --host 127.0.0.1 --port 8082
 ```
 
 В другом окне — один запрос к каждой: `docreader extract D-0001`, `docreader index D-0001`
