@@ -249,3 +249,7 @@ Phase 1–2 + US2 + US1 (T001–T018, T037): извлечение целиком
 5. US4 → `fields`; Б5.
 6. Phase 7 → команда записи; Б2 на Mac; тесты уровня 2 зелёные.
 7. Polish → документы, замеры Б, итоги в tech-context.
+
+## Phase 9: Convergence
+
+- [X] T038 [opus] Review and record `scripts/review_extraction.py` with `tests/unit/test_review_extraction.py` and `tests/integration/test_review_extraction_db.py` (the local review page of quickstart Б5: one card per field, answers by key, `--summary` with the counts of SC-002 and SC-003 only) as Б5 tooling next to T028 in tasks.md, or remove it per SC-002 (unrequested). **Kept (analyst, 2026-11-24):** the page is the Б5 tooling of T028 (added in `5a46584`, documented in quickstart Б5); Б5 was done on it (59 of 60 right, 0 invented). It writes only under `$DOCREADER_DATA_DIR/reports/`, the page stays on the Mac, `--summary` prints counts only (principle I)
