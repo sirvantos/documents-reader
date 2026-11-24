@@ -24,3 +24,11 @@ class EnvironmentProblem(DocreaderError):
     """Environment error (exit code 2): data folder, database or settings problem."""
 
     exit_code = 2
+
+
+class ModelUnavailable(EnvironmentProblem):
+    """A model server did not answer: not started, gone, or too slow. The run stops.
+
+    Shared by the language model (`llm.py`, feature 05) and the search model
+    (`embedding.py`, feature 07).
+    """

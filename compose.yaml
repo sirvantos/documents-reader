@@ -11,7 +11,7 @@ name: docreader-tests
 
 services:
   db:
-    image: postgres:17
+    image: pgvector/pgvector:pg17  # PostgreSQL 17 with the vector extension (feature 07, R-10)
     environment:
       POSTGRES_HOST_AUTH_METHOD: trust  # reachable only from the tests container
     tmpfs:

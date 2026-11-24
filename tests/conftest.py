@@ -144,6 +144,28 @@ def use_model(monkeypatch: pytest.MonkeyPatch):
     return install
 
 
+@pytest.fixture
+def use_embedder(monkeypatch: pytest.MonkeyPatch):
+    """`use_embedder(fake)` makes `embedding.load_embedder` use the fake's transport (feature 07).
+
+    `fake` is a `HashEmbedder`, `FailingEmbedder` or `DownEmbedder` from
+    tests/fakes/embedding.py; the real `openai` client runs on it, no socket is opened.
+    """
+    from docreader import embedding
+
+    real = embedding.load_embedder
+
+    def install(fake):
+        monkeypatch.setattr(
+            embedding,
+            "load_embedder",
+            lambda settings, transport=None: real(settings, fake.transport),
+        )
+        return fake
+
+    return install
+
+
 @pytest.fixture(scope="session")
 def _test_database() -> Iterator[str]:
     admin_url = os.environ.get(TEST_DB_ENV, "").strip()

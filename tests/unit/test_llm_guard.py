@@ -213,10 +213,17 @@ def test_no_model_text_in_logs(caplog: pytest.LogCaptureFixture, capsys) -> None
 
 
 def test_only_llm_imports_openai_and_instructor() -> None:
-    pattern = re.compile(r"^\s*(import|from)\s+(openai|instructor)\b", re.MULTILINE)
-    offenders = [
-        p.name for p in SRC.glob("*.py") if p.name != "llm.py" and pattern.search(p.read_text())
-    ]
+    # `openai` is also the client of the search model, in embedding.py only (feature 07,
+    # research R-1); `instructor` stays in llm.py alone.
+    allowed = {"openai": {"llm.py", "embedding.py"}, "instructor": {"llm.py"}}
+    offenders = []
+    for name, modules in allowed.items():
+        pattern = re.compile(rf"^\s*(import|from)\s+{name}\b", re.MULTILINE)
+        offenders += [
+            f"{p.name}: {name}"
+            for p in SRC.glob("*.py")
+            if p.name not in modules and pattern.search(p.read_text())
+        ]
     assert offenders == []
 
 

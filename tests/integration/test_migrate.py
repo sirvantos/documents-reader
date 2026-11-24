@@ -606,3 +606,205 @@ def test_field_value_run_is_restricted_and_document_cascades(db) -> None:
         db.execute("DELETE FROM run WHERE id = %s", (run_id,))
     db.execute("DELETE FROM document WHERE id = 'D-0001'")
     assert db.execute("SELECT count(*) FROM field_value").fetchone()[0] == 0
+
+
+# --- 0006_passages (feature 07, task T004) ---------------------------------------------
+
+
+def _indexing_run(db) -> int:
+    return db.execute(
+        "INSERT INTO run (stage, code_version, settings) VALUES ('indexing', 'test', '{}') "
+        "RETURNING id"
+    ).fetchone()[0]
+
+
+_PASSAGE_ROW = {
+    "key": "3.1",
+    "ordinal": 0,
+    "part": "main",
+    "start": 10,
+    "end": 60,
+    "first_page": 1,
+    "last_page": 1,
+    "label": "D-0001 · раздел 3. Ответственность · пункт 3.1",
+    "lemmas": "d-0001 раздел 3 ответственность пункт 3.1 неустойка",
+    "sha": HASH,
+}
+
+
+def _insert_passage(db, run_id: int, structure_run_id: int, **overrides) -> None:
+    row = {**_PASSAGE_ROW, **overrides}
+    db.execute(
+        "INSERT INTO passage (document_id, clause_key, ordinal, part, start, end_, first_page,"
+        " last_page, label, lemmas, source_text_sha256, structure_run_id, run_id)"
+        " VALUES ('D-0001', %(key)s, %(ordinal)s, %(part)s, %(start)s, %(end)s,"
+        " %(first_page)s, %(last_page)s, %(label)s, %(lemmas)s, %(sha)s, %(srun)s, %(run)s)",
+        {**row, "srun": structure_run_id, "run": run_id},
+    )
+
+
+def _insert_vector(db, run_id: int, **overrides) -> None:
+    row = {"key": "3.1", "model": "bge-m3", "vec": "[0.6,0.8]", "dims": 2,
+           "chars": 50, "truncated": False, **overrides}
+    db.execute(
+        "INSERT INTO passage_vector (document_id, clause_key, model, embedding, dims,"
+        " input_chars, truncated, run_id) VALUES ('D-0001', %(key)s, %(model)s,"
+        " %(vec)s::vector, %(dims)s, %(chars)s, %(truncated)s, %(run)s)",
+        {**row, "run": run_id},
+    )
+
+
+@pytest.fixture
+def passage_db(db):
+    _seed_page(db)
+    srun = _structure_run(db)
+    run_id = _indexing_run(db)
+    return db, run_id, srun
+
+
+def test_passages_migration_is_listed_as_applied(db) -> None:
+    versions = {r[0] for r in db.execute("SELECT version FROM schema_migrations")}
+    assert "0006_passages" in versions
+    assert db.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'").fetchone()
+
+
+def test_passage_and_vector_accept_good_rows(passage_db) -> None:
+    db, run_id, srun = passage_db
+    for part, key, ordinal in (("preamble", "преамбула", 1), ("tail", "реквизиты", 2)):
+        _insert_passage(db, run_id, srun, key=key, ordinal=ordinal, part=part)
+    _insert_passage(db, run_id, srun)
+    _insert_vector(db, run_id)
+    _insert_vector(db, run_id, model="frida", truncated=True)
+    assert db.execute("SELECT count(*) FROM passage").fetchone()[0] == 3
+    assert db.execute("SELECT count(*) FROM passage_vector").fetchone()[0] == 2
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"key": ""},
+        {"ordinal": -1},
+        {"part": "appendix"},
+        {"start": -1},
+        {"start": 10, "end": 10},
+        {"first_page": 0},
+        {"first_page": 2, "last_page": 1},
+        {"label": ""},
+        {"lemmas": ""},
+        {"sha": "z" * 64},
+        {"sha": "a" * 63},
+    ],
+)
+def test_passage_rejects_bad_rows(passage_db, overrides) -> None:
+    db, run_id, srun = passage_db
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_passage(db, run_id, srun, **overrides)
+
+
+def test_passage_keys_and_ordinals_are_unique_per_document(passage_db) -> None:
+    db, run_id, srun = passage_db
+    _insert_passage(db, run_id, srun)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_passage(db, run_id, srun, ordinal=1)  # same key
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_passage(db, run_id, srun, key="3.2")  # same ordinal
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"key": "9.9"},  # no such passage
+        {"model": ""},
+        {"dims": 3},  # the vector has 2 components
+        {"dims": 0, "vec": "[1]"},
+        {"chars": 0},
+    ],
+)
+def test_passage_vector_rejects_bad_rows(passage_db, overrides) -> None:
+    db, run_id, srun = passage_db
+    _insert_passage(db, run_id, srun)
+    with pytest.raises((psycopg.errors.IntegrityError, psycopg.errors.DataException)):
+        _insert_vector(db, run_id, **overrides)
+
+
+def test_passage_vector_is_one_row_per_model(passage_db) -> None:
+    db, run_id, srun = passage_db
+    _insert_passage(db, run_id, srun)
+    _insert_vector(db, run_id)
+    with pytest.raises(psycopg.errors.IntegrityError):
+        _insert_vector(db, run_id)
+
+
+def test_tsv_follows_lemmas(passage_db) -> None:
+    db, run_id, srun = passage_db
+    _insert_passage(db, run_id, srun)
+    _insert_passage(db, run_id, srun, key="преамбула", ordinal=1, part="preamble",
+                    lemmas="дп-17/2026 договор")
+
+    def found(query: str, fn: str = "to_tsquery") -> set[str]:
+        return {
+            r[0] for r in db.execute(
+                f"SELECT clause_key FROM passage WHERE tsv @@ {fn}('simple', %s)", (query,)
+            )
+        }
+
+    assert found("неустойка") == {"3.1"}
+    assert found("ДП-17/2026", "plainto_tsquery") == {"преамбула"}
+    # U1 (research R-5): the parser splits a number, so a part of it is not found
+    assert found("17/2026", "plainto_tsquery") == set()
+    indexes = {r[0] for r in db.execute(
+        "SELECT indexdef FROM pg_indexes WHERE tablename = 'passage'")}
+    assert any("gin" in i.lower() and "tsv" in i for i in indexes)
+
+
+def test_passage_rows_cascade_and_runs_are_restricted(passage_db) -> None:
+    db, run_id, srun = passage_db
+    _insert_passage(db, run_id, srun)
+    _insert_passage(db, run_id, srun, key="3.2", ordinal=1)
+    _insert_vector(db, run_id)
+    _insert_vector(db, run_id, key="3.2")
+    for run in (run_id, srun):
+        with pytest.raises(psycopg.errors.IntegrityError):
+            db.execute("DELETE FROM run WHERE id = %s", (run,))
+    db.execute("DELETE FROM passage WHERE clause_key = '3.1'")
+    assert db.execute("SELECT clause_key FROM passage_vector").fetchall() == [("3.2",)]
+    db.execute("DELETE FROM document WHERE id = 'D-0001'")
+    assert db.execute("SELECT count(*) FROM passage").fetchone()[0] == 0
+    assert db.execute("SELECT count(*) FROM passage_vector").fetchone()[0] == 0
+
+
+class _NoExtensionRights:
+    """A connection whose CREATE EXTENSION fails as for a role without the rights."""
+
+    def __init__(self, conn: psycopg.Connection, error: type[Exception]) -> None:
+        self._conn = conn
+        self._error = error
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+    def execute(self, query, *args, **kwargs):
+        if "CREATE EXTENSION" in str(query):
+            raise self._error('permission denied to create extension "vector"')
+        return self._conn.execute(query, *args, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("error", "hint"),
+    [
+        (psycopg.errors.InsufficientPrivilege, "template1"),
+        (psycopg.errors.UndefinedFile, "pgvector"),
+    ],
+)
+def test_extension_problem_is_an_environment_problem(
+    empty_database_url: str, error: type[Exception], hint: str
+) -> None:
+    from docreader import db as dbmod
+    from docreader.errors import EnvironmentProblem
+
+    with psycopg.connect(empty_database_url, autocommit=True) as conn:
+        with pytest.raises(EnvironmentProblem, match=hint) as info:
+            dbmod.apply_migrations(_NoExtensionRights(conn, error))  # type: ignore[arg-type]
+        assert "CREATE EXTENSION vector" in str(info.value) or "pgvector" in str(info.value)
+        versions = {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
+        assert "0005_extraction" in versions and "0006_passages" not in versions

@@ -250,4 +250,10 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "max_tokens": 2048,
             "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
         },
+        "embedding": {  # feature 07; base_url is not recorded
+            "model": "bge-m3",
+            "timeout_s": 120,
+            "batch_size": 16,
+            "max_chars": 16000,
+        },
     }

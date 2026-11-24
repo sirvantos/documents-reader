@@ -58,3 +58,7 @@ def test_recognition_is_the_first_stage():
 
 def test_structure_run_stage():
     assert RunStage.STRUCTURE == "structure"
+
+
+def test_run_stage_indexing_equals_stage_indexing():
+    assert RunStage.INDEXING.value == Stage.INDEXING.value

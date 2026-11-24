@@ -106,6 +106,22 @@ class ExtractionSettings:
 
 
 @dataclass(frozen=True)
+class EmbeddingSettings:
+    """Values of the [embedding] section (feature 07, research R-9).
+
+    `base_url` may only point to this machine (`is_local_model_url`, principle I); it is
+    checked here when the file is read and again by `embedding.load_embedder`.
+    """
+
+    base_url: str = "http://127.0.0.1:8081/v1"
+    model: str = "bge-m3"
+    timeout_s: int = 120
+    batch_size: int = 16
+    # at most this many characters of label and text go to the model (research R-6)
+    max_chars: int = 16000
+
+
+@dataclass(frozen=True)
 class Settings:
     data_dir: Path
     database_url: str
@@ -116,6 +132,7 @@ class Settings:
     recognition: RecognitionSettings = field(default_factory=RecognitionSettings)
     structure: StructureSettings = field(default_factory=StructureSettings)
     extraction: ExtractionSettings = field(default_factory=ExtractionSettings)
+    embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -139,6 +156,9 @@ class Settings:
             # base_url is not recorded: it says where the server ran, not how fields were got
             "extraction": {
                 k: v for k, v in asdict(self.extraction).items() if k != "base_url"
+            },
+            "embedding": {
+                k: v for k, v in asdict(self.embedding).items() if k != "base_url"
             },
         }
 
@@ -357,10 +377,26 @@ _SCHEMA["extraction"] = {
     "max_tokens": ("max_tokens", int, lambda v: 256 <= v <= 16384, "целое от 256 до 16384"),
     "extra_body": ("extra_body", dict, lambda v: True, "таблица TOML"),
 }
+_SCHEMA["embedding"] = {
+    # Keys of [embedding] map one-to-one to EmbeddingSettings fields (research R-9).
+    "base_url": (
+        "base_url",
+        str,
+        is_local_model_url,
+        "адрес http(s) на этой машине: localhost, 127.0.0.1 или ::1 (принцип I)",
+    ),
+    "model": ("model", str, lambda v: bool(v.strip()), "непустая строка"),
+    "timeout_s": ("timeout_s", int, lambda v: 1 <= v <= 7200, "целое от 1 до 7200"),
+    "batch_size": ("batch_size", int, lambda v: 1 <= v <= 256, "целое от 1 до 256"),
+    "max_chars": (
+        "max_chars", int, lambda v: 1 <= v <= 1_000_000, "целое от 1 до 1000000"
+    ),
+}
 READING_TABLE = "reading"
 RECOGNITION_TABLE = "recognition"
 STRUCTURE_TABLE = "structure"
 EXTRACTION_TABLE = "extraction"
+EMBEDDING_TABLE = "embedding"
 
 
 def _type_matches(kind: type, value: Any) -> bool:
@@ -394,6 +430,7 @@ def _read_settings_file(data_dir: Path) -> dict:
     recognition_values: dict = {}
     structure_values: dict = {}
     extraction_values: dict = {}
+    embedding_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
@@ -407,6 +444,8 @@ def _read_settings_file(data_dir: Path) -> dict:
             target = structure_values
         elif table == EXTRACTION_TABLE:
             target = extraction_values
+        elif table == EMBEDDING_TABLE:
+            target = embedding_values
         else:
             target = values
         for key, value in entries.items():
@@ -427,4 +466,6 @@ def _read_settings_file(data_dir: Path) -> dict:
         values["structure"] = StructureSettings(**structure_values)
     if EXTRACTION_TABLE in doc:
         values["extraction"] = ExtractionSettings(**extraction_values)
+    if EMBEDDING_TABLE in doc:
+        values["embedding"] = EmbeddingSettings(**embedding_values)
     return values

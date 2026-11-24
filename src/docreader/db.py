@@ -68,11 +68,31 @@ def apply_migrations(conn: psycopg.Connection) -> list[str]:
         if version in applied:
             continue
         sql = path.read_text(encoding="utf-8")
-        with conn.transaction():
-            conn.execute(sql)
-            conn.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (version,))
+        try:
+            with conn.transaction():
+                conn.execute(sql)
+                conn.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (version,))
+        except (psycopg.errors.InsufficientPrivilege, psycopg.errors.UndefinedFile) as exc:
+            if "CREATE EXTENSION" not in sql:
+                raise
+            raise _extension_problem(version, exc) from exc
         done.append(version)
     return done
+
+
+def _extension_problem(version: str, exc: Exception) -> EnvironmentProblem:
+    """pgvector missing or not creatable by this role (feature 07, research R-10)."""
+    if isinstance(exc, psycopg.errors.UndefinedFile):
+        return EnvironmentProblem(
+            f"Миграция {version}: расширение PostgreSQL pgvector не установлено — "
+            "установите его (сервер разработки: apt install postgresql-17-pgvector; "
+            "ноутбук: brew install pgvector) и повторите docreader migrate"
+        )
+    return EnvironmentProblem(
+        f"Миграция {version}: у роли базы нет прав на CREATE EXTENSION vector — "
+        "выполните один раз от суперпользователя CREATE EXTENSION vector в template1 "
+        "и в этой базе, затем повторите docreader migrate"
+    )
 
 
 def ensure_schema_current(conn: psycopg.Connection) -> None:

@@ -41,6 +41,7 @@ class RunStage(StrEnum):
     RECOGNITION = "recognition"
     STRUCTURE = "structure"  # feature 04: parse
     EXTRACTION = "extraction"  # feature 05: extract
+    INDEXING = "indexing"  # feature 07: index
 
 
 STAGES: tuple[Stage, ...] = tuple(Stage)

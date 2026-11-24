@@ -28,7 +28,7 @@ import openai
 from pydantic import BaseModel
 
 from docreader.config import ExtractionSettings, is_local_model_url
-from docreader.errors import EnvironmentProblem
+from docreader.errors import EnvironmentProblem, ModelUnavailable
 from docreader.guards import FORBID_MODELS_ENV, models_forbidden
 
 __all__ = [
@@ -50,10 +50,6 @@ _SILENCED_LOGGERS = (
 )
 
 M = TypeVar("M", bound=BaseModel)
-
-
-class ModelUnavailable(EnvironmentProblem):
-    """The model server did not answer: not started, gone, or too slow. The run stops."""
 
 
 class AnswerFormError(Exception):
