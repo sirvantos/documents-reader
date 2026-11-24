@@ -192,8 +192,8 @@ US3 («не найдено»), US4 (просмотр). US1–US3 — P1, US4 —
 - [X] T032 [analyst] Quickstart Б3: one contract — `extract D-… --json` seconds, peak memory of the model server, thinking on or off; send the numbers only
 - [X] T033 [opus] Write Б1 and Б3 into `docs/tech-context.md` («Языковая модель» — speed, memory; «Способ запуска модели» — the chosen server, replacing «[проверить]»; `extra_body` used) and research.md R-13; adjust `[extraction]` defaults only if a number requires it
 - [X] T034 [analyst] Quickstart Б2: `DOCREADER_TEST_DATABASE_URL=postgresql:///postgres uv run python -m tests.synthetic.record_extraction --quantization … --server …`; commit `tests/recordings/05-field-extraction/` and push; then the main session writes T026 and runs it on the dev server
-- [ ] T035 [analyst] Quickstart Б4–Б5: `extract --all`, `scripts/quickstart_extraction.py`, manual check of the 10 selected contracts; send the `extract` summary, the script output and the counts of Б5 only (no `fields` output)
-- [ ] T036 [opus] Write the Б results into `docs/tech-context.md` («Извлечение полей (фича 05), замер …»: time for the set, results per field, SC-001…SC-004) and the feature report; a systematic error from Б5 → a synthetic case in `make_extraction_contracts` (bump `GENERATOR_VERSION`, re-record T034) and a failing test first (CLAUDE.md «Delivery»)
+- [X] T035 [analyst] Quickstart Б4–Б5: `extract --all`, `scripts/quickstart_extraction.py`, manual check of the 10 selected contracts; send the `extract` summary, the script output and the counts of Б5 only (no `fields` output)
+- [X] T036 [opus] Write the Б results into `docs/tech-context.md` («Извлечение полей (фича 05), замер …»: time for the set, results per field, SC-001…SC-004) and the feature report; a systematic error from Б5 → a synthetic case in `make_extraction_contracts` (bump `GENERATOR_VERSION`, re-record T034) and a failing test first (CLAUDE.md «Delivery»)
 
 ---
 
