@@ -1,0 +1,53 @@
+{
+ "variant": "parties",
+ "generator_version": 1,
+ "prompt_version": "09.1",
+ "prompt_sha256": "18d8dd36029b5ad8b63777c6ab10c0bd8a2315a8b401f93a31f7201147ce50b9",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx_lm.server 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 2048,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-25T18:29:21+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "084d48c98676a786b7d399dc14f201357c59186675643328acbea9046c238220",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-5c3d44c9-220f-437f-b7c3-152f1cbeb561",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795631339,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"kind\": \"answer\",\n  \"claims\": [\n    {\n      \"text\": \"Подрядчиком по договору является ООО «Бета».\",\n      \"clause\": \"D-0001/преамбула\",\n      \"quote\": \"ООО «Бета», именуемое в дальнейшем Подрядчик\"\n    }\n  ]\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 997,
+     "completion_tokens": 91,
+     "total_tokens": 1088,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+{
+ "variant": "payment",
+ "generator_version": 1,
+ "prompt_version": "09.1",
+ "prompt_sha256": "18d8dd36029b5ad8b63777c6ab10c0bd8a2315a8b401f93a31f7201147ce50b9",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx_lm.server 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 2048,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-25T18:28:59+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "191461286b3393c12ccebe9784fd7bd82cd7758278f6bfaafa7597c7db6667e0",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-cf280fb8-c935-4e1a-b33c-7de814c12425",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795631314,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"kind\": \"answer\",\n  \"claims\": [\n    {\n      \"text\": \"Срок оплаты товара составляет 30 дней с даты поставки.\",\n      \"clause\": \"D-0001/2.2\",\n      \"quote\": \"2.2. Срок оплаты товара составляет 30 дней с даты поставки.\"\n    }\n  ]\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1295,
+     "completion_tokens": 90,
+     "total_tokens": 1385,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}
