@@ -236,5 +236,19 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   analyst's questions (a TOML file in the data folder, never in the repository); its output
   (numbers and ids only) may be sent. Test fakes: `TopicEmbedder`
   (tests/fakes/embedding.py), `TableReranker` (tests/fakes/reranker.py); no recordings.
+- `uv run docreader ask "…" [--document ID] [--passages N] [--json]` — the answer with checked
+  quotes (feature 09): the search of feature 08 finds passages (with `--document` the
+  contract's preamble is always shown too), the language model answers with claims, each with
+  a clause and a quote, and the program checks every quote (`textnorm.locate`), retrying once
+  for the quotes not found. It needs the language model (`[extraction]` in `settings.toml`,
+  `[answer]` for its own values), the search model and the reranker, on the Mac only; stops
+  with exit 2 here (`DOCREADER_FORBID_MODELS`). Nothing is written to the database. Its output
+  contains contract text, so on real contracts it is never sent to the agent (its first line —
+  outcome, counts, time — may be). `scripts/quickstart_answers.py --questions FILE` — the answer
+  measurement on the analyst's questions (a TOML file in the data folder, never in the
+  repository): its summary (numbers and ids only) may be sent, the answers file
+  (`answers-b4-….txt`, contract text) never. Recordings of model answers:
+  `python -m tests.synthetic.record_answers` (synthetic files only; on the Mac, where the model
+  runs); test fakes `ScriptedModel`, `RecordedModel` with `tests/recordings/09-text-answers/`.
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).

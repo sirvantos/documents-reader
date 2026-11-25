@@ -513,3 +513,78 @@ def test_http_error_is_failed(cli, indexed, use_model) -> None:
     report = run(cli, SECRET, "--document", "D-0001", code=1)
     assert report["outcome"] == "failed"
     assert report["failure"] == "сервер модели отклонил запрос: HTTP 400"
+
+
+# --- the measurement script (task T015) -------------------------------------------------
+
+
+def _measurement_module():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "quickstart_answers_it", root / "scripts" / "quickstart_answers.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_measurement_script(cli, tmp_path, indexed, use_model, capsys) -> None:
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "synthetic" / "answer_questions.toml"
+    questions = tmp_path / "questions" / "set.toml"
+    questions.parent.mkdir()
+    questions.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    texts = ["Какой срок оплаты?", "Кто подрядчик?", "Предусмотрен ли аванс?"]
+    use_model(
+        ScriptedModel(
+            reply(claim(QUOTE_PAYMENT, text="Оплата — 30 дней.")),
+            reply(claim(QUOTE_PARTIES, "D-0001/преамбула", "Подрядчик — ООО «Бета».")),
+            reply(kind="not_found"),
+        )
+    )
+
+    qa = _measurement_module()
+    assert qa.main(["--questions", str(questions)]) == 0
+    out = capsys.readouterr().out
+
+    assert "Б4. Замер ответов: 4 вопроса (с ответом 3, без ответа 1), ошибок в наборе 1" in out
+    assert f"версия кода: {code_version()}" in out
+    models = (
+        "модели: ответ fake-model (подсказка 09.1), поиск fake-embedder, реранкер fake-reranker"
+    )
+    assert models in out
+    lines = out.splitlines()
+
+    def row(n: str) -> str:
+        return next(line for line in lines if line.split()[:1] == [n])
+
+    assert row("1").split()[:4] == ["1", "D-0001", "answer", "answered"]
+    assert "1 / 0" in row("1")
+    assert row("2").split()[:4] == ["2", "D-0001", "answer", "answered"]
+    assert row("3").split()[:4] == ["3", "D-0001", "none", "not_found"]
+    assert "ошибка в наборе" in row("4") and "D-0099" in row("4")
+    assert "отказов на «none»" in out and "1 из 1 (100%)" in out
+    assert "повторная проверка цитат: проверено 2, не найдено 0" in out
+    assert "повторов запроса: 0" in out
+
+    (answers_file,) = questions.parent.glob("answers-b4-2*.txt")
+    (summary_file,) = questions.parent.glob("answers-b4-summary-*.txt")
+    answers_text = answers_file.read_text(encoding="utf-8")
+    for n, text in enumerate(texts, start=1):
+        assert f"{n}. {text}" in answers_text
+    assert f"«{QUOTE_PAYMENT}»" in answers_text and "D-0001/преамбула" in answers_text
+    assert "в документах ответ не найден" in answers_text
+
+    summary_text = summary_file.read_text(encoding="utf-8")
+    for shown in (out, summary_text):
+        for text in texts:
+            assert text not in shown
+        for line in CONTRACT_LINES:
+            assert line not in shown

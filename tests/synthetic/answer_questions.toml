@@ -1,0 +1,24 @@
+# The test set of the answer measurement (feature 09, task T015) on the synthetic contracts
+# of `make_answer_contracts` (D-0001 = answer-a, D-0002 = answer-b). Fictional only.
+# The analyst's real set lives in the data folder, never here (principle I).
+
+[[question]]
+text = "Какой срок оплаты?"
+document = "D-0001"
+expected = "answer"
+
+[[question]]
+text = "Кто подрядчик?"
+document = "D-0001"
+expected = "answer"
+
+[[question]]
+text = "Предусмотрен ли аванс?"
+document = "D-0001"
+expected = "none"
+
+# an error in the set: no such contract — the row is marked, the others are asked
+[[question]]
+text = "Какой срок оплаты?"
+document = "D-0099"
+expected = "answer"

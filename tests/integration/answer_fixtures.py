@@ -9,6 +9,7 @@ variants from here, so that the request to the language model is the same in bot
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from tests.fakes.embedding import TopicEmbedder
@@ -20,6 +21,28 @@ ANSWER_TOPICS = {
     "penalty": ["неустойк"],
     "warranty": ["гарант"],
     "parties": ["заказчик", "подрядчик"],
+}
+
+# The reranker puts payment first, then the penalty, then the warranty; the preamble scores
+# the default 0, so with two passages the preamble is added by the rule (FR-010).
+ANSWER_SCORES = {"оплат": 9.0, "неустойк": 8.0, "гарант": 7.0}
+
+
+@dataclass(frozen=True)
+class AnswerVariant:
+    """One recorded question: asked in `document` with `passages` found passages."""
+
+    question: str
+    document: str
+    passages: int
+
+
+# The variants of the recordings (contracts/model.md): the answer is in the text, in the
+# preamble added by the rule, or nowhere.
+ANSWER_VARIANTS = {
+    "payment": AnswerVariant("Какой срок оплаты?", "D-0001", 8),
+    "parties": AnswerVariant("Кто подрядчик?", "D-0001", 2),
+    "absent": AnswerVariant("Предусмотрен ли аванс?", "D-0001", 8),
 }
 
 # Clause texts of `answer-a` the tests quote verbatim.
