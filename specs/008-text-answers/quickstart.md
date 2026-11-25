@@ -52,8 +52,12 @@ llama-server -m ~/models/bge-reranker-v2-m3-Q8_0.gguf --reranking -c 8192 -b 819
 ### Б1. Реальная модель на синтетике (уровень 3)
 
 ```bash
-uv run --env-file .env pytest -m real_model tests/real_model/test_answer_server.py
+DOCREADER_TEST_DATABASE_URL="postgresql:///postgres?port=5433" \
+  uv run --env-file .env pytest -m real_model tests/real_model/test_answer_server.py
 ```
+
+База тестов — PostgreSQL 17 с pgvector на порту 5433 (на 5432 на ноутбуке старый
+PostgreSQL 15 без pgvector: миграция 0006 падает с «расширение pgvector не установлено»).
 
 Ожидается: проходит; вопрос с ответом — `answered` с найденными цитатами, без
 ответа — `not_found`. **Можно прислать**: вывод pytest.
@@ -61,7 +65,7 @@ uv run --env-file .env pytest -m real_model tests/real_model/test_answer_server.
 ### Б2. Записи ответов для автотестов (уровень 2)
 
 ```bash
-DOCREADER_TEST_DATABASE_URL=postgresql:///postgres \
+DOCREADER_TEST_DATABASE_URL="postgresql:///postgres?port=5433" \
   uv run python -m tests.synthetic.record_answers --quantization "4 бита" --server "mlx_lm.server 0.32.2"
 git add tests/recordings/09-text-answers && git commit -m "test(answers): recordings of the real model on synthetic contracts" && git push
 ```
