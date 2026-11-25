@@ -383,3 +383,11 @@ def test_default_questions_path(tmp_path: Path) -> None:
     assert qa.questions_path("x.toml", env) == Path("x.toml")
     with pytest.raises(qa.QuestionsFileError):
         qa.questions_path(None, {})
+
+
+def test_questions_path_expands_the_home_folder(monkeypatch, tmp_path: Path) -> None:
+    # `.env` may hold `DOCREADER_DATA_DIR=~/…` (config.py expands it too)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    env = {"DOCREADER_DATA_DIR": "~/data"}
+    assert qa.questions_path(None, env) == tmp_path / "data" / "questions" / "answers-09.toml"
+    assert qa.questions_path("~/q.toml", env) == tmp_path / "q.toml"

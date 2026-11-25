@@ -265,10 +265,10 @@ def render_servers(states: Sequence[ServerState]) -> list[str]:
 
 def questions_path(arg: str | None, env: Mapping[str, str]) -> Path:
     if arg:
-        return Path(arg)
-    data_dir = env.get("DOCREADER_DATA_DIR")
-    if data_dir:
-        return Path(data_dir) / "questions" / "answers-09.toml"
+        return Path(arg).expanduser()
+    data_dir = env.get("DOCREADER_DATA_DIR", "").strip()
+    if data_dir:  # `~` expanded as in config.load_settings
+        return Path(data_dir).expanduser() / "questions" / "answers-09.toml"
     raise QuestionsFileError("укажите --questions или задайте DOCREADER_DATA_DIR")
 
 
