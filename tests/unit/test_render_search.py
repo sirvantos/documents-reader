@@ -191,3 +191,31 @@ def test_parse_search_needs_query() -> None:
 
 def test_search_help_exits_zero() -> None:
     assert main(["search", "--help"]) == 0
+
+
+def test_parse_ask_arguments() -> None:
+    args = _build_parser().parse_args(["ask", "Какой срок оплаты?"])
+    assert args.command == "ask"
+    assert args.question == "Какой срок оплаты?"
+    assert args.document is None
+    assert args.passages is None
+    assert args.json is False
+
+
+def test_parse_ask_options() -> None:
+    args = _build_parser().parse_args(
+        ["ask", "срок", "--document", "D-0015", "--passages", "4", "--json"]
+    )
+    assert args.document == "D-0015"
+    assert args.passages == 4
+    assert args.json is True
+
+
+def test_parse_ask_passages_must_be_int() -> None:
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["ask", "срок", "--passages", "много"])
+
+
+def test_parse_ask_needs_question() -> None:
+    with pytest.raises(SystemExit):
+        _build_parser().parse_args(["ask"])

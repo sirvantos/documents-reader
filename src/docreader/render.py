@@ -7,17 +7,22 @@ from __future__ import annotations
 
 import csv
 import io
+import itertools
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import PurePath
 from typing import TYPE_CHECKING
 
+from docreader.answer_check import AnswerOutcome, ClaimStatus
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
 from docreader.quality import FLAG_NAMES, FLAG_ORDER
 from docreader.stages import STAGES, Stage, State
 
 if TYPE_CHECKING:
+    from docreader.answer import Answer
+    from docreader.answer_check import CheckedClaim, ShownPassage
     from docreader.clauseview import ClauseView, Outline, OutlineRecord
     from docreader.extraction import ExtractedDocument, ExtractRun
     from docreader.fieldview import FieldsView, FieldView
@@ -1201,5 +1206,121 @@ def render_search_text(result: SearchResult) -> str:
     for position, block in enumerate(blocks):
         if position:
             lines.append("")
+        lines += block
+    return "\n".join(lines) + "\n"
+
+
+_ANSWER_INDENT = "   "
+_ANSWER_NO_PASSAGES = "Просмотрено: отрывков не найдено"
+
+
+def render_answer_json(answer: Answer) -> str:
+    """Text of `docreader ask --json` (contracts/cli.md «--json»)."""
+    return json.dumps(answer.to_json(), ensure_ascii=False, indent=2)
+
+
+def _answer_head(answer: Answer) -> str:
+    scope = f"Вопрос в {answer.document_id}" if answer.document_id else "Вопрос по всем договорам"
+    total = len(answer.claims)
+    confirmed = sum(1 for claim in answer.claims if claim.confirmed)
+    if answer.outcome == AnswerOutcome.ANSWERED:
+        verdict = f"ответ: подтверждено {confirmed} из {total} утверждений"
+    elif answer.outcome == AnswerOutcome.UNCONFIRMED:
+        verdict = f"подтверждённого ответа нет: ни одна из {total} цитат не найдена"
+    elif answer.outcome == AnswerOutcome.NOT_FOUND:
+        verdict = "в документах ответ не найден"
+    else:
+        verdict = "ошибка ответа модели"
+        if answer.failure:
+            verdict += f": {answer.failure}"
+    seconds = f"{answer.seconds:.1f}".replace(".", ",")
+    return f"{scope} — {verdict}, {seconds} с"
+
+
+def _page_list_text(pages: Sequence[int]) -> str:
+    """«1» for one page, «1–2» for consecutive pages, «1, 3» otherwise."""
+    consecutive = all(later - earlier == 1 for earlier, later in itertools.pairwise(pages))
+    if len(pages) > 1 and consecutive:
+        return f"{pages[0]}–{pages[-1]}"
+    return ", ".join(str(page) for page in pages)
+
+
+def _place_text(place: int | None) -> str:
+    return "—" if place is None else str(place)
+
+
+def _confirmed_lines(claims: Sequence[CheckedClaim]) -> list[str]:
+    lines: list[str] = []
+    for number, claim in enumerate(claims, start=1):
+        lines.append(f"{number}. {claim.text}")
+        lines.append(f'{_ANSWER_INDENT}«{claim.quote_text or ""}»')
+        reference = f"{claim.clause_id or ''}, стр. {_page_list_text(claim.pages)}"
+        if claim.status == ClaimStatus.CONFIRMED_ELSEWHERE:
+            reference += f" (ссылка исправлена: модель указала {claim.named_clause})"
+        lines.append(_ANSWER_INDENT + reference)
+    return lines
+
+
+def _unconfirmed_lines(claims: Sequence[CheckedClaim]) -> list[str]:
+    lines = ["Не подтверждено (цитата не найдена):"]
+    for claim in claims:
+        suffix = " (нет цитаты)" if claim.status == ClaimStatus.NO_QUOTE else ""
+        lines.append(f"- {claim.text}{suffix}")
+    return lines
+
+
+def _shown_lines(shown: Sequence[ShownPassage]) -> list[str]:
+    if not shown:
+        return [_ANSWER_NO_PASSAGES]
+    lines = [f"Просмотрено ({len(shown)}):"]
+    for number, passage in enumerate(shown, start=1):
+        if passage.added_by_rule:
+            marker = "—"
+            tail = "(добавлена правилом)"
+        else:
+            marker = f"{number}."
+            tail = (
+                f"(слова {_place_text(passage.word_place)}, "
+                f"смысл {_place_text(passage.vector_place)})"
+            )
+        pages = _pages_text(passage.first_page, passage.last_page)
+        lines.append(
+            f"  {marker:<2} {passage.clause_id}  {pages}  {passage.label}  {tail}"
+        )
+    return lines
+
+
+def render_answer_text(answer: Answer) -> str:
+    """Text of `docreader ask` (contracts/cli.md «Текстовый вывод»)."""
+    lines = [_answer_head(answer)]
+    lines += [f"! {warning}" for warning in answer.warnings]
+    blocks: list[list[str]] = []
+    confirmed = [claim for claim in answer.claims if claim.confirmed]
+    unconfirmed = [claim for claim in answer.claims if not claim.confirmed]
+    if confirmed:
+        blocks.append(_confirmed_lines(confirmed))
+    if unconfirmed:
+        blocks.append(_unconfirmed_lines(unconfirmed))
+    if answer.retried:
+        blocks.append(
+            [
+                f"Повтор запроса: цитат не найдено {answer.not_found_first}, "
+                f"после повтора {answer.not_found_final}"
+            ]
+        )
+    blocks.append(_shown_lines(answer.shown))
+    provenance = answer.provenance
+    reranker = provenance.reranker_model or "выключен"
+    blocks.append(
+        [
+            f"Получено: код {provenance.code_version}; "
+            f"модель {provenance.llm_model}, подсказка {provenance.prompt_version}; "
+            f"поиск {provenance.embedding_model}, реранкер {reranker}; "
+            f"отрывков {provenance.passages}, кандидатов {provenance.candidates}, "
+            f"rrf_k {provenance.rrf_k}, реранкер читает {provenance.rerank_candidates}"
+        ]
+    )
+    for block in blocks:
+        lines.append("")
         lines += block
     return "\n".join(lines) + "\n"

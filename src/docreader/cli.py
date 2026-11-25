@@ -11,6 +11,7 @@ from pathlib import Path
 import psycopg
 
 from docreader import (
+    answer,
     clauseview,
     db,
     extraction,
@@ -25,6 +26,7 @@ from docreader import (
     search,
     textview,
 )
+from docreader.answer_check import AnswerOutcome
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
 from docreader.ids import format_document_id, parse_clause_id, parse_document_id
@@ -35,6 +37,8 @@ from docreader.render import (
     NO_SCAN_DOCUMENTS,
     NOTHING_TO_EXTRACT,
     NOTHING_TO_INDEX,
+    render_answer_json,
+    render_answer_text,
     render_clause_text,
     render_document_text,
     render_extract_text,
@@ -158,6 +162,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-rerank", action="store_true", help="без реранкера на этот запуск")
     p.add_argument("--results", type=int, metavar="N", help="сколько отрывков показать")
     p.add_argument("--document", metavar="ID", help="искать только в этом договоре (D-0015)")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("ask", help="ответить на вопрос по текстам договоров с проверкой цитат")
+    p.add_argument("question", metavar="ВОПРОС", help="вопрос о договорах")
+    p.add_argument("--document", metavar="ID", help="ответить по одному договору (D-0015)")
+    p.add_argument("--passages", type=int, metavar="N", help="сколько отрывков дать модели")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("recognize", help="распознать страницы-сканы")
@@ -528,6 +538,24 @@ def _cmd_passage(args: argparse.Namespace, settings: Settings, conn: psycopg.Con
     return 0
 
 
+def _cmd_ask(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    limit = settings.search.rerank_candidates
+    if args.passages is not None and not 1 <= args.passages <= limit:
+        raise UserError(f"--passages: целое от 1 до {limit}")
+    result = answer.ask(
+        conn,
+        settings,
+        args.question,
+        document_id=args.document,
+        passages=args.passages,
+    )
+    if args.json:
+        print(render_answer_json(result))
+    else:
+        print(render_answer_text(result), end="")
+    return 1 if result.outcome == AnswerOutcome.FAILED else 0
+
+
 def _cmd_search(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
     result = search.search(
         conn,
@@ -649,6 +677,7 @@ _HANDLERS: dict[str, _Handler] = {
     "clause": _cmd_clause,
     "passage": _cmd_passage,
     "search": _cmd_search,
+    "ask": _cmd_ask,
     "read-report": _cmd_read_report,
     "recognize-report": _cmd_recognize_report,
     "recognize-eval": _cmd_recognize_eval,
