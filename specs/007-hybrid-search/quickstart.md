@@ -98,9 +98,13 @@ source = "analyst"
 Свои ответы проверяются до замера: `docreader passage D-0015/2.2.1` должен показать
 пункт, который отвечает на вопрос.
 
+После изменения правила слов (задача T027, «№» → «номер») индекс строится заново:
+`uv run --env-file .env docreader index --all`.
+
 ```bash
-uv run --env-file .env python scripts/quickstart_search.py \
-  --questions "$DOCREADER_DATA_DIR/questions/rerank-08.toml"
+# переменная DOCREADER_DATA_DIR есть только в .env, поэтому путь раскрывает sh внутри uv run
+uv run --env-file .env sh -c \
+  'python scripts/quickstart_search.py --questions "$DOCREADER_DATA_DIR/questions/rerank-08.toml"'
 ```
 
 Ожидается: таблица мест и времени, итог и строка «Решение (FR-014)». SC-003 для поиска в одном договоре — медиана

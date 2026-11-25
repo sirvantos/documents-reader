@@ -2,7 +2,9 @@
 
 One `pymorphy3` analyzer per process (shared with `values`) and `lemmatize`, which turns
 a text into the space-joined dictionary forms of its words. Words that contain a digit
-(contract numbers, clause numbers, document ids) are kept exactly as written.
+(contract numbers, clause numbers, document ids) are kept exactly as written. The number
+sign «№» is the word «номер»: contracts write their number only with the sign, questions ask
+for «номер» (feature 08, quickstart Б3).
 """
 
 from __future__ import annotations
@@ -15,6 +17,12 @@ from typing import Any
 # ("ДП-17/2026", "5.2.1", "D-0001"); a trailing dot ("3.1.") is not part of the word.
 _WORD = re.compile(r"[^\W_]+(?:[-/.][^\W_]+)*")
 _HAS_DIGIT = re.compile(r"\d")
+_NUMBER_SIGN = "№"
+
+
+def _words(text: str) -> list[str]:
+    """The words of `text` in order, each «№» read as the word «номер»."""
+    return [m.group() for m in _WORD.finditer(text.replace(_NUMBER_SIGN, " номер "))]
 
 
 @cache
@@ -39,7 +47,7 @@ def lemmatize(text: str) -> str:
     """Dictionary forms of the words of `text`, joined by single spaces in text order."""
     forms = [
         word if _HAS_DIGIT.search(word) else _normal_form(word)
-        for word in (m.group() for m in _WORD.finditer(text))
+        for word in _words(text)
     ]
     return " ".join(forms)
 
@@ -61,8 +69,7 @@ def query_terms(query: str) -> list[str]:
     """
     terms: list[str] = []
     seen: set[str] = set()
-    for match in _WORD.finditer(query):
-        word = match.group()
+    for word in _words(query):
         if _HAS_DIGIT.search(word):
             term = word.lower()
         elif _is_function_word(word):

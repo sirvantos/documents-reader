@@ -15,7 +15,16 @@ def test_inflected_forms_become_the_dictionary_form() -> None:
 
 
 def test_words_with_a_digit_are_kept_as_written() -> None:
-    assert lemmatize("Договор № ДП-17/2026, пункт 5.2.1") == "договор ДП-17/2026 пункт 5.2.1"
+    assert lemmatize("Договор № ДП-17/2026, пункт 5.2.1") == "договор номер ДП-17/2026 пункт 5.2.1"
+
+
+# The number sign is the word «номер» (feature 08, quickstart Б3: «Какой номер договора?»
+# found nothing by words, the contracts write the number only as «№ …»; task T027).
+def test_number_sign_is_the_word_number() -> None:
+    assert lemmatize("№ 5") == "номер 5"
+    assert lemmatize("№5") == "номер 5"
+    assert lemmatize("Договор №ДП-17/2026") == "договор номер ДП-17/2026"
+    assert lemmatize("№№ 1–3") == "номер номер 1 3"
 
 
 def test_comma_and_percent_are_separators() -> None:

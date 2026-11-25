@@ -51,3 +51,11 @@ def test_same_forms_as_the_index() -> None:
     text = "Покупатель оплачивает неустойку по договору № ДП-17/2026"
     index_tokens = {t.lower() for t in lemmatize(text).split()}
     assert set(query_terms(text)) <= index_tokens
+
+
+# The number sign is the word «номер» in a query too (task T027).
+def test_number_sign_is_the_word_number() -> None:
+    assert query_terms("№ 5") == ["номер", "5"]
+    assert query_terms("договор №ДП-17/2026") == ["договор", "номер", "дп-17/2026"]
+    assert query_terms("номер №") == ["номер"]
+    assert "номер" in query_terms("Какой номер договора?")

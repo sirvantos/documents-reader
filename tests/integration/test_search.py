@@ -75,6 +75,22 @@ def test_number_found_by_words(cli, indexed) -> None:
     assert report["word_candidates"] == 2  # the preamble of D-0001 holds the number too
 
 
+# Quickstart Б3 (task T027): the contracts write the number as «№ …» only, so «номер» in a
+# question found nothing by words. In D-0001 the sign stands in the preamble and in 1.1.
+def test_word_number_finds_the_number_sign(cli, indexed) -> None:
+    report = run(cli, "номер", "--document", "D-0001")
+    assert WORDS_FOUND_NOTHING not in report["warnings"]
+    assert report["word_candidates"] == 2
+    by_words = sorted((h for h in report["hits"] if h["word_place"] is not None),
+                      key=lambda h: h["word_place"])
+    assert {h["clause_id"] for h in by_words} == {"D-0001/преамбула", "D-0001/1.1"}
+
+
+def test_number_question_puts_the_preamble_first_by_words(cli, indexed) -> None:
+    report = run(cli, "Какой номер договора?", "--document", "D-0001")
+    assert hit(report, "D-0001/преамбула")["word_place"] in (1, 2)
+
+
 def test_paraphrase_found_by_meaning_only(cli, indexed) -> None:
     report = run(cli, "куда переводить деньги")
     found = hit(report, "D-0002/2.3")
