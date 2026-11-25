@@ -6,7 +6,8 @@ takes them (contracts/model.md).
 
 - `ScriptedModel` — answers written in the test (level 1).
 - `RecordedModel` — answers recorded from the real model on synthetic contracts by
-  `python -m tests.synthetic.record_extraction` (level 2). Never edited by hand.
+  `python -m tests.synthetic.record_extraction` (feature 05) or
+  `python -m tests.synthetic.record_answers` (feature 09) (level 2). Never edited by hand.
 """
 
 from __future__ import annotations
@@ -31,9 +32,9 @@ _BODY_KEYS = ("messages", "model", "temperature", "seed", "max_tokens")
 class StaleRecording(AssertionError):
     """A recording does not match the code: re-record it on the analyst's Mac."""
 
-    def __init__(self, variant: str, detail: str) -> None:
+    def __init__(self, variant: str, detail: str, rerecord: str = RERECORD) -> None:
         super().__init__(
-            f"запись {variant} устарела: перезапишите ответы на ноутбуке — {RERECORD} ({detail})"
+            f"запись {variant} устарела: перезапишите ответы на ноутбуке — {rerecord} ({detail})"
         )
 
 
@@ -117,10 +118,12 @@ class ScriptedModel:
         return httpx2.Response(404, json={"error": f"unexpected {request.method} {request.url}"})
 
 
-def load_recording(variant: str, recordings_dir: Path = RECORDINGS_DIR) -> dict[str, Any]:
+def load_recording(
+    variant: str, recordings_dir: Path = RECORDINGS_DIR, rerecord: str = RERECORD
+) -> dict[str, Any]:
     path = recordings_dir / f"{variant}.json"
     if not path.is_file():
-        raise StaleRecording(variant, f"нет файла {path.name}")
+        raise StaleRecording(variant, f"нет файла {path.name}", rerecord)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -142,6 +145,7 @@ class RecordedModel:
         prompt_sha256: str | None = None,
         generator_version: int | None = None,
         recordings_dir: Path = RECORDINGS_DIR,
+        rerecord: str = RERECORD,
     ) -> None:
         if prompt_version is None or prompt_sha256 is None:
             from docreader import extraction_prompt
@@ -153,7 +157,8 @@ class RecordedModel:
 
             generator_version = GENERATOR_VERSION
         self.variant = variant
-        self.recording = load_recording(variant, recordings_dir)
+        self.rerecord = rerecord
+        self.recording = load_recording(variant, recordings_dir, rerecord)
         for key, expected in (
             ("prompt_version", prompt_version),
             ("prompt_sha256", prompt_sha256),
@@ -161,7 +166,9 @@ class RecordedModel:
         ):
             if self.recording.get(key) != expected:
                 raise StaleRecording(
-                    variant, f"{key}: в записи {self.recording.get(key)!r}, в коде {expected!r}"
+                    variant,
+                    f"{key}: в записи {self.recording.get(key)!r}, в коде {expected!r}",
+                    rerecord,
                 )
         self._by_request: dict[str, list[dict[str, Any]]] = {}
         for exchange in sorted(self.recording["exchanges"], key=lambda e: e["attempt"]):
@@ -184,7 +191,9 @@ class RecordedModel:
     def assert_fresh(self) -> None:
         if self.unknown_requests:
             raise StaleRecording(
-                self.variant, f"запросов нет в записи: {len(self.unknown_requests)}"
+                self.variant,
+                f"запросов нет в записи: {len(self.unknown_requests)}",
+                self.rerecord,
             )
 
 
