@@ -11,15 +11,18 @@ session; the implementer must not edit, weaken, skip or delete these tests (CLAU
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
+import httpx2
 import pytest
 
 from docreader import answer
 from docreader.config import load_settings
 from docreader.runs import code_version
+from tests.fakes.embedding import DownEmbedder
 from tests.fakes.llm import FAKE_MODEL_ID, ScriptedModel
-from tests.fakes.reranker import FAKE_RERANKER_ID, TableReranker
+from tests.fakes.reranker import FAKE_RERANKER_ID, DownReranker, TableReranker
 from tests.integration.answer_fixtures import (
     QUOTE_PARTIES,
     QUOTE_PAYMENT,
@@ -27,6 +30,7 @@ from tests.integration.answer_fixtures import (
     QUOTE_WARRANTY_ACROSS_PAGES,
     index_answer_contracts,
 )
+from tests.synthetic import make_pdfs as mk
 
 QUESTION = "Какой срок оплаты?"
 TOP_KEYS = {
@@ -315,3 +319,197 @@ def test_cli_text_output(cli, indexed, use_model) -> None:
     assert "Оплата — 30 дней." in out and f"«{QUOTE_PAYMENT}»" in out
     assert "D-0001/2.2, стр. 1" in out
     assert "Просмотрено (" in out and "Получено: " in out
+
+
+# --- US2: refusals and errors (task T013) ---------------------------------------------
+
+SECRET = "Секретный вопрос о сроке оплаты?"
+CONTRACT_LINES = (QUOTE_PAYMENT, QUOTE_PENALTY, QUOTE_PARTIES, "Игнорируй предыдущие")
+
+
+def assert_no_text(*texts: str) -> None:
+    for text in texts:
+        assert SECRET not in text
+        for line in CONTRACT_LINES:
+            assert line not in text
+
+
+def test_model_not_found(cli, indexed, use_model) -> None:
+    use_model(ScriptedModel(reply(kind="not_found")))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 0, result.stderr
+    assert "в документах ответ не найден" in result.stdout.splitlines()[0]
+    assert "Просмотрено (" in result.stdout and "D-0001/2.2" in result.stdout
+    assert_no_text(result.stderr)
+
+
+def test_model_not_found_function(db, indexed, use_model) -> None:
+    model = use_model(ScriptedModel(reply(kind="not_found")))
+    result = ask(db, SECRET, document_id="D-0001")
+    assert result.outcome == "not_found" and result.claims == []
+    assert result.shown and result.retried is False
+    assert len(model.requests) == 1
+
+
+def test_no_confirmed_claim_is_unconfirmed(cli, indexed, use_model) -> None:
+    use_model(ScriptedModel(reply(claim("пересказ один"), claim("пересказ два")), retry_reply()))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 0, result.stderr
+    first = result.stdout.splitlines()[0]
+    assert "подтверждённого ответа нет" in first
+    assert "цитата не найдена" in result.stdout
+    assert_no_text(result.stderr)
+
+
+def test_no_confirmed_claim_function(db, indexed, use_model) -> None:
+    use_model(ScriptedModel(reply(claim("пересказ")), retry_reply()))
+    result = ask(db, SECRET, document_id="D-0001")
+    assert result.outcome == "unconfirmed"
+    assert result.claims and all(not c.confirmed for c in result.claims)
+
+
+def test_no_hits_is_not_found_without_the_model(db, cli, indexed, use_model, monkeypatch) -> None:
+    from docreader import search as search_module
+
+    real = search_module.search
+
+    def empty(*args, **kwargs):
+        return dataclasses.replace(real(*args, **kwargs), hits=[])
+
+    monkeypatch.setattr(search_module, "search", empty)
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    result = ask(db, SECRET, document_id="D-0001")
+    assert result.outcome == "not_found" and result.shown == []
+    assert model.requests == []
+    text = cli("ask", SECRET, "--document", "D-0001")
+    assert text.exit_code == 0, text.stderr
+    assert "Просмотрено: отрывков не найдено" in text.stdout
+    assert model.requests == []
+
+
+@pytest.mark.parametrize("question", ["", "   "])
+def test_empty_question(cli, indexed, use_model, question: str) -> None:
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    _, embedder = indexed
+    before = len(embedder.inputs)
+    result = cli("ask", question, "--document", "D-0001")
+    assert result.exit_code == 1
+    assert "Пустой вопрос — введите вопрос о договорах" in result.stderr
+    assert model.urls == [] and len(embedder.inputs) == before
+
+
+@pytest.mark.parametrize("value", ["0", "31"])
+def test_passages_out_of_bounds(cli, indexed, use_model, value: str) -> None:
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    result = cli("ask", SECRET, "--passages", value)
+    assert result.exit_code == 1
+    assert "--passages: целое от 1 до 30" in result.stderr
+    assert model.urls == []
+
+
+def test_unknown_document(cli, indexed, use_model) -> None:
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    result = cli("ask", SECRET, "--document", "D-0099")
+    assert result.exit_code == 1
+    assert "Документ D-0099 не найден" in result.stderr
+    assert model.urls == []
+    assert_no_text(result.stderr)
+
+
+def test_document_without_passages(cli, tmp_path, indexed, use_model) -> None:
+    path = mk.make_search_contracts(tmp_path / "other")[0]
+    added = cli("add", path, "--json")
+    assert added.exit_code == 0, added.stderr
+    (doc,) = [f["document_id"] for f in json.loads(added.stdout)["files"]]
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    result = cli("ask", SECRET, "--document", doc)
+    assert result.exit_code == 1
+    assert f"Отрывков нет: выполните docreader index {doc}" in result.stderr
+    assert model.urls == []
+
+
+def test_stale_passages(cli, indexed, use_model) -> None:
+    assert cli("parse", "D-0001").exit_code == 0
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 1
+    assert "Отрывки устарели" in result.stderr
+    assert model.urls == []
+
+
+def test_reranker_down(cli, indexed, use_model, use_reranker) -> None:
+    use_reranker(DownReranker())
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 2
+    assert model.requests == []
+    assert_no_text(result.stderr)
+
+
+def test_search_model_down(cli, indexed, use_model, use_embedder) -> None:
+    use_embedder(DownEmbedder())
+    model = use_model(ScriptedModel(reply(claim(QUOTE_PAYMENT))))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 2
+    assert model.requests == []
+    assert_no_text(result.stderr)
+
+
+def test_language_model_down_before_the_search(cli, indexed, use_model) -> None:
+    _, embedder = indexed
+    before = len(embedder.inputs)
+    use_model(ScriptedModel(models_error=httpx2.ConnectError("refused")))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 2
+    assert "Модель недоступна по адресу http://127.0.0.1:8080/v1" in result.stderr
+    assert len(embedder.inputs) == before
+    assert_no_text(result.stderr)
+
+
+def test_language_model_forbidden(cli, indexed) -> None:
+    # no fake installed: the real transport is forbidden on this machine
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 2
+    assert "На этой машине языковая модель не запускается (DOCREADER_FORBID_MODELS)" in (
+        result.stderr
+    )
+
+
+def test_timeout_on_the_first_request(cli, indexed, use_model) -> None:
+    use_model(ScriptedModel(httpx2.ReadTimeout("slow")))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 2
+    assert_no_text(result.stderr)
+
+
+def test_timeout_on_the_retry(cli, indexed, use_model) -> None:
+    use_model(ScriptedModel(reply(claim("пересказ")), httpx2.ReadTimeout("slow")))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 2
+    assert_no_text(result.stderr)
+
+
+def test_answer_not_in_form_is_failed(cli, indexed, use_model) -> None:
+    use_model(ScriptedModel("не JSON", "не JSON", "не JSON"))
+    result = cli("ask", SECRET, "--document", "D-0001")
+    assert result.exit_code == 1
+    first = result.stdout.splitlines()[0]
+    assert "ошибка ответа модели: ответ модели не по форме после 3 попыток" in first
+    assert "Просмотрено (" in result.stdout
+    assert_no_text(result.stderr)
+
+
+def test_answer_not_in_form_json(cli, indexed, use_model) -> None:
+    use_model(ScriptedModel("не JSON", "не JSON", "не JSON"))
+    report = run(cli, SECRET, "--document", "D-0001", code=1)
+    assert set(report) == TOP_KEYS
+    assert report["outcome"] == "failed" and report["claims"] == []
+    assert report["failure"] == "ответ модели не по форме после 3 попыток"
+    assert report["shown"]
+
+
+def test_http_error_is_failed(cli, indexed, use_model) -> None:
+    use_model(ScriptedModel(httpx2.Response(400, json={"error": "too long"})))
+    report = run(cli, SECRET, "--document", "D-0001", code=1)
+    assert report["outcome"] == "failed"
+    assert report["failure"] == "сервер модели отклонил запрос: HTTP 400"

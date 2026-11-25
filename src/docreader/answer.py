@@ -35,6 +35,7 @@ from docreader.answer_prompt import (
     build_retry,
 )
 from docreader.config import Settings
+from docreader.errors import UserError
 from docreader.ids import PREAMBLE_KEY, format_clause_id
 from docreader.runs import code_version
 from docreader.search import CURRENT_PASSAGE, Hit
@@ -223,7 +224,12 @@ def ask(
     reranker: Any = None,
 ) -> Answer:
     """Answer `question` from the passages of the search, with every quote checked (R-1)."""
-    n = passages or settings.answer.passages
+    if not question.strip():
+        raise UserError("Пустой вопрос — введите вопрос о договорах")
+    limit = settings.search.rerank_candidates
+    if passages is not None and not 1 <= passages <= limit:
+        raise UserError(f"--passages: целое от 1 до {limit}")
+    n = passages if passages is not None else settings.answer.passages
     doc = search.ensure_searchable(conn, settings.embedding.model, document_id)
     if client is None:
         client = llm.load_client(
@@ -240,6 +246,44 @@ def ask(
         conn, settings, question, document_id=doc, results=n,
         embedder=embedder, reranker=reranker,
     )
+
+    def build(
+        final: AnswerOutcome,
+        claims: list[CheckedClaim],
+        shown: list[ShownPassage],
+        *,
+        retried: bool = False,
+        not_found_first: int = 0,
+        not_found_final: int = 0,
+        failure: str | None = None,
+    ) -> Answer:
+        return Answer(
+            question=question,
+            document_id=doc,
+            outcome=final,
+            claims=claims,
+            shown=shown,
+            retried=retried,
+            not_found_first=not_found_first,
+            not_found_final=not_found_final,
+            failure=failure,
+            warnings=list(result.warnings),
+            provenance=Provenance(
+                code_version=code_version(),
+                llm_model=llm_model,
+                prompt_version=PROMPT_VERSION,
+                embedding_model=result.embedding_model,
+                reranker_model=result.reranker_model,
+                passages=n,
+                candidates=settings.search.candidates,
+                rrf_k=settings.search.rrf_k,
+                rerank_candidates=settings.search.rerank_candidates,
+            ),
+            seconds=round(time.perf_counter() - started, 3),
+        )
+
+    if not result.hits:
+        return build(outcome(None, model_kind=None), [], [])
     shown, texts = shown_passages(conn, result.hits, doc)
     messages = build_messages(
         question,
@@ -248,7 +292,12 @@ def ask(
             for p in shown
         ],
     )
-    reply = client.extract(messages, AnswerReply)
+    try:
+        reply = client.extract(messages, AnswerReply)
+    except (llm.AnswerFormError, llm.ModelRequestError) as exc:
+        return build(
+            outcome(None, model_kind=None, failed=True), [], shown, failure=str(exc)
+        )
     checked = [check_claim(c, shown, texts) for c in reply.claims]
     asked = needs_retry(checked)
     retry_map: dict[int, CheckedClaim] | None = None
@@ -263,27 +312,11 @@ def ask(
             retry_map = None
     merged = merge_retry(checked, asked, retry_map)
     final = outcome(merged, model_kind=reply.kind)
-    return Answer(
-        question=question,
-        document_id=doc,
-        outcome=final,
-        claims=merged.claims,
-        shown=shown,
+    return build(
+        final,
+        merged.claims,
+        shown,
         retried=bool(asked),
         not_found_first=merged.not_found_first,
         not_found_final=merged.not_found_final,
-        failure=None,
-        warnings=list(result.warnings),
-        provenance=Provenance(
-            code_version=code_version(),
-            llm_model=llm_model,
-            prompt_version=PROMPT_VERSION,
-            embedding_model=result.embedding_model,
-            reranker_model=result.reranker_model,
-            passages=n,
-            candidates=settings.search.candidates,
-            rrf_k=settings.search.rrf_k,
-            rerank_candidates=settings.search.rerank_candidates,
-        ),
-        seconds=round(time.perf_counter() - started, 3),
     )
