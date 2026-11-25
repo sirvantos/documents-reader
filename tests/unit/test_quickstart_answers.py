@@ -9,12 +9,15 @@ or delete these tests (CLAUDE.md «Model routing»).
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import sys
 from pathlib import Path
 
 import pytest
+
+from docreader.errors import ModelUnavailable
 
 ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location(
@@ -88,11 +91,11 @@ def test_format_error_stops_and_names_the_question_number_only(tmp_path: Path, b
 
 
 def row(number, expected, outcome, confirmed=0, not_found=0, retried=False, seconds=1.0,
-        document="D-0001", error=None):
+        document="D-0001", error=None, check=None):
     return qa.Row(
         number=number, document=document, expected=expected, outcome=outcome,
         confirmed=confirmed, not_found=not_found, retried=retried, seconds=seconds,
-        error=error,
+        error=error, check=check,
     )
 
 
@@ -178,3 +181,205 @@ def test_summary_json_holds_numbers_and_ids_only() -> None:
 
 def test_rows_carry_no_question_text() -> None:
     assert "text" not in qa.Row.__dataclass_fields__
+
+
+# --- the automated measurement (analyst's request 2026-11-25, tasks T027, T028) ------------
+#
+# 1. A question of the feature 08 set (`answer = "D-0015/5.2"`) is read as is: a question
+#    with an answer, asked in the contract of that clause.
+# 2. Each answer is checked by the program: a confirmed claim in the expected clause (or its
+#    subclause) and every `contains` value in the confirmed claims; the doubtful ones are
+#    listed for the analyst by number. The values are never printed (they may be contract
+#    data).
+# 3. The three servers are checked before the first question, each reported.
+
+
+def test_reads_a_question_of_the_search_set(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        '[[question]]\ntext = "один"\nanswer = "d-15/5.2"\nsource = "любая пометка"\n',
+    )
+    (q,) = qa.read_questions(path)
+    assert (q.document, q.expected, q.answer_clause, q.contains) == (
+        "D-0015", "answer", "D-0015/5.2", ()
+    )
+
+
+def test_reads_contains_as_a_string_or_a_list(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        entry("один") + 'contains = "30 дней"\n'
+        + '[[question]]\ntext = "два"\nanswer = "D-0001/преамбула"\n'
+        + 'contains = ["Бета", "Подрядчик"]\n',
+    )
+    first, second = qa.read_questions(path)
+    assert first.answer_clause is None and first.contains == ("30 дней",)
+    assert second.contains == ("Бета", "Подрядчик")
+
+
+def test_old_form_still_reads(tmp_path: Path) -> None:
+    (q,) = qa.read_questions(write(tmp_path, entry("один", "D-0002", "none")))
+    assert (q.answer_clause, q.contains) == (None, ())
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        f'[[question]]\ntext = "{SECRET}"\nanswer = "D-0001"\n',  # not a clause id
+        f'[[question]]\ntext = "{SECRET}"\nanswer = "D-0001/5.2"\nexpected = "none"\n',
+        f'[[question]]\ntext = "{SECRET}"\nanswer = "D-0001/5.2"\ndocument = "D-0002"\n',
+        entry(SECRET, expected="none") + 'contains = "30 дней"\n',
+        entry(SECRET) + "contains = 30\n",
+        entry(SECRET) + 'contains = ["", "x"]\n',
+        entry(SECRET) + "contains = []\n",
+    ],
+)
+def test_new_fields_errors_name_the_number_only(tmp_path: Path, bad: str) -> None:
+    with pytest.raises(qa.QuestionsFileError) as info:
+        qa.read_questions(write(tmp_path, entry("один") + bad))
+    assert "2" in str(info.value)
+    assert SECRET not in str(info.value)
+
+
+def test_matching_document_and_answer_are_fine(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        '[[question]]\ntext = "один"\nanswer = "D-0001/5.2"\ndocument = "d-1"\n'
+        'expected = "answer"\n',
+    )
+    (q,) = qa.read_questions(path)
+    assert q.answer_clause == "D-0001/5.2"
+
+
+class Claim:
+    def __init__(self, clause_id, text="", quote="", confirmed=True):
+        self.clause_id, self.text, self.quote, self.confirmed = clause_id, text, quote, confirmed
+
+
+def question(expected="answer", answer_clause=None, contains=()):
+    return qa.Question(1, "вопрос", "D-0001", expected, answer_clause, tuple(contains))
+
+
+@pytest.mark.parametrize(
+    ("q", "claims", "check"),
+    [
+        # the expected clause, its subclause, a value in the text or in the quote
+        (question(answer_clause="D-0001/5.2"), [Claim("D-0001/5.2")], "right"),
+        (question(answer_clause="D-0001/5.2"), [Claim("D-0001/5.2.1")], "right"),
+        (question(answer_clause="D-0001/5.2"), [Claim("D-0001/5.20")], "other_clause"),
+        (question(answer_clause="D-0001/5.2"),
+         [Claim("D-0001/1.1"), Claim("D-0001/5.2")], "right"),
+        (question(answer_clause="D-0001/5.2"),
+         [Claim("D-0001/5.2", confirmed=False), Claim("D-0001/1.1")], "other_clause"),
+        (question(answer_clause="D-0001/5.2", contains=["30 дней"]),
+         [Claim("D-0001/5.2", text="Срок — 30\nдней.")], "right"),
+        (question(answer_clause="D-0001/5.2", contains=["30 дней"]),
+         [Claim("D-0001/5.2", quote="в течение 30 ДНЕЙ")], "right"),
+        (question(answer_clause="D-0001/5.2", contains=["30 дней", "поставки"]),
+         [Claim("D-0001/5.2", text="30 дней")], "no_value"),
+        (question(answer_clause="D-0001/5.2", contains=["30 дней"]),
+         [Claim("D-0001/1.1", text="30 дней")], "other_clause"),
+        # only values, no clause
+        (question(contains=["30 дней"]), [Claim("D-0001/1.1", text="30 дней")], "right"),
+        (question(contains=["30 дней"]), [Claim("D-0001/1.1", text="10 дней")], "no_value"),
+        # nothing to check against
+        (question(), [Claim("D-0001/1.1")], "unchecked"),
+        # no confirmed claim at all
+        (question(answer_clause="D-0001/5.2"), [], "no_answer"),
+        (question(answer_clause="D-0001/5.2"),
+         [Claim("D-0001/5.2", confirmed=False)], "no_answer"),
+        (question(), [], "no_answer"),
+        # a question without an answer in the contract
+        (question("none"), [], "refused"),
+        (question("none"), [Claim("D-0001/5.2", confirmed=False)], "refused"),
+        (question("none"), [Claim("D-0001/5.2")], "answered_none"),
+    ],
+)
+def test_judge(q, claims, check) -> None:
+    assert qa.judge(q, claims) == check
+
+
+def test_checks_to_review() -> None:
+    assert set(qa.CHECKS) == {
+        "right", "other_clause", "no_value", "unchecked", "no_answer", "refused",
+        "answered_none",
+    }
+    assert set(qa.TO_REVIEW) == {"other_clause", "no_value", "unchecked", "answered_none"}
+
+
+CHECKED_ROWS = [
+    dataclasses.replace(ROWS[0], check="right"),
+    dataclasses.replace(ROWS[1], check="no_answer"),
+    dataclasses.replace(ROWS[2], check="no_answer"),
+    dataclasses.replace(ROWS[3], check="refused"),
+    dataclasses.replace(ROWS[4], check="answered_none"),
+    ROWS[5],  # set error: no check
+    row(7, "answer", "answered", confirmed=1, seconds=9.0, check="other_clause"),
+    row(8, "answer", "answered", confirmed=1, seconds=9.0, check="unchecked"),
+    row(9, "answer", "answered", confirmed=1, seconds=9.0, check="right"),
+]
+
+
+def test_render_check_column_and_line() -> None:
+    lines = qa.render(summary(rows=CHECKED_ROWS))
+    first = next(line for line in lines if line.split()[:1] == ["1"])
+    assert first.rstrip().endswith("верно")
+    seventh = next(line for line in lines if line.split()[:1] == ["7"])
+    assert "другой пункт — проверить" in seventh
+    text = "\n".join(lines)
+    # right 2 of the 6 answer-mark questions without a set error
+    assert "проверка программой: верно 2 из 6 вопросов с ответом (33%)" in text
+    assert "проверить вручную: 5, 7, 8" in text
+
+
+def test_render_nothing_to_review() -> None:
+    text = "\n".join(qa.render(summary(rows=[CHECKED_ROWS[0], CHECKED_ROWS[3]])))
+    assert "проверка программой: верно 1 из 1 вопроса с ответом (100%)" in text
+    assert "проверить вручную: нет" in text
+
+
+def test_summary_json_has_checks() -> None:
+    data = qa.to_json(summary(rows=CHECKED_ROWS))
+    assert data["checks"]["right"] == 2 and data["checks"]["answered_none"] == 1
+    assert data["to_review"] == [5, 7, 8]
+
+
+def test_row_check_defaults_to_none() -> None:
+    assert ROWS[0].check is None
+
+
+class Server:
+    def __init__(self, model=None, problem=None):
+        self.model, self.problem = model, problem
+
+    def check(self):
+        if self.problem:
+            raise ModelUnavailable(self.problem)
+        return self.model
+
+
+def test_check_servers_reports_each() -> None:
+    states = qa.check_servers(
+        [
+            ("языковая модель", Server("qwen").check),
+            ("модель поиска", Server(problem="нет ответа на 8081").check),
+            ("реранкер", Server(problem="нет ответа на 8082").check),
+        ]
+    )
+    assert [(s.name, s.model, s.problem) for s in states] == [
+        ("языковая модель", "qwen", None),
+        ("модель поиска", None, "нет ответа на 8081"),
+        ("реранкер", None, "нет ответа на 8082"),
+    ]
+    text = "\n".join(qa.render_servers(states))
+    assert "языковая модель: qwen" in text
+    assert "модель поиска: не отвечает — нет ответа на 8081" in text
+    assert "реранкер: не отвечает — нет ответа на 8082" in text
+
+
+def test_default_questions_path(tmp_path: Path) -> None:
+    env = {"DOCREADER_DATA_DIR": str(tmp_path)}
+    assert qa.questions_path(None, env) == tmp_path / "questions" / "answers-09.toml"
+    assert qa.questions_path("x.toml", env) == Path("x.toml")
+    with pytest.raises(qa.QuestionsFileError):
+        qa.questions_path(None, {})

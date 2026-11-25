@@ -247,7 +247,11 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   outcome, counts, time — may be). `scripts/quickstart_answers.py --questions FILE` — the answer
   measurement on the analyst's questions (a TOML file in the data folder, never in the
   repository): its summary (numbers and ids only) may be sent, the answers file
-  (`answers-b4-….txt`, contract text) never. Recordings of model answers:
+  (`answers-b4-….txt`, contract text) never. On the Mac `scripts/answers_b4.sh` runs it in one
+  command (default file `$DOCREADER_DATA_DIR/questions/answers-09.toml`, the three servers
+  checked first); the questions may be in the feature 08 form (`answer = "D-0015/5.2"`,
+  optional `contains`), and the program checks each answer against its clause and lists the
+  doubtful ones by number. Recordings of model answers:
   `python -m tests.synthetic.record_answers` (synthetic files only; on the Mac, where the model
   runs); test fakes `ScriptedModel`, `RecordedModel` with `tests/recordings/09-text-answers/`.
 - On this dev server, manual CLI runs use a throwaway data dir and database
