@@ -22,6 +22,7 @@ ModelClient.extract(messages, AnswerReply) — первый запрос и по
 PROMPT_VERSION = "09.1"
 SYSTEM_PROMPT, USER_TEMPLATE, RETRY_TEMPLATE — строки
 AnswerReply, ClaimReply — Pydantic-схема (data-model.md), проверки формы — в валидаторе
+RetryReply, RetryClaimReply — схема ответа повтора (replaces + поля ClaimReply)
 build_messages(question: str, shown: Sequence[PromptPassage]) -> list[dict]
 build_retry(messages, first_reply_json: str, unconfirmed: Sequence[tuple[int, str]]) -> list[dict]
 prompt_sha256() -> str   # SYSTEM_PROMPT + USER_TEMPLATE + RETRY_TEMPLATE + схема
@@ -50,9 +51,17 @@ prompt_sha256() -> str   # SYSTEM_PROMPT + USER_TEMPLATE + RETRY_TEMPLATE + сх
 Сообщения повтора = сообщения первого запроса + `{"role": "assistant", "content":
 <первый ответ модели как JSON>}` + пользовательское сообщение `RETRY_TEMPLATE`:
 список «номер. текст утверждения» тех утверждений, цитаты которых не найдены
-дословно, и просьба вернуть только их — исправленными, с цитатами, скопированными
-из отрывков без изменений, — или вид «не найдено», если подтвердить их нельзя.
-Форма ответа — та же `AnswerReply`.
+дословно (номера с 1 по порядку списка), и просьба вернуть только их — исправленными,
+с цитатами, скопированными из отрывков без изменений, и с номером в `replaces`;
+утверждение, которое подтвердить нельзя, не возвращать. Форма ответа — `RetryReply`:
+
+```json
+{"claims": [{"replaces": 1, "text": "…", "clause": "D-0015/3.1", "quote": "…"}]}
+```
+
+`claims` — от 0 утверждений; `replaces` — номер из списка повтора, не повторяется.
+Номер, которого нет в ответе, — утверждение первого ответа с пометкой «цитата
+не найдена» (research R-6).
 
 ### Ответ модели
 
