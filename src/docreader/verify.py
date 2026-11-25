@@ -113,7 +113,7 @@ class _Place:
     pages: tuple[int, ...]
 
 
-def _hint_key(clause: str | None) -> str | None:
+def clause_hint_key(clause: str | None) -> str | None:
     """`2.1`, `2.1.`, `п. 2.1`, `пункт 2.1` → `2.1`; `Преамбула` → `преамбула`."""
     if not clause or not clause.strip():
         return None
@@ -129,9 +129,13 @@ def _clause_at(index: TextIndex, offset: int) -> ClauseRange | None:
     return None
 
 
-def _pages(index: TextIndex, start: int, end: int) -> tuple[int, ...]:
+def quote_pages(
+    spans: Sequence[tuple[int, int, int, int]], start: int, end: int
+) -> tuple[int, ...]:
+    """The pages of the `text_span` lines that overlap `[start, end)`, in text order
+    (shared with the answer check of feature 09)."""
     pages: list[int] = []
-    for span_start, span_end, page, _ in index.spans:
+    for span_start, span_end, page, _ in spans:
         if span_start < end and span_end > start and page not in pages:
             pages.append(page)
     return tuple(pages)
@@ -144,13 +148,13 @@ def _place(index: TextIndex, quote: str, clause_hint: str | None) -> _Place | No
         if end > index.shown_end:
             continue
         clause = _clause_at(index, start)
-        pages = _pages(index, start, end)
+        pages = quote_pages(index.spans, start, end)
         if clause is None or not pages:
             continue
         places.append(_Place(start, end, clause.key, pages))
     if not places:
         return None
-    hint = _hint_key(clause_hint)
+    hint = clause_hint_key(clause_hint)
     return next((p for p in places if p.clause_key == hint), places[0])
 
 

@@ -148,6 +148,18 @@ class RerankerSettings:
 
 
 @dataclass(frozen=True)
+class AnswerSettings:
+    """Values of the [answer] section (feature 09, research R-2).
+
+    The model connection is `[extraction]`; only the answer's own values live here.
+    """
+
+    passages: int = 8  # passages given to the model; never above search.rerank_candidates
+    max_tokens: int = 2048  # limit of the model's reply
+    max_retries: int = 2  # Instructor repeats after a reply not in form (not the quote retry)
+
+
+@dataclass(frozen=True)
 class Settings:
     data_dir: Path
     database_url: str
@@ -161,6 +173,7 @@ class Settings:
     embedding: EmbeddingSettings = field(default_factory=EmbeddingSettings)
     search: SearchSettings = field(default_factory=SearchSettings)
     reranker: RerankerSettings = field(default_factory=RerankerSettings)
+    answer: AnswerSettings = field(default_factory=AnswerSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -444,6 +457,12 @@ _SCHEMA["reranker"] = {
         "max_chars", int, lambda v: 1 <= v <= 1_000_000, "целое от 1 до 1000000"
     ),
 }
+_SCHEMA["answer"] = {
+    # Keys of [answer] map one-to-one to AnswerSettings fields (feature 09, research R-2).
+    "passages": ("passages", int, lambda v: 1 <= v <= 200, "целое от 1 до 200"),
+    "max_tokens": ("max_tokens", int, lambda v: 64 <= v <= 32768, "целое от 64 до 32768"),
+    "max_retries": ("max_retries", int, lambda v: 0 <= v <= 5, "целое от 0 до 5"),
+}
 READING_TABLE = "reading"
 RECOGNITION_TABLE = "recognition"
 STRUCTURE_TABLE = "structure"
@@ -451,6 +470,7 @@ EXTRACTION_TABLE = "extraction"
 EMBEDDING_TABLE = "embedding"
 SEARCH_TABLE = "search"
 RERANKER_TABLE = "reranker"
+ANSWER_TABLE = "answer"
 
 
 def _type_matches(kind: type, value: Any) -> bool:
@@ -487,6 +507,7 @@ def _read_settings_file(data_dir: Path) -> dict:
     embedding_values: dict = {}
     search_values: dict = {}
     reranker_values: dict = {}
+    answer_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
@@ -506,6 +527,8 @@ def _read_settings_file(data_dir: Path) -> dict:
             target = search_values
         elif table == RERANKER_TABLE:
             target = reranker_values
+        elif table == ANSWER_TABLE:
+            target = answer_values
         else:
             target = values
         for key, value in entries.items():
@@ -538,4 +561,14 @@ def _read_settings_file(data_dir: Path) -> dict:
         values["search"] = search
     if RERANKER_TABLE in doc:
         values["reranker"] = RerankerSettings(**reranker_values)
+    if ANSWER_TABLE in doc:
+        answer = AnswerSettings(**answer_values)
+        # checked after all sections are read, so the order in the file does not matter
+        rerank_candidates = SearchSettings(**search_values).rerank_candidates
+        if answer.passages > rerank_candidates:
+            raise bad(
+                f"answer.passages = {answer.passages}: нужно не больше "
+                f"search.rerank_candidates ({rerank_candidates})"
+            )
+        values["answer"] = answer
     return values
