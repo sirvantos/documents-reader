@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain — два маркера оставлены намеренно (FR-010, FR-011), по указанию аналитика они решаются в `/speckit.clarify`
+- [x] No [NEEDS CLARIFICATION] markers remain — два маркера оставлены намеренно (FR-010, FR-011), по указанию аналитика они решаются в `/speckit.clarify`
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
