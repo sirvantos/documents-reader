@@ -11,7 +11,7 @@
 | всё, что читает поиск фичи 08 | ([data-model фичи 08](../007-hybrid-search/data-model.md)) | найденные отрывки (`search.search`) |
 | `passage` | `document_id`, `clause_key`, `part`, `start`, `end_`, `first_page`, `last_page`, `label` | границы показанных отрывков; отрывок преамбулы (`part = 'preamble'`, R-5) |
 | `document_text` | `text`, `text_sha256` | текст договора для проверки цитат; актуальность отрывка преамбулы |
-| `text_span` | `start`, `end_`, `page_number` | страницы цитаты (R-4) |
+| `text_span` | `start`, `end_`, `page_number`, `line_index` | страницы цитаты (R-4) |
 
 Отрывок преамбулы берётся только актуальный — то же условие `search.CURRENT_PASSAGE`.
 Найденные поиском отрывки актуальны по построению поиска.
@@ -91,8 +91,8 @@
 `embedding_model`, `reranker_model`, `passages`, `candidates`, `rrf_k`,
 `rerank_candidates`.
 
-`Answer.to_json()` — вид для `--json` и для файла ответов замера
-([contracts/cli.md](contracts/cli.md)); все типы — `dataclass` (tech-context «Правила
+`Answer.to_json()` — вид для `--json` ([contracts/cli.md](contracts/cli.md)); в файл
+ответов замера идёт текстовый вывод `ask` (R-10); все типы — `dataclass` (tech-context «Правила
 кода»).
 
 ## Правила итога (R-8)

@@ -134,6 +134,7 @@ tests/
 ├── synthetic/answer_questions.toml      # новый: тестовый набор вопросов замера
 ├── synthetic/record_answers.py          # новый: запись ответов реальной модели (ноутбук)
 ├── synthetic/record_extraction.py       # защиты вынесены в общий код с record_answers
+├── synthetic/recording.py               # новый: общие защиты команд записи
 ├── recordings/09-text-answers/          # записи (делает аналитик, Б2)
 ├── unit/test_answer_check.py            # новый: правила R-4, R-6, R-8
 ├── unit/test_answer_prompt.py           # новый: схема, сообщения, отпечаток
@@ -145,6 +146,8 @@ tests/
 ├── integration/test_ask.py              # новый: CLI и функция на синтетике, уровень 1
 ├── integration/test_ask_preamble.py     # новый: правило FR-010
 ├── integration/test_ask_recorded.py     # новый: уровень 2
+├── integration/answer_fixtures.py       # новый: подделки поиска и вопросы вариантов записи (общие с record_answers)
+├── integration/test_record_answers.py   # новый: команда записи целиком с ScriptedModel
 └── real_model/test_answer_server.py     # новый: только Mac
 ```
 

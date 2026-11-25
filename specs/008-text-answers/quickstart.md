@@ -29,7 +29,9 @@ uv run --env-file "$DEMO/.env" docreader ask "Какой срок оплаты?"
 Ожидается: пустой вопрос — «Пустой вопрос — введите вопрос о договорах», код 1;
 договор без отрывков — «Отрывков нет: выполните docreader index D-0001», код 1;
 проиндексированный договор — остановка «На этой машине языковая модель
-не запускается (DOCREADER_FORBID_MODELS)», код 2 (проверки до моделей, R-7).
+не запускается (DOCREADER_FORBID_MODELS)», код 2 (проверки до моделей, R-7). На сервере
+разработки индекс построить нельзя (`index` требует модель поиска), поэтому вручную
+здесь виден только первый случай; остановку по FORBID проверяют автотесты (T013).
 
 ## Б. Ноутбук аналитика
 
@@ -61,11 +63,12 @@ uv run --env-file .env pytest -m real_model tests/real_model/test_answer_server.
 ```bash
 DOCREADER_TEST_DATABASE_URL=postgresql:///postgres \
   uv run python -m tests.synthetic.record_answers --quantization "4 бита" --server "mlx_lm.server 0.32.2"
-DOCREADER_TEST_DATABASE_URL=postgresql:///postgres uv run pytest tests/integration/test_ask_recorded.py
 git add tests/recordings/09-text-answers && git commit -m "test(answers): recordings of the real model on synthetic contracts" && git push
 ```
 
-Ожидается: три записи (`payment`, `parties`, `absent`), тест уровня 2 проходит.
+Ожидается: три записи (`payment`, `parties`, `absent`). Тест уровня 2
+(`tests/integration/test_ask_recorded.py`) агент пишет и запускает на сервере
+разработки после того, как записи отправлены (tasks.md, T019).
 Записи — синтетика, их можно коммитить и присылать (CLAUDE.md).
 
 ### Б3. Один вопрос
