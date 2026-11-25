@@ -49,7 +49,7 @@ base_url = "http://127.0.0.1:8082/v1"
 model = "bge-reranker-v2-m3"
 ```
 
-### Б1. Реранкер на синтетике (уровень 3) — **[проверить]** (R-7)
+### Б1. Реранкер на синтетике (уровень 3) — проверено 2026-11-25, 5 из 5 (R-7)
 
 ```bash
 uv run --env-file .env pytest -m real_model tests/real_model/test_reranker_server.py
