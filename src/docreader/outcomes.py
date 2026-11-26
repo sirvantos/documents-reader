@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 from docreader import catalog
 from docreader.gold import GoldState
@@ -192,3 +193,122 @@ def totals(cases: Sequence[FieldCase]) -> Totals:
     extracted.sort(key=worst_first)
     other.sort(key=lambda t: _catalog_index(t.field))
     return Totals(_count(cases), extracted, other)
+
+
+# --- comparison of two records (research R-13) ------------------------------------------------
+
+NOT_FOUND_PLACE = "не найден"
+EXCLUDED = "excluded"
+_MISSING = "—"
+# A smaller rank is better (principle IV: invented is worse than missed).
+_FIELD_RANK = {Outcome.CORRECT: 0, Outcome.MISSED: 1, Outcome.WRONG: 2, Outcome.INVENTED: 3}
+_BLIND_RANK = {
+    BlindOutcome.SAME: 0, BlindOutcome.BLIND_ONLY: 1, BlindOutcome.REVIEWED_ONLY: 1,
+    BlindOutcome.DIFFERS: 2,
+}
+_SEARCH = frozenset({EvalStage.SEARCH_PLAIN, EvalStage.SEARCH_RERANK})
+
+
+@dataclass(frozen=True)
+class StoredCase:
+    """One `eval_case` row as the comparison needs it."""
+
+    case_key: str
+    outcome: str | None
+    place: int | None
+    gold_sha: str
+    flags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RecordView:
+    stage: EvalStage
+    metrics: dict[str, Any]
+    gold_version: str | None
+    cases: dict[str, StoredCase]
+
+
+@dataclass(frozen=True)
+class CaseChange:
+    case_key: str
+    before: str
+    after: str
+
+
+@dataclass(frozen=True)
+class Comparison:
+    metrics: dict[str, tuple[float, float]]  # dotted key → (a, b), numeric leaves only
+    better: list[CaseChange]
+    worse: list[CaseChange]
+    outside: list[CaseChange]  # to or from an unscored outcome, or in one record only
+    by_gold: list[CaseChange]  # the gold value of the case changed between the records
+    gold_differs: bool
+
+
+def _numbers(data: Any, prefix: str = "") -> dict[str, float]:
+    out: dict[str, float] = {}
+    if isinstance(data, dict):
+        for key, value in data.items():
+            out.update(_numbers(value, f"{prefix}{key}."))
+    elif isinstance(data, (int, float)) and not isinstance(data, bool):
+        out[prefix.rstrip(".")] = data
+    return out
+
+
+def _shown(stage: EvalStage, case: StoredCase | None) -> str:
+    if case is None:
+        return _MISSING
+    if stage in _SEARCH:
+        if EXCLUDED in case.flags:
+            return "вне метрик"
+        return str(case.place) if case.place is not None else NOT_FOUND_PLACE
+    return case.outcome or _MISSING
+
+
+def _rank(stage: EvalStage, case: StoredCase) -> int | None:
+    """The rank of a case, or None when it is outside the comparison."""
+    if stage in _SEARCH:
+        if EXCLUDED in case.flags:
+            return None
+        return case.place if case.place is not None else 10**9
+    if stage is EvalStage.GOLD_BLIND:
+        try:
+            return _BLIND_RANK[BlindOutcome(case.outcome or "")]
+        except ValueError:
+            return None
+    try:
+        return _FIELD_RANK.get(Outcome(case.outcome or ""))
+    except ValueError:
+        return None
+
+
+def compare(a: RecordView, b: RecordView) -> Comparison:
+    """Differences of two records of one stage; every changed case exactly once (SC-005)."""
+    if a.stage is not b.stage:
+        raise ValueError(f"записи разных этапов: {a.stage.value} и {b.stage.value}")
+    na, nb = _numbers(a.metrics), _numbers(b.metrics)
+    metrics = {k: (na[k], nb[k]) for k in sorted(na.keys() & nb.keys())}
+    better: list[CaseChange] = []
+    worse: list[CaseChange] = []
+    outside: list[CaseChange] = []
+    by_gold: list[CaseChange] = []
+    for key in sorted(a.cases.keys() | b.cases.keys()):
+        ca, cb = a.cases.get(key), b.cases.get(key)
+        before, after = _shown(a.stage, ca), _shown(b.stage, cb)
+        if ca is None or cb is None:
+            outside.append(CaseChange(key, before, after))
+            continue
+        if before == after:
+            continue
+        change = CaseChange(key, before, after)
+        if ca.gold_sha != cb.gold_sha:
+            by_gold.append(change)
+            continue
+        ra, rb = _rank(a.stage, ca), _rank(b.stage, cb)
+        if ra is None or rb is None or ra == rb:
+            outside.append(change)
+        elif rb < ra:
+            better.append(change)
+        else:
+            worse.append(change)
+    return Comparison(metrics, better, worse, outside, by_gold, a.gold_version != b.gold_version)

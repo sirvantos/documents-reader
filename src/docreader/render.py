@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from docreader.indexing import IndexedDocument, IndexRun
     from docreader.parsing import ParsedDocument, ParseRun
     from docreader.passageview import PassageView
+    from docreader.review import ReviewBuilt
     from docreader.search import Hit, SearchResult
 
 _KIND_LABELS = (
@@ -1421,5 +1422,53 @@ def render_eval_load_json(parsed: ParsedGold, report: LoadReport) -> str:
         "needs_confirmation": report.needs_confirmation,
         "load_id": report.load_id,
         "gold_sha256": report.gold_sha256,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+# --- eval review (contracts/cli.md «docreader eval review») ---
+
+_MARK_WORDS = (
+    ("changed", "изменилось"),
+    ("disagree", "разошлось"),
+    ("rules_only", "только правила"),
+    ("none", "никто"),
+    ("model_only", "только модель"),
+    ("agree", "совпало"),
+)
+
+
+def render_eval_review_text(built: ReviewBuilt) -> str:
+    """Output of `eval review`: path and counts; never a value or a quote."""
+    parts = ", ".join(f"{word} {built.marks.get(mark, 0)}" for mark, word in _MARK_WORDS)
+    lines = [
+        f"Страница проверки: {built.path}",
+        f"  карточек {built.cards}: {parts}",
+        f"  уже с ответом из эталона: {built.carried}",
+    ]
+    if built.blind_waiting:
+        lines.append(
+            "  ждут слепой разметки (карточки не показаны): " + ", ".join(built.blind_waiting)
+        )
+    if built.without_places:
+        lines.append(
+            f"  без разбора на пункты (parse не выполнен): "
+            f"{_plural(built.without_places, 'документ', 'документа', 'документов')}"
+            " — места для их карточек не построены"
+        )
+    lines.append("  места для карточек без значения — только поиск по словам")
+    return "\n".join(lines)
+
+
+def render_eval_review_json(built: ReviewBuilt) -> str:
+    """JSON of `eval review`: path and counts only."""
+    payload = {
+        "path": built.path,
+        "build": built.build,
+        "cards": built.cards,
+        "marks": built.marks,
+        "carried": built.carried,
+        "blind_waiting": built.blind_waiting,
+        "without_places": built.without_places,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)

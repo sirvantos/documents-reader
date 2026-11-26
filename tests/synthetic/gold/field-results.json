@@ -1,0 +1,12 @@
+{
+  "format": "docreader-field-results/1",
+  "source": "синтетика tests/synthetic/gold",
+  "values": [
+    {"document": "D-0001", "field": "contract_number", "result": "found", "value": "ДП-17/2026"},
+    {"document": "D-0001", "field": "customer_name_short", "result": "not_found"},
+    {"document": "D-0001", "field": "contractor_name_short", "result": "rejected"},
+    {"document": "D-0001", "field": "amount_without_vat", "result": "found", "value": "1 200 000 рублей 00 копеек"},
+    {"document": "D-0002", "field": "amount_with_vat", "result": "failed"},
+    {"document": "D-0002", "field": "contract_end_date", "result": "found", "value": "25 марта 2027 г."}
+  ]
+}

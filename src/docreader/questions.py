@@ -23,3 +23,15 @@ class QuestionOrigin(StrEnum):
     SET08 = "set08"
     SET09 = "set09"
     GENERATED = "generated"
+
+
+# One question per prototype field (feature 08 quickstart Б3; the places of the review page
+# of feature 02 use the same wording). The answer is the clause of the field's quote.
+TEMPLATES: dict[str, str] = {
+    "contract_number": "Какой номер договора?",
+    "customer_name_short": "Кто заказчик по договору?",
+    "contractor_name_short": "Кто подрядчик (исполнитель) по договору?",
+    "amount_without_vat": "Какая цена договора без НДС?",
+    "amount_with_vat": "Какая цена договора с учётом НДС?",
+    "contract_end_date": "До какого срока действует договор?",
+}

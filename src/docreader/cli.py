@@ -24,6 +24,7 @@ from docreader import (
     recognition,
     recognition_eval,
     registry,
+    review,
     search,
     textview,
 )
@@ -45,6 +46,8 @@ from docreader.render import (
     render_document_text,
     render_eval_load_json,
     render_eval_load_text,
+    render_eval_review_json,
+    render_eval_review_text,
     render_extract_text,
     render_fields_text,
     render_find_text,
@@ -252,6 +255,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--yes", action="store_true", help="заменить значения, которые файл убирает из эталона"
     )
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+    p = eval_sub.add_parser("review", help="страница проверки шести полей прототипа")
+    p.add_argument("ids", nargs="*", metavar="ID", help="документы (по умолчанию все с полями)")
+    p.add_argument("--out", metavar="ПАПКА", help="папка сборки внутри папки данных")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     return parser
@@ -693,6 +700,12 @@ def _file_label(path: Path, data_dir: Path) -> str:
 
 
 def _cmd_eval(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.eval_command == "review":
+        built = review.build_review(
+            conn, settings, list(args.ids) or None, Path(args.out) if args.out else None
+        )
+        print(render_eval_review_json(built) if args.json else render_eval_review_text(built))
+        return 0
     if args.eval_command != "load":  # no subcommand given
         raise UserError("укажите команду группы eval, например: docreader eval load ФАЙЛ")
     path = Path(args.file)
