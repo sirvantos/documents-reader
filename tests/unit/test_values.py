@@ -9,7 +9,14 @@ from __future__ import annotations
 import pytest
 
 from docreader.fields import Kind
-from docreader.values import ValueNotNormalized, find_in_quote, normalize
+from docreader.values import (
+    ValueNotNormalized,
+    contract_number_core,
+    find_in_quote,
+    normalize,
+    short_name_after,
+    spelled_legal_form,
+)
 
 # --- amounts -----------------------------------------------------------------------------
 
@@ -143,10 +150,32 @@ def test_other_date_not_found() -> None:
         ("08.0308-1369/ОКЭ ДИ", "08.0308-1369/ОКЭ ДИ"),  # an inner space is kept
         ("634/OKЭ-ЦДИ/24/6/1", "634/ОКЭ-ЦДИ/24/6/1"),  # Latin O, K inside a Cyrillic word
         ("№ 123/ABC", "123/ABC"),  # a Latin word stays Latin
+        ("Nº ДП-17/2026", "ДП-17/2026"),  # N + masculine ordinal U+00BA, as in some titles
+        ("N° ДП-17/2026", "ДП-17/2026"),  # N + degree sign
+        ("Nº12/3", "12/3"),
     ],
 )
 def test_identifier_normalized(written: str, expected: str) -> None:
     assert normalize(Kind.IDENTIFIER, written) == expected
+
+
+# --- the contract number without a letter suffix (analyst's rule, 2026-11-26) -------------
+
+
+@pytest.mark.parametrize(
+    ("normalized", "expected"),
+    [
+        ("ДП-17/2026 АБ-ВГД", "ДП-17/2026"),  # a letter code after a space is not the number
+        ("ДП-17/2026 АБ ВГ", "ДП-17/2026"),  # several letter words
+        ("08.0308-1369/ОКЭ ДИ", "08.0308-1369/ОКЭ"),
+        ("ДП-17/2026", "ДП-17/2026"),
+        ("12 / 34", "12 / 34"),  # a part with digits after the space stays
+        ("ДП 17", "ДП 17"),
+        ("АБВ", "АБВ"),  # a number of letters only is not cut to nothing
+    ],
+)
+def test_contract_number_core(normalized: str, expected: str) -> None:
+    assert contract_number_core(normalized) == expected
 
 
 @pytest.mark.parametrize("written", ["", "№", "  №  "])
@@ -232,3 +261,60 @@ def test_latin_name_compared_without_case() -> None:
 
 def test_name_with_case_difference() -> None:
     assert find_in_quote(Kind.NAME, 'ооо "альфа"', "с ООО «Альфа»") is not None
+
+
+# --- a full name given for the short one (analyst's finding, 2026-11-26) -------------------
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Открытое акционерное общество «Альфа Дельта Строй»",
+        "акционерное общество «Бета»",
+        "Общество с ограниченной ответственностью «Гамма»",
+        "Публичное акционерное общество «Дельта»",
+        "Федеральное государственное унитарное предприятие «Эпсилон»",
+    ],
+)
+def test_spelled_legal_form_is_detected(name: str) -> None:
+    assert spelled_legal_form(normalize(Kind.NAME, name))
+
+
+@pytest.mark.parametrize(
+    "name", ["ООО «Альфа»", "ОАО «АДС»", "АО «Бета»", "Филиал ООО «Альфа»", "«Акционер»"]
+)
+def test_short_name_is_not_spelled(name: str) -> None:
+    assert not spelled_legal_form(normalize(Kind.NAME, name))
+
+
+@pytest.mark.parametrize(
+    ("quote", "short"),
+    [
+        ("Открытое акционерное общество «Альфа Дельта Строй» (ОАО «АДС»), именуемое",
+         "ОАО «АДС»"),
+        ("и Акционерное общество «Бета» (АО «Бета»), именуемое в дальнейшем Подрядчик",
+         "АО «Бета»"),
+        ("Акционерное общество «Бета» (далее — АО «Бета»), именуемое", "АО «Бета»"),
+        ('Акционерное общество "Бета" (сокращённо: АО "Бета")', 'АО "Бета"'),
+        ("Общество с ограниченной ответственностью «Гамма «Юг»» (ООО «Гамма «Юг»»)",
+         "ООО «Гамма «Юг»»"),
+    ],
+)
+def test_short_name_found_in_brackets_after_the_full_one(quote: str, short: str) -> None:
+    found = short_name_after(quote, quote.index(" ("))  # the full name ends before « («
+    assert found is not None
+    start, end = found
+    assert quote[start:end] == short
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "Акционерное общество «Бета», именуемое в дальнейшем Подрядчик",  # no brackets
+        "Акционерное общество «Бета» (Подрядчик), в лице директора",  # brackets without a form
+        "Акционерное общество «Бета», именуемое Подрядчик (ООО «Гамма» — Поручитель)",
+    ],
+)
+def test_no_short_name_in_brackets(quote: str) -> None:
+    end = quote.index("»") + 1
+    assert short_name_after(quote, end) is None

@@ -1296,6 +1296,15 @@ _PREAMBLE_THREE_PARTIES = (
     + "ООО «Бета», именуемое в дальнейшем Подрядчик, и ООО «Гамма», "
     "именуемое в дальнейшем Поручитель, заключили настоящий договор:"
 )
+# Findings of feature 09 in abstract form (analyst, 2026-11-26): a letter code after the
+# number in the title, full names with the abbreviation in brackets (the customer's
+# abbreviation shortens the name in quotes too).
+_NUMBER_WITH_CODE = "Nº ДП-17/2026 АБ-ВГД"
+_PREAMBLE_FULL_NAMES = (
+    "Открытое акционерное общество «Альфа Дельта Строй» (ОАО «АДС»), именуемое "
+    "в дальнейшем Заказчик, и Акционерное общество «Бета» (АО «Бета»), именуемое "
+    "в дальнейшем Подрядчик, заключили настоящий договор:"
+)
 _CLAUSE_1_1 = (
     "1.1. На основании протокола № 722 от 1 марта 2026 г. Подрядчик выполняет работы."
 )
@@ -1325,11 +1334,12 @@ def _extraction_pages(
     extra_clauses: tuple[str, ...] = (),
     *,
     requisites: bool = True,
+    number: str = "№ ДП-17/2026",
 ) -> tuple[tuple[str, ...], ...]:
     """Logical lines per page of an extraction contract; wrapping is done by _wrap_page."""
     page1 = (
         "ДОГОВОР ПОДРЯДА",
-        "№ ДП-17/2026",
+        number,
         "г. Энск",
         preamble,
         "1. Предмет договора",
@@ -1481,10 +1491,30 @@ _EXTRACTION_VARIANTS: dict[str, _ExtractionVariant] = {
 
 EXTRACTION_VARIANTS: tuple[str, ...] = tuple(_EXTRACTION_VARIANTS)
 
+# Variants for the program's corrections of a model answer (feature 09 findings). They are
+# kept out of EXTRACTION_VARIANTS until the real model's answers on them are recorded on
+# the Mac: the level-1 tests give them a scripted (wrong) answer.
+_CHECK_VARIANTS: dict[str, _ExtractionVariant] = {
+    "full_names": _ExtractionVariant(
+        _extraction_pages(preamble=_PREAMBLE_FULL_NAMES, number=_NUMBER_WITH_CODE),
+        {
+            **_BASE_FIELDS,
+            "customer_name_short": _found('ОАО "АДС"', "преамбула", 1),
+            "contractor_name_short": _found('АО "Бета"', "преамбула", 1),
+        },
+        _NO_OTHER_PARTY,
+    ),
+}
+CHECK_VARIANTS: tuple[str, ...] = tuple(_CHECK_VARIANTS)
+
+
+def _variant(name: str) -> _ExtractionVariant:
+    return _EXTRACTION_VARIANTS.get(name) or _CHECK_VARIANTS[name]
+
 
 def extraction_truth(variant: str) -> dict[str, object]:
     """The expected results of one variant (the content of `<variant>.truth.json`)."""
-    v = _EXTRACTION_VARIANTS[variant]
+    v = _variant(variant)
     return {
         "variant": variant,
         "generator_version": GENERATOR_VERSION,
@@ -1495,7 +1525,7 @@ def extraction_truth(variant: str) -> dict[str, object]:
 
 def make_extraction_contract(path: str | Path, variant: str = "base") -> Path:
     """One synthetic contract of feature 05 (R-14), the PDF only."""
-    return _write(Path(path), _extraction_pdf(_EXTRACTION_VARIANTS[variant].pages))
+    return _write(Path(path), _extraction_pdf(_variant(variant).pages))
 
 
 def make_extraction_contracts(directory: str | Path) -> list[Path]:

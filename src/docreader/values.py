@@ -8,7 +8,7 @@ field catalog («Виды значений»):
   number followed (after an optional parenthesised spelling) by «руб…» is an amount;
 - date — `YYYY-MM-DD` from «25 марта 2026 г.», «"25" марта 2026», `25.03.2026`,
   `2026-03-25`;
-- identifier — without «№»/«N» and outer spaces, in the comparison form of `textnorm`
+- identifier — without «№»/«N»/«Nº»/«N°» and outer spaces, in the comparison form of `textnorm`
   (dashes, quotes, Latin look-alikes inside Cyrillic words), inner spaces kept;
 - name — the comparison form (quotes `"`, «ё» → «е», spaces), case kept; inside a quote
   the words must follow one another and match by dictionary forms (`pymorphy3`).
@@ -147,7 +147,7 @@ def _normalize_date(value: str) -> str:
 
 # --- identifiers -------------------------------------------------------------------------
 
-_NUMBER_SIGN = re.compile(r"^(?:№|N(?= )) ?")
+_NUMBER_SIGN = re.compile(r"^(?:№|N[º°]|N(?= )) ?")
 _ID_CHARS = re.compile(r"[\w\-/.]")
 
 
@@ -157,6 +157,21 @@ def _normalize_identifier(value: str) -> str:
     if not result:
         raise ValueNotNormalized(Kind.IDENTIFIER)
     return result
+
+
+_LETTER_WORD = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
+
+
+def contract_number_core(normalized: str) -> str:
+    """The contract number without letter codes after a space (analyst's rule, 2026-11-26).
+
+    Trailing space-separated words of letters and hyphens only are not part of the
+    number; a word with a digit stays, and the first word always stays.
+    """
+    words = normalized.split(" ")
+    while len(words) > 1 and _LETTER_WORD.fullmatch(words[-1]):
+        words.pop()
+    return " ".join(words)
 
 
 def _find_identifier(normalized: str, quote: str) -> tuple[int, int] | None:
@@ -185,6 +200,52 @@ def _normalize_name(value: str) -> str:
     if not _WORD.search(result):
         raise ValueNotNormalized(Kind.NAME)
     return result
+
+
+# Legal forms written out in full, as they open a full name (lower case, after compare_form).
+_SPELLED_FORMS = (
+    "открытое акционерное общество",
+    "закрытое акционерное общество",
+    "публичное акционерное общество",
+    "непубличное акционерное общество",
+    "акционерное общество",
+    "общество с ограниченной ответственностью",
+    "общество с дополнительной ответственностью",
+    "федеральное государственное унитарное предприятие",
+    "государственное унитарное предприятие",
+    "муниципальное унитарное предприятие",
+)
+# Abbreviated legal forms that open a short name.
+_SHORT_FORMS = (
+    "ОАО", "ЗАО", "ПАО", "НАО", "АО", "ООО", "ОДО", "ФГУП", "ГУП", "МУП",
+)
+_BRACKETS_AFTER = re.compile(r"\s*\(([^()]{1,300})\)")
+_SHORT_IN_BRACKETS = re.compile(
+    r"(?<![^\W_])(?:" + "|".join(_SHORT_FORMS) + r")\s+[\"'«„“]"
+)
+
+
+def spelled_legal_form(normalized: str) -> bool:
+    """Whether a normalized name opens with a legal form written out in full."""
+    lower = " ".join(normalized.lower().split())
+    return lower.startswith(_SPELLED_FORMS)
+
+
+def short_name_after(text: str, end: int) -> tuple[int, int] | None:
+    """`[start, end)` in `text` of a short name in brackets right after position `end`.
+
+    «… «Альфа» (ООО «Альфа»)», «… (далее — ООО «Альфа»)»: the brackets follow the full
+    name with only spaces between, and hold an abbreviated legal form and a name in quotes.
+    """
+    brackets = _BRACKETS_AFTER.match(text, end)
+    if brackets is None:
+        return None
+    inside = brackets.group(1)
+    form = _SHORT_IN_BRACKETS.search(inside)
+    if form is None:
+        return None
+    start = brackets.start(1) + form.start()
+    return start, brackets.start(1) + len(inside.rstrip())
 
 
 def _analyzer() -> Any:
