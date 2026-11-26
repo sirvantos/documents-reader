@@ -12,6 +12,8 @@ import psycopg
 
 from docreader import (
     answer,
+    blind,
+    catalog,
     clauseview,
     db,
     evaluation,
@@ -21,6 +23,7 @@ from docreader import (
     indexing,
     parsing,
     passageview,
+    questions,
     reading,
     recognition,
     recognition_eval,
@@ -45,12 +48,27 @@ from docreader.render import (
     render_answer_text,
     render_clause_text,
     render_document_text,
+    render_eval_blind_pick_json,
+    render_eval_blind_pick_text,
+    render_eval_compare_json,
+    render_eval_compare_text,
+    render_eval_export_json,
+    render_eval_export_text,
     render_eval_fields_json,
     render_eval_fields_text,
     render_eval_load_json,
     render_eval_load_text,
+    render_eval_questions_clauses_text,
+    render_eval_questions_generate_text,
+    render_eval_questions_load_text,
+    render_eval_results_json,
+    render_eval_results_text,
     render_eval_review_json,
     render_eval_review_text,
+    render_eval_show_json,
+    render_eval_show_text,
+    render_eval_template_json,
+    render_eval_template_text,
     render_extract_text,
     render_fields_text,
     render_find_text,
@@ -275,8 +293,65 @@ def _build_parser() -> argparse.ArgumentParser:
         help="набор полей (по умолчанию все размеченные)",
     )
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+    _add_eval_results_parsers(eval_sub)
 
     return parser
+
+
+def _add_eval_results_parsers(eval_sub: argparse._SubParsersAction) -> None:
+    """`eval template|blind|results|show|compare|export|questions`."""
+    json_help = "вывод в формате JSON"
+    p = eval_sub.add_parser("template", help="пустой шаблон эталона (.csv)")
+    p.add_argument(
+        "--fields", choices=("prototype", "queue1", "all"), default="queue1",
+        help="набор полей (по умолчанию очередь 1)",
+    )
+    p.add_argument("--documents", nargs="+", metavar="ID", help="документы (по умолчанию все)")
+    p.add_argument("--out", metavar="ФАЙЛ", help="файл внутри папки данных, которого ещё нет")
+    p.add_argument("--json", action="store_true", help=json_help)
+
+    p = eval_sub.add_parser("blind", help="слепой контроль эталона")
+    blind_sub = p.add_subparsers(dest="blind_command", parser_class=_Parser, metavar="КОМАНДА")
+    p = blind_sub.add_parser("pick", help="выбрать документы слепой разметки и записать шаблон")
+    p.add_argument("--again", action="store_true", help="выбрать заново")
+    p.add_argument("--json", action="store_true", help=json_help)
+    p = blind_sub.add_parser("load", help="загрузить слепую разметку из шаблона (.csv)")
+    p.add_argument("file", metavar="ФАЙЛ", help="заполненный шаблон .csv")
+    p.add_argument("--yes", action="store_true", help="заменить значения, которые файл убирает")
+    p.add_argument("--json", action="store_true", help=json_help)
+
+    p = eval_sub.add_parser("results", help="таблица результатов")
+    p.add_argument("--stage", metavar="ЭТАП", help="только записи этого этапа")
+    p.add_argument("--json", action="store_true", help=json_help)
+    p = eval_sub.add_parser("show", help="метрики записи и её случаи")
+    p.add_argument("record", type=int, metavar="ЗАПИСЬ", help="номер записи")
+    p.add_argument("--field", metavar="ПОЛЕ", help="только случаи этого поля")
+    p.add_argument("--outcome", metavar="ИСХОД", help="только случаи с этим исходом")
+    p.add_argument("--json", action="store_true", help=json_help)
+    p = eval_sub.add_parser("compare", help="сравнить две записи одного этапа")
+    p.add_argument("a", type=int, metavar="A", help="номер первой записи")
+    p.add_argument("b", type=int, metavar="B", help="номер второй записи")
+    p.add_argument("--json", action="store_true", help=json_help)
+    p = eval_sub.add_parser("export", help="таблица результатов в CSV")
+    p.add_argument("--out", metavar="ФАЙЛ", help="файл внутри папки данных, которого ещё нет")
+    p.add_argument("--json", action="store_true", help=json_help)
+
+    p = eval_sub.add_parser("questions", help="вопросы для замера поиска")
+    q_sub = p.add_subparsers(dest="questions_command", parser_class=_Parser, metavar="КОМАНДА")
+    p = q_sub.add_parser("load", help="загрузить вопросы из файлов .toml")
+    p.add_argument("files", nargs="+", metavar="ФАЙЛ", help="файлы вопросов .toml")
+    p.add_argument("--origin", choices=("own", "set08", "set09"), help="откуда вопросы")
+    p.add_argument("--json", action="store_true", help=json_help)
+    p = q_sub.add_parser("generate", help="предложить вопросы по эталону")
+    p.add_argument("--false-premise", type=int, default=10, metavar="N",
+                   help="сколько вопросов с ложной посылкой (по умолчанию 10)")
+    p.add_argument("--out", metavar="ФАЙЛ", help="файл внутри папки данных, которого ещё нет")
+    p.add_argument("--json", action="store_true", help=json_help)
+    p = q_sub.add_parser("clauses", help="подобрать пункты по ответам замера фичи 09")
+    p.add_argument("--answers", required=True, metavar="ФАЙЛ", help="файл ответов .json")
+    p.add_argument("--questions", required=True, metavar="ФАЙЛ", help="файл вопросов .toml")
+    p.add_argument("--out", metavar="ФАЙЛ", help="файл внутри папки данных, которого ещё нет")
+    p.add_argument("--json", action="store_true", help=json_help)
 
 
 def _cmd_migrate(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
@@ -728,6 +803,9 @@ def _cmd_eval(args: argparse.Namespace, settings: Settings, conn: psycopg.Connec
         )
         print(render_eval_fields_json(record) if args.json else render_eval_fields_text(record))
         return 0
+    handler = _EVAL_HANDLERS.get(args.eval_command)
+    if handler is not None:
+        return handler(args, settings, conn)
     if args.eval_command != "load":  # no subcommand given
         raise UserError("укажите команду группы eval, например: docreader eval load ФАЙЛ")
     path = Path(args.file)
@@ -758,7 +836,145 @@ def _cmd_eval(args: argparse.Namespace, settings: Settings, conn: psycopg.Connec
     return 1 if report.needs_confirmation else 0
 
 
+def _cmd_eval_template(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    registry = [r[0] for r in conn.execute("SELECT id FROM document ORDER BY id").fetchall()]
+    if args.documents:
+        wanted = [format_document_id(parse_document_id(d)) for d in args.documents]
+        unknown = [d for d in wanted if d not in registry]
+        if unknown:
+            raise UserError(f"Документа нет в реестре: {', '.join(unknown)}")
+        documents = sorted(set(wanted))
+    else:
+        documents = registry
+    fields = {
+        "prototype": catalog.PROTOTYPE, "queue1": catalog.QUEUE1,
+        "all": catalog.PROTOTYPE + tuple(f for f in catalog.CATALOG if f not in catalog.PROTOTYPE),
+    }[args.fields]
+    path = evaluation.new_file_path(
+        settings.data_dir, Path(args.out) if args.out else None, "template"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(gold.write_template(fields, documents))
+    label = evaluation.relative_label(path, settings.data_dir)
+    if args.json:
+        print(render_eval_template_json(label, len(documents), len(fields)))
+    else:
+        print(render_eval_template_text(label, len(documents), len(fields), args.fields))
+    return 0
+
+
+def _cmd_eval_blind(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    if args.blind_command == "pick":
+        report = blind.run_pick(conn, settings.data_dir, again=args.again)
+        print(
+            render_eval_blind_pick_json(report) if args.json
+            else render_eval_blind_pick_text(report)
+        )
+        return 0
+    if args.blind_command != "load":
+        raise UserError("укажите команду: docreader eval blind pick или eval blind load ФАЙЛ")
+    path = Path(args.file)
+    if path.suffix.lower() != ".csv":
+        raise UserError("ожидается заполненный шаблон .csv")
+    try:
+        data = path.read_bytes()
+    except OSError:
+        raise UserError(f"файл не читается: {path}") from None
+    parsed = blind.parse_blind_file(conn, data)
+    loaded = gold.load(
+        conn, parsed, file_name=_file_label(path, settings.data_dir), file_bytes=data,
+        yes=args.yes,
+    )
+    print(render_eval_load_json(parsed, loaded) if args.json
+          else render_eval_load_text(parsed, loaded))
+    return 1 if loaded.needs_confirmation else 0
+
+
+def _cmd_eval_results(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    rows = evaluation.list_results(conn, args.stage)
+    print(render_eval_results_json(rows) if args.json else render_eval_results_text(rows))
+    return 0
+
+
+def _cmd_eval_show(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    shown = evaluation.show_record(conn, args.record, args.field, args.outcome)
+    print(render_eval_show_json(shown) if args.json else render_eval_show_text(shown))
+    return 0
+
+
+def _cmd_eval_compare(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    report = evaluation.compare_records(conn, args.a, args.b)
+    print(render_eval_compare_json(report) if args.json else render_eval_compare_text(report))
+    return 0
+
+
+def _cmd_eval_export(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    report = evaluation.export_results(
+        conn, settings.data_dir, Path(args.out) if args.out else None
+    )
+    print(render_eval_export_json(report) if args.json else render_eval_export_text(report))
+    return 0
+
+
+def _cmd_eval_questions(
+    args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
+) -> int:
+    command = args.questions_command
+    if command == "load":
+        origin = questions.QuestionOrigin(args.origin) if args.origin else None
+        loaded = questions.load_questions(
+            conn, [Path(f) for f in args.files], settings.data_dir, origin
+        )
+        print(
+            json.dumps(loaded.to_json(), ensure_ascii=False, indent=2) if args.json
+            else render_eval_questions_load_text(loaded)
+        )
+        return 0
+    if command == "generate":
+        generated = questions.generate_questions(
+            conn, settings.data_dir, Path(args.out) if args.out else None, args.false_premise
+        )
+        print(
+            json.dumps(generated.to_json(), ensure_ascii=False, indent=2) if args.json
+            else render_eval_questions_generate_text(generated)
+        )
+        return 0
+    if command == "clauses":
+        proposed = questions.propose_clauses(
+            Path(args.answers), Path(args.questions), settings.data_dir,
+            Path(args.out) if args.out else None,
+        )
+        print(
+            json.dumps(proposed.to_json(), ensure_ascii=False, indent=2) if args.json
+            else render_eval_questions_clauses_text(proposed)
+        )
+        return 0
+    raise UserError("укажите команду: eval questions load, generate или clauses")
+
+
 _Handler = Callable[[argparse.Namespace, Settings, psycopg.Connection], int]
+
+_EVAL_HANDLERS: dict[str, _Handler] = {
+    "template": _cmd_eval_template,
+    "blind": _cmd_eval_blind,
+    "results": _cmd_eval_results,
+    "show": _cmd_eval_show,
+    "compare": _cmd_eval_compare,
+    "export": _cmd_eval_export,
+    "questions": _cmd_eval_questions,
+}
 
 _HANDLERS: dict[str, _Handler] = {
     "migrate": _cmd_migrate,

@@ -255,6 +255,11 @@ def _numbers(data: Any, prefix: str = "") -> dict[str, float]:
     return out
 
 
+def metric_numbers(data: Any) -> dict[str, float]:
+    """The numeric leaves of a metrics dict by dotted key (lists are not descended into)."""
+    return _numbers(data)
+
+
 def _shown(stage: EvalStage, case: StoredCase | None) -> str:
     if case is None:
         return _MISSING
@@ -312,3 +317,65 @@ def compare(a: RecordView, b: RecordView) -> Comparison:
         else:
             worse.append(change)
     return Comparison(metrics, better, worse, outside, by_gold, a.gold_version != b.gold_version)
+
+
+# --- search places and metrics (research R-12) ------------------------------------------------
+
+
+def search_place(found_clause_ids: Sequence[str], correct_keys: Sequence[str]) -> int | None:
+    """The place (from 1) of the first result whose clause key is one of the correct ones
+    (exact match: neither the parent clause nor a subclause counts), or None."""
+    wanted = set(correct_keys)
+    for place, clause_id in enumerate(found_clause_ids, start=1):
+        if clause_id.split("/", 1)[-1] in wanted:
+            return place
+    return None
+
+
+@dataclass(frozen=True)
+class SearchCase:
+    question_key: str
+    place: int | None
+    excluded: bool  # no answer, kind «table» or no clause given: outside the metrics
+
+
+@dataclass(frozen=True)
+class SearchMetrics:
+    participating: int
+    excluded: int
+    first: int
+    top5: int
+    not_found: int
+    median_place: float | None  # over found questions only
+
+    @property
+    def share_first(self) -> float | None:
+        return self.first / self.participating if self.participating else None
+
+    @property
+    def share_top5(self) -> float | None:
+        return self.top5 / self.participating if self.participating else None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "participating": self.participating, "excluded": self.excluded,
+            "first": self.first, "top5": self.top5, "not_found": self.not_found,
+            "median_place": self.median_place, "share_first": self.share_first,
+            "share_top5": self.share_top5,
+        }
+
+
+def search_metrics(cases: Sequence[SearchCase]) -> SearchMetrics:
+    """Shares at the first place and in the first five over the participating questions
+    («не найден» in the denominator), the median place over the found ones."""
+    counted = [c for c in cases if not c.excluded]
+    places = sorted(c.place for c in counted if c.place is not None)
+    median: float | None = None
+    if places:
+        mid = len(places) // 2
+        median = places[mid] if len(places) % 2 else (places[mid - 1] + places[mid]) / 2
+    return SearchMetrics(
+        len(counted), len(cases) - len(counted),
+        sum(1 for p in places if p == 1), sum(1 for p in places if p <= 5),
+        len(counted) - len(places), median,
+    )

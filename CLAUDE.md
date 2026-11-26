@@ -254,5 +254,16 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   doubtful ones by number. Recordings of model answers:
   `python -m tests.synthetic.record_answers` (synthetic files only; on the Mac, where the model
   runs); test fakes `ScriptedModel`, `RecordedModel` with `tests/recordings/09-text-answers/`.
+- `uv run docreader eval …` — evaluation set and results table (feature 02): `eval template`
+  (CSV template of the gold fields); `eval review` (local review page in
+  `$DOCREADER_DATA_DIR/eval/review-…/`, prefilled with the feature 05 values and the rules
+  values, answers downloaded as a file); `eval load` (gold fields); `eval blind pick|load|report`
+  (blind control); `eval fields [--source extraction|rules] [--from FILE]`; `eval questions
+  load|generate|clauses`; `eval search` (needs the search model and the reranker, Mac only;
+  stops with exit 2 here unless `--from`); `eval results|show|compare|export`. No model runs
+  for anything but `eval search`. The terminal output of every `eval` command (numbers, ids,
+  field names, outcomes, paths) may be sent to the agent; the files it writes (templates, the
+  review page and its answers, review files, generated questions, exports) hold contract
+  values and are never sent.
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).

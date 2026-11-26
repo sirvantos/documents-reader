@@ -186,6 +186,7 @@ _HINTS: dict[CatalogKind, str] = {
     CatalogKind.PERCENT: "например 20 или 0,1",
     CatalogKind.NUMBER: "целое число",
     CatalogKind.NAME: "как в договоре",
+    CatalogKind.REQUISITE: "цифры как в договоре, пробелы и дефисы не важны",
     CatalogKind.CHOICE: "одно из перечисленных",
     CatalogKind.FREE_TEXT: "текст как в договоре",
     CatalogKind.LIST: "значения через ' || '",

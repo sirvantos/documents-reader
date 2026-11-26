@@ -22,13 +22,14 @@ from typing import Any, Literal
 import psycopg
 from psycopg.types.json import Jsonb
 
-from docreader import catalog, outcomes, review, rules
+from docreader import catalog, outcomes, questions, review, rules
 from docreader.config import Settings
 from docreader.errors import UserError
 from docreader.fields import FIELD_NAMES
 from docreader.gold import REVIEW_PATHS, GoldState, current_sha256
 from docreader.ids import format_clause_id
 from docreader.outcomes import (
+    BlindOutcome,
     EvalStage,
     FieldCase,
     GoldValue,
@@ -477,3 +478,215 @@ def compare_fields(
         provenance=provenance, review_file=review_file[0], gold_version=gold_version,
         reviewed_share=share, blind=blind,
     )
+
+
+# --- files in the data folder -----------------------------------------------------------------
+
+
+def new_file_path(
+    data_dir: Path, out: Path | None, name: str, now: datetime | None = None
+) -> Path:
+    """Where a new CSV goes: `--out` inside the data folder, else `eval/<name>-<time>.csv`.
+    Never over an existing file: an explicit `--out` that exists is refused, a generated
+    name gets a counter."""
+    if out is not None:
+        try:
+            out.resolve().relative_to(data_dir.resolve())
+        except ValueError:
+            raise UserError(
+                "Файл можно записать только в папку данных (DOCREADER_DATA_DIR): "
+                "значения договоров не выносятся из неё"
+            ) from None
+        if out.exists():
+            raise UserError(f"Файл {out.name} уже есть — укажите другой путь, поверх не пишу")
+        return out
+    stamp = f"{now or datetime.now():%Y%m%d-%H%M%S}"
+    path = data_dir / "eval" / f"{name}-{stamp}.csv"
+    counter = 1
+    while path.exists():
+        counter += 1
+        path = data_dir / "eval" / f"{name}-{stamp}-{counter}.csv"
+    return path
+
+
+# --- the results table (research R-13) --------------------------------------------------------
+
+SEARCH_STAGES = frozenset({EvalStage.SEARCH_PLAIN.value, EvalStage.SEARCH_RERANK.value})
+SEARCH_FILTERS = ("first", "top5", "found", "not_found", "excluded")
+
+
+@dataclass(frozen=True)
+class ResultRow:
+    """One record of `eval_result` as the table shows it (numbers and ids only)."""
+
+    id: int
+    created_at: datetime
+    label: str
+    stage: str
+    gold_version: str | None  # the questions version for the search stages
+    current_gold: bool
+    reviewed_share: float | None
+    blind: dict[str, Any] | None
+    metrics: dict[str, Any]
+    review_file: str | None
+    provenance: dict[str, Any]
+
+
+def _row(conn: psycopg.Connection, raw: Sequence[Any]) -> ResultRow:
+    (rid, created, label, stage, prov, gold_sha, q_sha, share, blind, metrics, review_file) = raw
+    search = stage in SEARCH_STAGES
+    version = q_sha if search else gold_sha
+    if version is None:
+        current = False
+    else:
+        current = version == (questions.current_sha256(conn) if search else current_sha256(conn))
+    return ResultRow(
+        int(rid), created, label, stage, version, current,
+        None if share is None else float(share), blind, metrics, review_file, prov,
+    )
+
+
+_SELECT = (
+    "SELECT id, created_at, label, stage, provenance, gold_sha256, questions_sha256,"
+    " reviewed_share, blind_summary, metrics, review_file FROM eval_result"
+)
+
+
+def list_results(conn: psycopg.Connection, stage: str | None) -> list[ResultRow]:
+    if stage is not None and stage not in {s.value for s in EvalStage}:
+        names = ", ".join(s.value for s in EvalStage)
+        raise UserError(f"Неизвестный этап «{stage}»: {names}")
+    rows = conn.execute(
+        _SELECT + (" WHERE stage = %s" if stage else "") + " ORDER BY id",
+        (stage,) if stage else (),
+    ).fetchall()
+    return [_row(conn, r) for r in rows]
+
+
+def _record(conn: psycopg.Connection, record: int) -> ResultRow:
+    raw = conn.execute(_SELECT + " WHERE id = %s", (record,)).fetchone()
+    if raw is None:
+        raise UserError(f"Записи {record} нет: список записей — docreader eval results")
+    return _row(conn, raw)
+
+
+@dataclass(frozen=True)
+class ShownCase:
+    case_key: str
+    document_id: str
+    field: str | None
+    question_key: str | None
+    outcome: str | None
+    place: int | None
+    flags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ShownRecord:
+    row: ResultRow
+    cases: list[ShownCase]
+
+
+def _search_filter(kind: str, case: ShownCase) -> bool:
+    excluded = outcomes.EXCLUDED in case.flags
+    place = case.place
+    return {
+        "first": not excluded and place == 1,
+        "top5": not excluded and place is not None and place <= 5,
+        "found": not excluded and place is not None,
+        "not_found": not excluded and place is None,
+        "excluded": excluded,
+    }[kind]
+
+
+def show_record(
+    conn: psycopg.Connection, record: int, field: str | None, outcome: str | None
+) -> ShownRecord:
+    """The metrics of a record and its cases by the filter (SC-004)."""
+    row = _record(conn, record)
+    search = row.stage in SEARCH_STAGES
+    if outcome is not None:
+        allowed = (
+            SEARCH_FILTERS if search
+            else tuple(o.value for o in (BlindOutcome if row.stage == "gold_blind" else Outcome))
+        )
+        if outcome not in allowed:
+            raise UserError(f"Для этапа {row.stage} исход — один из: {', '.join(allowed)}")
+    cases = [
+        ShownCase(k, d, f, q, o, p, tuple(fl))
+        for k, d, f, q, o, p, fl in conn.execute(
+            "SELECT case_key, document_id, field, question_key, outcome, place, flags"
+            " FROM eval_case WHERE result_id = %s ORDER BY case_key",
+            (record,),
+        ).fetchall()
+    ]
+    if field is not None:
+        cases = [c for c in cases if c.field == field]
+    if outcome is not None:
+        cases = [
+            c for c in cases
+            if (_search_filter(outcome, c) if search else c.outcome == outcome)
+        ]
+    return ShownRecord(row, cases)
+
+
+@dataclass(frozen=True)
+class CompareReport:
+    a: ResultRow
+    b: ResultRow
+    comparison: outcomes.Comparison
+
+
+def _view(conn: psycopg.Connection, row: ResultRow) -> outcomes.RecordView:
+    cases = {
+        k: outcomes.StoredCase(k, o, p, sha, tuple(fl))
+        for k, o, p, sha, fl in conn.execute(
+            "SELECT case_key, outcome, place, gold_sha, flags FROM eval_case"
+            " WHERE result_id = %s",
+            (row.id,),
+        ).fetchall()
+    }
+    return outcomes.RecordView(EvalStage(row.stage), row.metrics, row.gold_version, cases)
+
+
+def compare_records(conn: psycopg.Connection, a: int, b: int) -> CompareReport:
+    ra, rb = _record(conn, a), _record(conn, b)
+    try:
+        comparison = outcomes.compare(_view(conn, ra), _view(conn, rb))
+    except ValueError as exc:
+        raise UserError(f"Сравнивать можно только записи одного этапа: {exc}") from None
+    return CompareReport(ra, rb, comparison)
+
+
+def blind_text(blind: dict[str, Any] | None) -> str:
+    """«3 из 28» of the latest blind control, or an empty string."""
+    if not blind or "confirmed_pairs" not in blind:
+        return ""
+    return f"{blind.get('confirmed_differs', 0)} из {blind['confirmed_pairs']}"
+
+
+@dataclass(frozen=True)
+class ExportReport:
+    path: str  # relative to the data folder
+    records: int
+
+
+def export_results(conn: psycopg.Connection, data_dir: Path, out: Path | None) -> ExportReport:
+    """The results table as CSV: one row per record, then the numeric metrics."""
+    rows = list_results(conn, None)
+    flat = [outcomes.metric_numbers(r.metrics) for r in rows]
+    keys = sorted({k for f in flat for k in f})
+    path = new_file_path(data_dir, out, "results")
+    fixed = ("id", "created_at", "label", "stage", "gold_version", "current_gold",
+             "reviewed_share", "blind")
+    body = [
+        [
+            str(r.id), r.created_at.isoformat(timespec="seconds"), r.label, r.stage,
+            r.gold_version or "", "да" if r.current_gold else "нет",
+            "" if r.reviewed_share is None else f"{r.reviewed_share:.4f}", blind_text(r.blind),
+            *(("" if k not in f else f"{f[k]:g}") for k in keys),
+        ]
+        for r, f in zip(rows, flat, strict=True)
+    ]
+    write_csv(path, (*fixed, *keys), body)
+    return ExportReport(relative_label(path, data_dir), len(rows))
