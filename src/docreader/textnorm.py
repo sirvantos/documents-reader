@@ -114,6 +114,40 @@ def locate(text: str, phrase: str) -> list[tuple[int, int]]:
     if not needle:
         return []
     haystack, offsets = compare_form(text)
+    found = _find_all(haystack, offsets, needle)
+    if found:
+        return found
+    # second try: a dash standing between words and spaces between digits do not count
+    loose_needle, _ = _loose(needle, list(range(len(needle))))
+    loose_haystack, loose_offsets = _loose(haystack, offsets)
+    return _find_all(loose_haystack, loose_offsets, loose_needle) if loose_needle else []
+
+
+def _loose(folded: str, offsets: list[int]) -> tuple[str, list[int]]:
+    """`folded` (a comparison form) without free-standing dashes and spaces between digits.
+
+    Analyst's measurement, record 19 (2026-11-27): the model's quote dropped the «—» before
+    an amount, or wrote «4 560 789» for «4560 789». A dash inside a word or a number stays.
+    """
+    chars: list[str] = []
+    kept: list[int] = []
+    n = len(folded)
+    for i, ch in enumerate(folded):
+        before = folded[i - 1] if i > 0 else " "
+        after = folded[i + 1] if i + 1 < n else " "
+        if ch == "-" and before == " " and after == " ":
+            continue
+        if ch == " ":
+            if before.isdigit() and after.isdigit():
+                continue
+            if chars and chars[-1] == " ":
+                continue  # the space left after a dropped dash
+        chars.append(ch)
+        kept.append(offsets[i])
+    return "".join(chars), kept
+
+
+def _find_all(haystack: str, offsets: list[int], needle: str) -> list[tuple[int, int]]:
     found: list[tuple[int, int]] = []
     pos = haystack.find(needle)
     while pos != -1:
