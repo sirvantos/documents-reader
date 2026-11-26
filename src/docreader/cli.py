@@ -14,6 +14,7 @@ from docreader import (
     answer,
     clauseview,
     db,
+    evaluation,
     extraction,
     fieldview,
     gold,
@@ -44,6 +45,8 @@ from docreader.render import (
     render_answer_text,
     render_clause_text,
     render_document_text,
+    render_eval_fields_json,
+    render_eval_fields_text,
     render_eval_load_json,
     render_eval_load_text,
     render_eval_review_json,
@@ -259,6 +262,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p = eval_sub.add_parser("review", help="страница проверки шести полей прототипа")
     p.add_argument("ids", nargs="*", metavar="ID", help="документы (по умолчанию все с полями)")
     p.add_argument("--out", metavar="ПАПКА", help="папка сборки внутри папки данных")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+    p = eval_sub.add_parser("fields", help="сравнить поля с эталоном и записать результат")
+    p.add_argument("--label", default="", metavar="МЕТКА", help="метка записи")
+    p.add_argument(
+        "--source", choices=("extraction", "rules"), default="extraction",
+        help="чьи значения сравнивать (по умолчанию результаты извлечения)",
+    )
+    p.add_argument("--from", dest="from_file", metavar="ФАЙЛ", help="результаты из файла .json")
+    p.add_argument(
+        "--fields", choices=("prototype", "queue1", "all"),
+        help="набор полей (по умолчанию все размеченные)",
+    )
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     return parser
@@ -705,6 +720,13 @@ def _cmd_eval(args: argparse.Namespace, settings: Settings, conn: psycopg.Connec
             conn, settings, list(args.ids) or None, Path(args.out) if args.out else None
         )
         print(render_eval_review_json(built) if args.json else render_eval_review_text(built))
+        return 0
+    if args.eval_command == "fields":
+        record = evaluation.compare_fields(
+            conn, settings, label=args.label, source=args.source,
+            from_file=Path(args.from_file) if args.from_file else None, field_set=args.fields,
+        )
+        print(render_eval_fields_json(record) if args.json else render_eval_fields_text(record))
         return 0
     if args.eval_command != "load":  # no subcommand given
         raise UserError("укажите команду группы eval, например: docreader eval load ФАЙЛ")

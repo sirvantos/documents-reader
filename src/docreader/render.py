@@ -26,10 +26,12 @@ if TYPE_CHECKING:
     from docreader.answer import Answer
     from docreader.answer_check import CheckedClaim, ShownPassage
     from docreader.clauseview import ClauseView, Outline, OutlineRecord
+    from docreader.evaluation import FieldsRecord
     from docreader.extraction import ExtractedDocument, ExtractRun
     from docreader.fieldview import FieldsView, FieldView
     from docreader.gold import LoadReport, ParsedGold
     from docreader.indexing import IndexedDocument, IndexRun
+    from docreader.outcomes import FieldTotals, OutcomeCounts
     from docreader.parsing import ParsedDocument, ParseRun
     from docreader.passageview import PassageView
     from docreader.review import ReviewBuilt
@@ -1470,5 +1472,105 @@ def render_eval_review_json(built: ReviewBuilt) -> str:
         "carried": built.carried,
         "blind_waiting": built.blind_waiting,
         "without_places": built.without_places,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+# --- eval fields (contracts/cli.md «docreader eval fields») ---
+
+_OUTCOME_WORDS = (
+    ("correct", "верно"),
+    ("wrong", "неверно"),
+    ("missed", "пропущено"),
+    ("invented", "придумано"),
+    ("unlabeled", "не размечено"),
+    ("no_result", "нет результата"),
+    ("manual", "вручную"),
+)
+_TABLE_HEADS = ("верно", "неверно", "пропущено", "придумано", "нет рез.", "не разм.")
+_TABLE_KEYS = ("correct", "wrong", "missed", "invented", "no_result", "unlabeled")
+
+
+def _counts_by_name(counts: OutcomeCounts) -> dict[str, int]:
+    return {o.value: n for o, n in counts.counts.items()}
+
+
+def _provenance_short(record: FieldsRecord) -> str:
+    prov = record.provenance
+    if record.stage == "rules":
+        return f"правила {prov.get('rules_version', '')}"
+    if "runs" in prov:
+        runs = prov["runs"]
+        parts = sorted({f"подсказка {r['prompt_version']}, {r['model']}" for r in runs})
+        return "извлечение; " + ("; ".join(parts) if parts else "результатов нет")
+    return f"файл; {prov.get('source', '')}".rstrip("; ")
+
+
+def _blind_short(blind: dict | None) -> str:
+    if blind is None:
+        return "слепой контроль: не проводился"
+    return f"слепой контроль: запись {blind.get('record', '?')}"
+
+
+def _field_table(items: Sequence[FieldTotals]) -> list[str]:
+    rows: list[list[str]] = []
+    for item in items:
+        counts = _counts_by_name(item.counts)
+        scored = item.counts.scored
+        row = [item.field, f"{counts['correct']}/{scored}"]
+        row += [str(counts[k]) for k in _TABLE_KEYS[1:]]
+        rows.append(row)
+    heads = ["поле", *_TABLE_HEADS]
+    width = [max(len(r[i]) for r in [heads, *rows]) for i in range(len(heads))]
+    lines = ["  " + "  ".join(h.ljust(w) if i == 0 else h.rjust(w)
+                              for i, (h, w) in enumerate(zip(heads, width, strict=True)))]
+    for r in rows:
+        lines.append("  " + "  ".join(c.ljust(w) if i == 0 else c.rjust(w)
+                                      for i, (c, w) in enumerate(zip(r, width, strict=True))))
+    return lines
+
+
+def render_eval_fields_text(record: FieldsRecord) -> str:
+    """Output of `eval fields`: numbers and field names only; never a value or a quote."""
+    counts = _counts_by_name(record.totals.overall)
+    label = f" «{record.label}»" if record.label else ""
+    share = (
+        "" if record.reviewed_share is None else f", из проверки {record.reviewed_share:.0%}"
+    )
+    parts = ", ".join(
+        f"{word} {counts[key]}" for key, word in _OUTCOME_WORDS if counts[key] or key == "correct"
+    )
+    lines = [
+        f"Сравнение полей: запись {record.record}{label} ({_provenance_short(record)})",
+        f"  версия эталона {record.gold_version[:12]}{share}; {_blind_short(record.blind)}",
+        f"  пар {record.pairs}: {parts}",
+    ]
+    if record.totals.fields:
+        lines += _field_table(record.totals.fields)
+    if record.totals.not_extracted:
+        lines.append("  поля, которые этап не извлекает (нет результата):")
+        lines += _field_table(record.totals.not_extracted)
+    lines.append(f"  разбор: {record.review_file}")
+    return "\n".join(lines)
+
+
+def render_eval_fields_json(record: FieldsRecord) -> str:
+    """JSON of `eval fields`: counts, field names and paths only."""
+
+    def item(t: FieldTotals) -> dict:
+        return {"field": t.field, "counts": _counts_by_name(t.counts)}
+
+    payload = {
+        "record": record.record,
+        "stage": record.stage,
+        "label": record.label,
+        "pairs": record.pairs,
+        "counts": _counts_by_name(record.totals.overall),
+        "fields": [item(t) for t in record.totals.fields],
+        "not_extracted": [item(t) for t in record.totals.not_extracted],
+        "review_file": record.review_file,
+        "gold_version": record.gold_version,
+        "reviewed_share": record.reviewed_share,
+        "blind": record.blind,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
