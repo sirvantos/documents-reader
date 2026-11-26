@@ -394,11 +394,41 @@ def normalize_field(field: CatalogField, value: str) -> str:
     return value.strip()  # free_text, list, records: assessed by hand
 
 
+_FORM_AND_QUOTES = re.compile(r'^(' + "|".join(_SHORT_FORMS) + r') "([^"]+)"$')
+_INITIALS_ONLY = re.compile(r"[^\W\d_]{2,}")
+
+
+def _initials_match(a: str, b: str) -> bool:
+    """Whether one canonical short name is the other with the name in quotes as initials.
+
+    `ОАО "АДС"` and `ОАО "Альфа Дельта Строй"` (analyst, 2026-11-26): the same legal form, one
+    word in quotes on one side and the first letters of two or more words on the other;
+    words split at spaces, or at spaces and hyphens. Case is ignored.
+    """
+    ma, mb = _FORM_AND_QUOTES.match(a), _FORM_AND_QUOTES.match(b)
+    if ma is None or mb is None or ma[1] != mb[1]:
+        return False
+    for short, full in ((ma[2], mb[2]), (mb[2], ma[2])):
+        if not _INITIALS_ONLY.fullmatch(short):
+            continue
+        for words in (full.split(), re.split(r"[\s-]+", full)):
+            words = [w for w in words if w]
+            if len(words) >= 2 and "".join(w[0] for w in words).casefold() == short.casefold():
+                return True
+    return False
+
+
 def same_value(field: CatalogField, a: str, b: str) -> bool:
-    """Whether two normalized values are the same: names ignore case, the rest are equal."""
+    """Whether two normalized values are the same: names ignore case, the rest are equal.
+
+    Short names (`*_name_short`) are compared with the legal form abbreviated, and a name in
+    quotes written as the initials of the other's words counts as the same.
+    """
     if field.kind.value == Kind.NAME.value:
         if field.name.endswith("_name_short"):
             a, b = canonical_short_name(a), canonical_short_name(b)
+            if _initials_match(a, b):
+                return True
         return a.casefold() == b.casefold()
     return a == b
 

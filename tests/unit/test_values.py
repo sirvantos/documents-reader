@@ -350,8 +350,48 @@ def test_short_names_equal_with_the_form_written_out_or_abbreviated() -> None:
     b = normalize(Kind.NAME, "АО «Бета»")
     assert same_value(field, a, b)
     assert not same_value(field, a, normalize(Kind.NAME, "ООО «Бета»"))
-    full = normalize(Kind.NAME, "Открытое акционерное общество «Альфа Дельта Строй»")
-    assert not same_value(field, normalize(Kind.NAME, "ОАО «АДС»"), full)
+
+
+# The name in quotes abbreviated to the initials of its words is the same organization when
+# the legal form is the same (analyst, 2026-11-26, record 10 of the gold set: the model gave
+# the full name, the gold set the abbreviation, six contracts). Comparison only.
+@pytest.mark.parametrize(
+    ("short", "full"),
+    [
+        ("ОАО «АДС»", "Открытое акционерное общество «Альфа Дельта Строй»"),
+        ("ОАО «АДС»", "ОАО «Альфа Дельта Строй»"),
+        ("ОАО «АДС»", "открытое акционерное общество «альфа дельта строй»"),
+        ("ООО «СЗГ»", "Общество с ограниченной ответственностью «Северо-Западная Гамма»"),
+        ("ООО «СЗГ»", "ООО «Северо Западная Гамма»"),
+    ],
+)
+def test_short_names_equal_when_quotes_hold_the_initials(short: str, full: str) -> None:
+    field = _field("customer_name_short")
+    a, b = normalize(Kind.NAME, short), normalize(Kind.NAME, full)
+    assert same_value(field, a, b)
+    assert same_value(field, b, a)
+
+
+@pytest.mark.parametrize(
+    ("short", "full"),
+    [
+        ("АО «АДС»", "Открытое акционерное общество «Альфа Дельта Строй»"),  # other form
+        ("ОАО «АДК»", "Открытое акционерное общество «Альфа Дельта Строй»"),  # other letters
+        ("ОАО «АД»", "Открытое акционерное общество «Альфа Дельта Строй»"),  # a word short
+        ("ОАО «Альфа»", "Открытое акционерное общество «Альфа Дельта Строй»"),  # not initials
+        ("«АДС»", "«Альфа Дельта Строй»"),  # no legal form on either side
+        ("ОАО «А»", "ОАО «Альфа»"),  # one word: too weak to tell organizations apart
+    ],
+)
+def test_short_names_differ_when_the_initials_do_not_match(short: str, full: str) -> None:
+    field = _field("customer_name_short")
+    assert not same_value(field, normalize(Kind.NAME, short), normalize(Kind.NAME, full))
+
+
+def test_initials_rule_is_only_for_short_names() -> None:
+    field = _field("customer_name_full")
+    assert not same_value(field, normalize(Kind.NAME, "ОАО «АДС»"),
+                          normalize(Kind.NAME, "ОАО «Альфа Дельта Строй»"))
 
 
 def test_full_names_keep_their_form_when_compared() -> None:
