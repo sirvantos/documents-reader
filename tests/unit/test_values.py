@@ -86,6 +86,18 @@ def test_different_amount_not_found() -> None:
     assert find_in_quote(Kind.AMOUNT, "1440000.00", "Цена 1 200 000 рублей без НДС.") is None
 
 
+def test_amount_with_a_missing_space_in_the_first_group() -> None:
+    # the contract text lost the space after the millions (analyst's measurement, record 15,
+    # 2026-11-26): the whole number, not its last group
+    quote = ("и составляет всего с НДС (20%) — 4560 789 (Четыре миллиона пятьсот шестьдесят "
+             "тысяч семьсот восемьдесят девять) рублей 20 копеек.")
+    span = find_in_quote(Kind.AMOUNT, "4560789.20", quote)
+    assert span is not None
+    assert quote[span[0]:span[1]].startswith("4560 789 (")
+    assert find_in_quote(Kind.AMOUNT, "789.20", quote) is None
+    assert normalize(Kind.AMOUNT, "4560 789 рублей 20 копеек") == "4560789.20"
+
+
 def test_amount_across_a_line_break() -> None:
     quote = "всего с\nНДС 1 440 000 (один миллион четыреста\nсорок тысяч) рублей 00 копеек."
     assert find_in_quote(Kind.AMOUNT, "1440000.00", quote) is not None

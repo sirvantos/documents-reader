@@ -60,7 +60,8 @@ def _span(offsets: list[int], start: int, end: int) -> tuple[int, int]:
 
 # --- amounts -----------------------------------------------------------------------------
 
-_INTEGER = r"(?P<int>\d{1,3}(?: \d{3})+|\d+)"
+# The first group may have four digits: a text that lost the space after it («4560 789»).
+_INTEGER = r"(?P<int>\d{1,4}(?: \d{3})+|\d+)"
 _FRACTION = r"(?:[.,](?P<frac>\d{2}))?"
 _SPELLED = r"(?: ?\([^)]{0,400}\))?"
 _KOPECKS = r"(?: ?(?P<kop>\d{2}) ?коп\w*)?"
