@@ -36,7 +36,7 @@ uv run docreader add "$DOCREADER_DATA_DIR/in" && uv run docreader read --all && 
 uv run docreader eval template --fields prototype
 uv run docreader eval load tests/synthetic/gold/template-filled.csv
 uv run docreader eval fields --from tests/synthetic/gold/field-results.json --label demo
-uv run docreader eval results && uv run docreader eval show 1 --outcome wrong
+uv run docreader eval results && uv run docreader eval show 1 --outcome missed
 ```
 
 Вопросы и замер поиска — на договорах генератора поиска (набор вопросов и файл
