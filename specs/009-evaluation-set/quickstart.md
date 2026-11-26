@@ -28,6 +28,7 @@ DOCREADER_TEST_DATABASE_URL=postgresql:///postgres scripts/check.sh
 из синтетического файла результатов.
 
 ```bash
+createdb docreader_demo 2>/dev/null || true
 export DOCREADER_DATA_DIR=$(mktemp -d) DOCREADER_DATABASE_URL=postgresql:///docreader_demo
 uv run docreader migrate
 uv run python -c "from tests.synthetic.make_pdfs import make_extraction_contracts as m; m('$DOCREADER_DATA_DIR/in')"
@@ -35,10 +36,24 @@ uv run docreader add "$DOCREADER_DATA_DIR/in" && uv run docreader read --all && 
 uv run docreader eval template --fields prototype
 uv run docreader eval load tests/synthetic/gold/template-filled.csv
 uv run docreader eval fields --from tests/synthetic/gold/field-results.json --label demo
-uv run docreader eval questions load tests/synthetic/search_questions.toml
-uv run docreader eval search --from tests/synthetic/gold/search-results.json --label demo
 uv run docreader eval results && uv run docreader eval show 1 --outcome wrong
 ```
+
+Вопросы и замер поиска — на договорах генератора поиска (набор вопросов и файл
+результатов рассчитаны на них как на `D-0001`…`D-0003`), поэтому в новой базе и папке:
+
+```bash
+dropdb docreader_demo && createdb docreader_demo
+export DOCREADER_DATA_DIR=$(mktemp -d)
+uv run docreader migrate
+uv run python -c "from tests.synthetic.make_pdfs import make_search_contracts as m; m('$DOCREADER_DATA_DIR/in')"
+uv run docreader add "$DOCREADER_DATA_DIR/in" && uv run docreader read --all && uv run docreader parse --all
+uv run docreader eval questions load tests/synthetic/search_questions.toml
+uv run docreader eval search --from tests/synthetic/gold/search-results.json --label demo
+uv run docreader eval results && uv run docreader eval show 1 --outcome not_found
+```
+
+После проверки: `dropdb docreader_demo`.
 
 Ожидается: шаблон с 6 столбцами полей и пустыми ячейками; загрузка называет число
 значений и одну ошибку вида (намеренно в образце); сравнение — по одному случаю
@@ -53,7 +68,8 @@ git pull && uv sync --group ocr
 uv run --env-file .env docreader migrate
 ```
 
-Ожидается: миграция `0007_evaluation` применена. Модели для шагов Б1–Б5 не нужны.
+Ожидается: миграция `0007_evaluation` применена. Модели нужны только в Б5 (пункт 1)
+и Б6 (замер поиска).
 
 ### Б1. Шаблон и табличный редактор (проверка формата, часть B файла фичи)
 
@@ -66,7 +82,7 @@ uv run --env-file .env docreader eval template --fields prototype --documents D-
 формате CSV** и загрузите:
 
 ```bash
-uv run --env-file .env docreader eval load eval/template-….csv
+uv run --env-file .env docreader eval load ~/…/eval/template-….csv
 ```
 
 **Прислать:** вывод загрузки и одну строку — каким редактором открыт и сохранён файл,
@@ -83,10 +99,11 @@ uv run --env-file .env docreader eval blind pick
 проверки этих договоров. Загрузите:
 
 ```bash
-uv run --env-file .env docreader eval blind load eval/blind-….csv
+uv run --env-file .env docreader eval blind load ~/…/eval/blind-….csv
 ```
 
-**Прислать:** вывод обеих команд и время разметки.
+**Прислать:** вывод обеих команд, время разметки и одну строку — хватило ли шаблона
+и подсказок в нём без документации, понятны ли ошибки вида (SC-006).
 
 ### Б3. Проверка на странице (~1,5–2 ч, SC-008, SC-009)
 
@@ -96,10 +113,12 @@ uv run --env-file .env docreader eval review
 
 Откройте страницу в браузере. Начните сверху (там карточки, требующие внимания);
 «совпало» в конце — подтверждайте клавишей `1`, глядя на цитату. Можно прерваться:
-ответы сохраняются в браузере. В конце нажмите «Скачать ответы» и загрузите файл:
+ответы сохраняются в браузере. В конце нажмите «Скачать ответы», перенесите файл
+из папки загрузок в папку данных (FR-006: в нём значения договоров) и загрузите:
 
 ```bash
-uv run --env-file .env docreader eval load ~/Downloads/gold-review-….json
+mv ~/Downloads/gold-review-….json ~/…/eval/
+uv run --env-file .env docreader eval load ~/…/eval/gold-review-….json
 ```
 
 **Прислать:** вывод `review` (числа карточек по пометкам — для SC-009), вывод `load`,
@@ -119,8 +138,10 @@ uv run --env-file .env docreader eval blind report --label "первый эта�
 
 ### Б5. Вопросы
 
-1. Пункты для вопросов замера фичи 09 без пункта: повторите замер только на них,
-   чтобы получить машиночитаемый файл ответов (три сервера моделей, ~8 мин):
+1. Пункты для вопросов замера фичи 09 без пункта: скопируйте эти восемь вопросов
+   (без `answer` и без `expected = "none"`) из `answers-09.toml` в
+   `answers-09-no-clause.toml` и повторите замер только на них, чтобы получить
+   машиночитаемый файл ответов (три сервера моделей, ~8 мин):
 
    ```bash
    scripts/answers_b4.sh --questions ~/…/questions/answers-09-no-clause.toml

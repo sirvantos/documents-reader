@@ -15,7 +15,7 @@ tech-context: удаление документа убирает его резу
 | Имя | Значения | Где |
 |---|---|---|
 | `GoldState` | `value`, `absent` | `gold_field.state`, `gold_blind.state` |
-| `GoldPath` | `agree` (проверено, совпало), `chosen` (выбрано из двух), `typed` (вписано на странице), `absent_marked` (отметка «отсутствует» на странице), `template` (из шаблона) | `gold_field.path` |
+| `GoldPath` | `agree` (проверено, совпало: карточка `agree`), `confirmed` (подтверждено значение одного способа: карточка `model_only` или `rules_only`), `chosen` (выбрано из двух), `typed` (вписано на странице), `absent_marked` (отметка «отсутствует» на странице), `template` (из шаблона) | `gold_field.path` |
 | `LoadKind` | `review`, `template`, `blind`, `questions` | `gold_load.kind` |
 | `QuestionKind` | `text`, `table`, `both` | `gold_question.kind` |
 | `QuestionOrigin` | `own`, `set08`, `set09`, `generated` | `gold_question.origin` |
@@ -45,6 +45,7 @@ tech-context: удаление документа убирает его резу
 | `values_text` | text[] | варианты как записаны; пусто при `absent` |
 | `values_normalized` | text[] | приведённые варианты той же длины (R-4) |
 | `path` | text | CHECK `GoldPath` |
+| `system_normalized` | text NULL | приведённое значение фичи 05, показанное на карточке, когда аналитик ответил (из `cards.json`); NULL — у фичи 05 значения не было или значение из шаблона. По нему страница ставит пометку `changed` (research R-9) |
 | `clause_key` | text NULL | пункт цитаты, по которой значение подтверждено (страница проверки), или выбранного места; для шаблона — NULL |
 | `load_id` | bigint | FK `gold_load(id)` ON DELETE RESTRICT |
 | | | PK (`document_id`, `field`); CHECK: `state = 'absent'` ⇔ массивы пусты; CHECK: длины массивов равны |
@@ -71,9 +72,9 @@ tech-context: удаление документа убирает его резу
 | `has_answer` | boolean | |
 | `false_premise` | boolean | по умолчанию false |
 | `expected` | text[] | ожидаемые значения ответа (`contains`, значение эталона); может быть пусто |
-| `clause_keys` | text[] | правильные пункты (ключи записей разбора); пусто ⇔ `has_answer = false` |
-| `origin` | text | CHECK `QuestionOrigin` |
-| `source_file` | text | путь файла относительно папки данных (по нему повторная загрузка заменяет вопросы файла) |
+| `clause_keys` | text[] | правильные пункты (ключи записей разбора); при `has_answer = false` — пусто; при `has_answer = true` пусто только у вопроса «пункт не указан» (форма `expected = "answer"`, research R-11) — он не входит в метрики поиска |
+| `origin` | text | CHECK `QuestionOrigin`; из ключа `origin` в начале файла, иначе из `--origin`, иначе `own` (research R-11) |
+| `source_file` | text | путь файла относительно папки данных, для файла вне её — полный путь (по нему повторная загрузка заменяет вопросы файла) |
 | `load_id` | bigint | FK `gold_load(id)` |
 
 Версия вопросов — `sha256` по строкам, отсортированным по `key`.

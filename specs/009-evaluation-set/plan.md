@@ -67,7 +67,7 @@ review` → ответы → `eval load` → `eval fields` → `eval compare`; �
 не покидают машину (FR-025); `DOCREADER_FORBID_MODELS` останавливает только замер
 поиска без `--from`.
 
-**Scale/Scope**: 56 договоров; 1 группа подкоманд (14 команд), 9 новых модулей
+**Scale/Scope**: 56 договоров; 1 группа подкоманд (15 команд), 9 новых модулей
 (`catalog`, `gold`, `outcomes`, `rules`, `review`, `pageimage`, `blind`, `questions`,
 `evaluation`), 1 миграция, правки `values.py`, `render.py`, `cli.py`,
 `scripts/review_extraction.py`, `scripts/quickstart_extraction.py`,
@@ -107,8 +107,8 @@ review` → ответы → `eval load` → `eval fields` → `eval compare`; �
 | 2 | Часть B, tech-context: таблицы `gold_field`, `gold_question`, `control_string`, `eval_result` и таблица отметок | `gold_load`, `gold_field`, `blind_pick`, `gold_blind`, `gold_question`, `eval_result`, `eval_case`; `control_string` и отметки — со сценариями 5–6 | Объём спецификации (сценарии 1–4, проверка, слепой контроль) | data-model.md; tech-context — строки модели данных (задача документации) |
 | 3 | Часть B: команды `eval template`, `eval load`, `eval fields`, `eval search`, `eval reading`, `eval answers …`, `eval results`, `eval compare` | Те же для сценариев 1–4 и новые `review`, `blind …`, `questions …`, `show`, `export`; `reading` и `answers` — следующая итерация | Спецификация | contracts/cli.md |
 | 4 | Часть B: «формат CSV в UTF-8; проверить на первом шаблоне» | CSV UTF-8 с BOM, `;`, загрузка принимает `,` и без BOM; проверка — Б1 | Excel на Mac требует BOM; Numbers сохраняет с запятой | research.md R-2 |
-| 5 | Спецификация FR-003: места для карточек «по поиску по вопросу поля», без моделей — только по словам | Всегда только поиск по словам | На рабочем наборе карточек без значения единицы (0 «не найдено», 4 «отклонено»), ради них страница не должна требовать серверов моделей | research.md R-9 |
-| 6 | Спецификация FR-004: вписанное значение «проверяется по виду поля на странице» | Страница проверяет только простой вид; окончательно — при загрузке, ошибка называет карточку, значение становится «не размечено» | Приведение — одна функция Python (FR-011); второе приведение на JavaScript разошлось бы | research.md R-9 |
+| 5 | Спецификация FR-003: места для карточек «по поиску по вопросу поля», без моделей — только по словам | Всегда только поиск по словам | На рабочем наборе карточек без значения единицы (0 «не найдено», 4 «отклонено»), ради них страница не должна требовать серверов моделей | research.md R-9; подтверждено аналитиком 2026-11-26 (analyze F2), спецификация приведена |
+| 6 | Спецификация FR-004: вписанное значение «проверяется по виду поля на странице» | Страница проверяет только простой вид; окончательно — при загрузке, ошибка называет карточку, значение становится «не размечено» | Приведение — одна функция Python (FR-011); второе приведение на JavaScript разошлось бы | research.md R-9; подтверждено аналитиком 2026-11-26 (analyze F2), спецификация приведена |
 | 7 | Каталог: `price_by_year` — «список записей», сравнивается по полям записи | До своей итерации — «оценивается вручную» | Поле очереди 2, извлечением не выдаётся | research.md R-3 |
 | 8 | Отбор договоров Б5 фичи 05, шаблоны вопросов, общий код страницы — в скриптах | Переносятся в пакет (`blind.py`, `questions.py`, `pageimage.py`); скрипты импортируют | Команды пакета не импортируют скрипты | research.md R-9, R-10, R-11 |
 | 9 | Замер ответов фичи 09 пишет только текстовые файлы | + машиночитаемый `answers-b4-<время>.json` | Подбор пунктов (FR-020) без разбора текста | research.md R-11, contracts/files.md |
@@ -150,24 +150,31 @@ src/docreader/
 
 scripts/
 ├── review_extraction.py      # импортирует pageimage.py
-├── quickstart_extraction.py  # импортирует blind.pick_review
+├── quickstart_extraction.py  # вызывает blind.pick
 ├── make_search_questions.py  # импортирует questions.TEMPLATES
 └── quickstart_answers.py     # + answers-b4-<время>.json
 
 tests/
 ├── synthetic/make_pdfs.py              # + варианты для правил (ловушки: номера других документов, много сумм, даты других документов)
-├── synthetic/gold/                     # новый: заполненный шаблон, ответы страницы, результаты из файла, слепая разметка
+├── synthetic/gold/                     # новый: заполненный шаблон, слепая разметка, результаты из файла (ответы страницы собирает тест)
+├── eval_guard.py                       # новый: assert_no_values, synthetic_secrets
 ├── unit/test_catalog.py                # новый: каталог = docs/field-catalog.md
 ├── unit/test_values_kinds.py           # новый: новые виды
 ├── unit/test_gold_files.py             # новый: CSV, ответы страницы
 ├── unit/test_gold_replace.py           # новый: правило замены (R-6)
 ├── unit/test_outcomes.py               # новый: таблица R-7, итоги, поиск, сопоставление
 ├── unit/test_rules.py                  # новый: образцы и ловушки
+├── unit/test_review.py                 # новый: пометки, порядок, перенос ответов, скрытие слепых
+├── unit/test_blind.py                  # новый: итог слепого контроля
 ├── unit/test_questions.py              # новый: ключ, загрузка, генерация, подбор пунктов
 ├── unit/test_render_eval.py            # новый: вывод без значений и текста
-├── integration/test_eval_gold.py       # новый: template, review, load, blind
-├── integration/test_eval_fields.py     # новый: fields, show, compare, export
-├── integration/test_eval_search.py     # новый: questions, search (--from и подделки)
+├── integration/test_eval_gold.py       # новый: template, load, цепочка review → load
+├── integration/test_eval_review.py     # новый: review
+├── integration/test_eval_blind.py      # новый: blind pick, load, report
+├── integration/test_eval_fields.py     # новый: fields
+├── integration/test_eval_results.py    # новый: results, show, compare, export
+├── integration/test_eval_questions.py  # новый: questions load, generate, clauses
+├── integration/test_eval_search.py     # новый: search (--from и подделки)
 └── integration/test_migration_0007.py  # новый
 ```
 
