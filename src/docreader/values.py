@@ -152,9 +152,30 @@ _NUMBER_SIGN = re.compile(r"^(?:№|N[º°]|N(?= )) ?")
 _ID_CHARS = re.compile(r"[\w\-/.]")
 
 
+_ALNUM_RUN = re.compile(r"[^\W_]+")
+_CYRILLIC_LETTER = re.compile(r"[А-Яа-яЁё]")
+
+
+def _letter_zeros(text: str) -> str:
+    """A zero inside a run of letters with a Cyrillic one is the letter О («0КЭ» → «ОКЭ»).
+
+    Analyst's measurement, record 19 (2026-11-27): the contract text had a zero for the
+    letter. A run with any other digit is left as it is. Keeps the length of `text`.
+    """
+    def fix(match: re.Match[str]) -> str:
+        run = match[0]
+        if "0" not in run or not _CYRILLIC_LETTER.search(run):
+            return run
+        if any(ch.isdigit() and ch != "0" for ch in run):
+            return run
+        return run.replace("0", "О")
+
+    return _ALNUM_RUN.sub(fix, text)
+
+
 def _normalize_identifier(value: str) -> str:
     folded, _ = _folded(value)
-    result = _NUMBER_SIGN.sub("", folded).strip()
+    result = _letter_zeros(_NUMBER_SIGN.sub("", folded).strip())
     if not result:
         raise ValueNotNormalized(Kind.IDENTIFIER)
     return result
@@ -177,6 +198,7 @@ def contract_number_core(normalized: str) -> str:
 
 def _find_identifier(normalized: str, quote: str) -> tuple[int, int] | None:
     folded, offsets = _folded(quote)
+    folded = _letter_zeros(folded)  # the same length: offsets still hold
     start = folded.find(normalized)
     while start != -1:
         end = start + len(normalized)

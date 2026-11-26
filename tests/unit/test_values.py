@@ -215,6 +215,32 @@ def test_other_identifier_not_found() -> None:
     assert find_in_quote(Kind.IDENTIFIER, "ДП-17/2026", "протокол № 722") is None
 
 
+# A zero among letters is the letter О: the contract text has «0БВ» for «ОБВ» (analyst's
+# measurement, record 19, 2026-11-27). Only a group of letters and zeros with a Cyrillic
+# letter in it; the text keeps the zero, the normalized value gets the letter.
+@pytest.mark.parametrize(
+    ("written", "expected"),
+    [
+        ("12/0БВ-ГД/3", "12/ОБВ-ГД/3"),
+        ("12/ОБВ-ГД/3", "12/ОБВ-ГД/3"),
+        ("12/Б0В-ГД/3", "12/БОВ-ГД/3"),
+        ("12/10БВ-ГД/3", "12/10БВ-ГД/3"),  # a digit other than zero: a number, not a letter
+        ("12/0-БВ/3", "12/0-БВ/3"),  # a zero on its own
+        ("120/34", "120/34"),
+        ("12/0AB-3", "12/0AB-3"),  # Latin letters only
+    ],
+)
+def test_zero_among_letters_is_the_letter(written: str, expected: str) -> None:
+    assert normalize(Kind.IDENTIFIER, written) == expected
+
+
+def test_identifier_with_a_zero_for_the_letter_found_in_the_quote() -> None:
+    quote = "Договор № 12/0БВ-ГД/3 на выполнение работ"
+    for value in ("12/0БВ-ГД/3", "12/ОБВ-ГД/3"):
+        span = find_in_quote(Kind.IDENTIFIER, normalize(Kind.IDENTIFIER, value), quote)
+        assert span is not None and quote[span[0]:span[1]] == "12/0БВ-ГД/3"
+
+
 # --- names -------------------------------------------------------------------------------
 
 
