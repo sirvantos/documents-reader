@@ -24,11 +24,14 @@ import unicodedata
 from datetime import date
 from decimal import Decimal
 from functools import cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from docreader import wordforms
 from docreader.fields import Kind
 from docreader.textnorm import compare_form
+
+if TYPE_CHECKING:
+    from docreader.catalog import CatalogField
 
 _KIND_WORD = {
     Kind.AMOUNT: "сумме",
@@ -238,3 +241,94 @@ def find_in_quote(kind: Kind, normalized: str, quote: str) -> tuple[int, int] | 
     if kind is Kind.IDENTIFIER:
         return _find_identifier(normalized, quote)
     return _find_name(normalized, quote)
+
+
+# --- every kind of the field catalog (feature 02, research R-4) -----------------------------
+
+_REQUISITE_WORDS = (
+    ("_inn", "ИНН"),
+    ("_kpp", "КПП"),
+    ("_ogrn", "ОГРН"),
+    ("_bik", "БИК"),
+    ("account", "счёту"),
+)
+_REQUISITE_LABEL = re.compile(r"^[A-Za-zА-Яа-яЁё :/]+")
+_PERCENT = re.compile(r"(?P<num>\d+(?:[.,]\d+)?) ?%?(?: ?\([^)]*\))?")
+_WHOLE_NUMBER = re.compile(r"(?P<num>\d+)(?: ?\([^)]*\))?(?: +[^\W\d_]+)*")
+
+
+def _requisite_word(name: str) -> str:
+    for marker, word in _REQUISITE_WORDS:
+        if name.endswith(marker) or (marker == "account" and "account" in name):
+            return word
+    return "реквизиту"
+
+
+def _normalize_requisite(field: CatalogField, value: str) -> str:
+    text = _REQUISITE_LABEL.sub("", value.strip(), count=1).replace(" ", "")
+    length = field.requisite_length
+    if length is None or not re.fullmatch(rf"\d{{{length}}}", text):
+        raise ValueError(f"значение не приводится к {_requisite_word(field.name)} ({length} цифр)")
+    return text
+
+
+def _normalize_percent(value: str) -> str:
+    match = _PERCENT.fullmatch(value.strip())
+    if match is None:
+        raise ValueError("значение не приводится к проценту")
+    return format(Decimal(match["num"].replace(",", ".")).normalize(), "f")
+
+
+def _normalize_number(value: str) -> str:
+    match = _WHOLE_NUMBER.fullmatch(value.strip())
+    if match is None:
+        raise ValueError("значение не приводится к целому числу")
+    return str(int(match["num"]))
+
+
+def _choice_key(text: str) -> str:
+    return text.strip().casefold().replace("ё", "е")
+
+
+def _normalize_choice(field: CatalogField, value: str) -> str:
+    wanted = _choice_key(value)
+    for variant in field.choices:
+        if _choice_key(variant) == wanted:
+            return variant
+    raise ValueError("значение не из вариантов: " + ", ".join(field.choices))
+
+
+def normalize_field(field: CatalogField, value: str) -> str:
+    """The normalized value of a catalog field of any kind; ValueError when it does not fit."""
+    kind = field.kind.value
+    if kind in {k.value for k in Kind}:
+        return normalize(Kind(kind), value)
+    if kind == "requisite":
+        return _normalize_requisite(field, value)
+    if kind == "percent":
+        return _normalize_percent(value)
+    if kind == "number":
+        return _normalize_number(value)
+    if kind == "choice":
+        return _normalize_choice(field, value)
+    return value.strip()  # free_text, list, records: assessed by hand
+
+
+def same_value(field: CatalogField, a: str, b: str) -> bool:
+    """Whether two normalized values are the same: names ignore case, the rest are equal."""
+    if field.kind.value == Kind.NAME.value:
+        return a.casefold() == b.casefold()
+    return a == b
+
+
+# --- values inside a text (feature 02, rules extraction) -------------------------------------
+
+
+def amounts_in(text: str) -> list[tuple[str, tuple[int, int]]]:
+    """Every amount («… руб…») in `text`: normalized value and `[start, end)` in `text`."""
+    return _amounts_in(text)
+
+
+def dates_in(text: str) -> list[tuple[str, tuple[int, int]]]:
+    """Every date in `text`: `YYYY-MM-DD` and `[start, end)` in `text`, in text order."""
+    return _dates_in(text)

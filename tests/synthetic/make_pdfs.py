@@ -1717,6 +1717,154 @@ def make_answer_contracts(directory: str | Path) -> list[Path]:
     ]
 
 
+# --- rules contracts (feature 009, T003) ---------------------------------------
+
+RULES_GENERATOR_VERSION = 1  # bump when a contract's text changes (R-14)
+
+_RULES_PARTIES_A = (
+    "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), "
+    "именуемое в дальнейшем «Заказчик», и Общество с ограниченной ответственностью "
+    "«Бета» (ООО «Бета»), именуемое в дальнейшем «Подрядчик», заключили настоящий договор:"
+)
+_RULES_PARTIES_B = (
+    "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), "
+    "именуемое в дальнейшем «Заказчик», действующее на основании доверенности "
+    "№ 77-Д от 03 марта 2026 г., и Общество с ограниченной ответственностью «Бета» "
+    "(ООО «Бета»), именуемое в дальнейшем «Подрядчик», заключили настоящий договор:"
+)
+_RULES_SECTION_1 = (
+    "1. Предмет Договора",
+    "1.1. Подрядчик выполняет работы по ремонту здания, а Заказчик принимает "
+    "и оплачивает результат работ.",
+)
+_RULES_SECTION_3 = (
+    "3. Порядок расчётов",
+    "3.1. Оплата производится в течение 10 банковских дней с даты подписания акта.",
+)
+_RULES_SECTION_4 = (
+    "4. Права и обязанности Сторон",
+    "4.1. Подрядчик выполняет работы собственными силами.",
+)
+_RULES_SECTION_6 = (
+    "6. Гарантии",
+    "6.1. Подрядчик гарантирует качество работ в течение 12 месяцев с даты приёмки.",
+)
+_RULES_LIABILITY_PLAIN = (
+    "7. Ответственность",
+    "7.1. Стороны несут ответственность в соответствии с законодательством "
+    "Российской Федерации.",
+)
+_RULES_LIABILITY_PENALTY = (
+    "7. Ответственность",
+    "7.1. За просрочку Подрядчик уплачивает штраф 50 000 рублей 00 копеек.",
+    "7.2. Обеспечение исполнения Договора составляет 120 000 рублей 00 копеек.",
+)
+_RULES_SECTION_8 = (
+    "8. Адреса и реквизиты сторон",
+    "Заказчик: ООО «Альфа», ИНН 0000000000",
+    "Подрядчик: ООО «Бета», ИНН 0000000001",
+)
+_RULES_TERM_PLAIN = (
+    "5. Срок действия Договора",
+    "5.1. Договор вступает в силу с даты подписания и действует до «31» декабря 2027 г.",
+)
+_RULES_TERM_TRAPS = (
+    "5. Срок действия Договора",
+    "5.1. Договор вступает в силу с даты подписания и действует до «30» июня 2028 г.",
+    "Акт сверки составляется до 15 января 2028 г.",
+)
+_RULES_NO_TERM = (
+    "5. Приёмка работ",
+    "5.1. Приёмка выполненных работ оформляется актом приёмки-передачи.",
+)
+_RULES_PRICE_A = (
+    "2.1. Цена Договора составляет 2 400 000 (два миллиона четыреста тысяч) рублей "
+    "00 копеек без учёта НДС, НДС 20% — 480 000 рублей 00 копеек, всего с учётом НДС "
+    "2 880 000 (два миллиона восемьсот восемьдесят тысяч) рублей 00 копеек.",
+)
+_RULES_PRICE_B = (
+    "2.1. Цена Договора составляет 3 600 000 (три миллиона шестьсот тысяч) рублей "
+    "00 копеек без учёта НДС, НДС 20% — 720 000 рублей 00 копеек, всего с учётом НДС "
+    "4 320 000 (четыре миллиона триста двадцать тысяч) рублей 00 копеек.",
+)
+_RULES_PRICE_C = (
+    "2.1. Цена Договора составляет 900 000 (девятьсот тысяч) рублей 00 копеек "
+    "без учёта НДС, НДС 20% — 180 000 рублей 00 копеек, всего с учётом НДС "
+    "1 080 000 (один миллион восемьдесят тысяч) рублей 00 копеек.",
+    "2.2. Стоимость первого этапа составляет 300 000 рублей 00 копеек без учёта НДС.",
+)
+_RULES_PRICE_D = ("2.1. Цена Договора составляет 1 200 000 рублей 00 копеек, включая НДС.",)
+
+
+def _rules_pages(
+    head: tuple[str, ...],
+    preamble: str,
+    price: tuple[str, ...],
+    term: tuple[str, ...],
+    liability: tuple[str, ...],
+) -> tuple[tuple[str, ...], ...]:
+    """Two pages of a rules contract: head and preamble, clauses 1–4, then 5–8."""
+    page1 = (
+        *head,
+        preamble,
+        *_RULES_SECTION_1,
+        "2. Цена Договора",
+        *price,
+        *_RULES_SECTION_3,
+        *_RULES_SECTION_4,
+    )
+    page2 = (*term, *_RULES_SECTION_6, *liability, *_RULES_SECTION_8)
+    return (page1, page2)
+
+
+_RULES_PAGES: dict[str, tuple[tuple[str, ...], ...]] = {
+    "rules-a": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-11/2026", "г. Энск"),
+        _RULES_PARTIES_A,
+        _RULES_PRICE_A,
+        _RULES_TERM_PLAIN,
+        _RULES_LIABILITY_PLAIN,
+    ),
+    "rules-b": _rules_pages(
+        ("Протокол № 314 от 12 мая 2026 г.", "ДОГОВОР № Р-12/2026", "г. Энск"),
+        _RULES_PARTIES_B,
+        _RULES_PRICE_B,
+        _RULES_TERM_TRAPS,
+        _RULES_LIABILITY_PENALTY,
+    ),
+    "rules-c": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-13/2026", "г. Энск"),
+        _RULES_PARTIES_A,
+        _RULES_PRICE_C,
+        _RULES_TERM_PLAIN,
+        _RULES_LIABILITY_PLAIN,
+    ),
+    "rules-d": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-14/2026", "г. Энск"),
+        _RULES_PARTIES_A,
+        _RULES_PRICE_D,
+        _RULES_NO_TERM,
+        _RULES_LIABILITY_PLAIN,
+    ),
+}
+
+
+def make_rules_contracts(directory: str | Path) -> list[Path]:
+    """Writes the four synthetic contracts of feature 009 (T003) into the folder.
+
+    `rules-a.pdf` (plain), `rules-b.pdf` (traps: other documents' numbers and dates,
+    penalty amounts outside the price), `rules-c.pdf` (two amounts without VAT in the
+    price section), `rules-d.pdf` (no term clause, amount with VAT only). Returns the
+    paths in this order. Text layer only; all names and numbers fictional.
+    """
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    return [
+        _write(root / f"{name}.pdf", _extraction_pdf(_RULES_PAGES[name]))
+        for name in ("rules-a", "rules-b", "rules-c", "rules-d")
+    ]
+
+
 # --- demo set ------------------------------------------------------------------
 
 

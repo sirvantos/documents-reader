@@ -9,6 +9,7 @@ import csv
 import io
 import itertools
 import json
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import PurePath
@@ -17,6 +18,7 @@ from typing import TYPE_CHECKING
 from docreader.answer_check import AnswerOutcome, ClaimStatus
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
+from docreader.gold import GoldPath, LoadKind
 from docreader.quality import FLAG_NAMES, FLAG_ORDER
 from docreader.stages import STAGES, Stage, State
 
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
     from docreader.clauseview import ClauseView, Outline, OutlineRecord
     from docreader.extraction import ExtractedDocument, ExtractRun
     from docreader.fieldview import FieldsView, FieldView
+    from docreader.gold import LoadReport, ParsedGold
     from docreader.indexing import IndexedDocument, IndexRun
     from docreader.parsing import ParsedDocument, ParseRun
     from docreader.passageview import PassageView
@@ -1324,3 +1327,99 @@ def render_answer_text(answer: Answer) -> str:
         lines.append("")
         lines += block
     return "\n".join(lines) + "\n"
+
+
+# --- eval load (contracts/cli.md «docreader eval load») ---
+
+_ACCEPTED_WORDS: tuple[tuple[GoldPath, str], ...] = (
+    (GoldPath.AGREE, "совпало"),
+    (GoldPath.CONFIRMED, "подтверждено"),
+    (GoldPath.CHOSEN, "выбрано из двух"),
+    (GoldPath.TYPED, "вписано"),
+    (GoldPath.TEMPLATE, "из шаблона"),
+)
+
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    """«N слово» with the Russian form of the word for N."""
+    if n % 10 == 1 and n % 100 != 11:
+        word = one
+    elif 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        word = few
+    else:
+        word = many
+    return f"{n} {word}"
+
+
+def _accepted_parts(kind: LoadKind, report: LoadReport) -> list[str]:
+    parts: list[str] = []
+    for path, word in _ACCEPTED_WORDS:
+        n = report.paths.get(path.value, 0)
+        if path is GoldPath.TEMPLATE and kind is LoadKind.TEMPLATE:
+            n -= report.absent  # a template «отсутствует» cell is stored with path template
+        if n:
+            parts.append(f"{word} {n}")
+    if report.absent:
+        parts.append(f"отсутствует {report.absent}")
+    return parts
+
+
+def render_eval_load_text(parsed: ParsedGold, report: LoadReport) -> str:
+    """Output of `eval load`: counts, problems and the version; never a cell value."""
+    docs = {doc for doc, _ in parsed.coverage}
+    fields = {field for _, field in parsed.coverage}
+    lines: list[str] = []
+    if parsed.kind is LoadKind.REVIEW:
+        cards = _plural(len(parsed.coverage), "карточка", "карточки", "карточек")
+        lines.append(f"Загрузка: ответы страницы проверки ({cards})")
+    else:
+        rows = _plural(len(docs), "строка", "строки", "строк")
+        columns = _plural(len(fields), "поле", "поля", "полей")
+        lines.append(f"Загрузка: шаблон ({rows}, {columns})")
+
+    accepted = len(parsed.values)
+    parts = _accepted_parts(parsed.kind, report)
+    head = f"  принято {accepted}" + (f": {', '.join(parts)}" if parts else "")
+    lines.append(f"{head}; пропущено {report.unlabeled}")
+
+    reasons = Counter(e.reason for e in parsed.errors)
+    for error in parsed.errors:
+        lines.append(f"  ошибок вида {reasons[error.reason]}: {error.where} — {error.reason}")
+    if parsed.skipped_rows:
+        skipped = "; ".join(f"{s.where} — {s.reason}" for s in parsed.skipped_rows)
+        lines.append(f"  пропущены строки: {skipped}")
+
+    diff = report.diff
+    lines.append(
+        f"  в пределах файла: добавлено {len(diff.added)}, изменено {len(diff.changed)}, "
+        f"убрано {len(diff.removed)}"
+    )
+    if diff.other_kind:
+        lines.append(f"  из файла другого вида: {len(diff.other_kind)}")
+    lines.append(f"  версия эталона: {report.gold_sha256[:12]}")
+    if report.needs_confirmation:
+        removed = _plural(len(diff.removed), "значение", "значения", "значений")
+        lines.append(f"  убирается {removed}: повторите с --yes, чтобы заменить")
+    return "\n".join(lines)
+
+
+def render_eval_load_json(parsed: ParsedGold, report: LoadReport) -> str:
+    """JSON of `eval load`: counts and problem places only, no values and no text."""
+    diff = report.diff
+    payload = {
+        "kind": parsed.kind.value,
+        "added": len(diff.added),
+        "changed": len(diff.changed),
+        "removed": len(diff.removed),
+        "same": len(diff.same),
+        "other_kind": len(diff.other_kind),
+        "paths": dict(report.paths),
+        "absent": report.absent,
+        "unlabeled": report.unlabeled,
+        "errors": [{"where": e.where, "reason": e.reason} for e in parsed.errors],
+        "skipped_rows": [{"where": s.where, "reason": s.reason} for s in parsed.skipped_rows],
+        "needs_confirmation": report.needs_confirmation,
+        "load_id": report.load_id,
+        "gold_sha256": report.gold_sha256,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)

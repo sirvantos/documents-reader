@@ -16,6 +16,7 @@ from docreader import (
     db,
     extraction,
     fieldview,
+    gold,
     indexing,
     parsing,
     passageview,
@@ -29,6 +30,7 @@ from docreader import (
 from docreader.answer_check import AnswerOutcome
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
+from docreader.gold import GoldFileError
 from docreader.ids import format_document_id, parse_clause_id, parse_document_id
 from docreader.intake import run_intake
 from docreader.render import (
@@ -41,6 +43,8 @@ from docreader.render import (
     render_answer_text,
     render_clause_text,
     render_document_text,
+    render_eval_load_json,
+    render_eval_load_text,
     render_extract_text,
     render_fields_text,
     render_find_text,
@@ -235,6 +239,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("folder", metavar="ПАПКА", help="папка проверенных текстов в папке данных")
     p.add_argument("--label", metavar="МЕТКА", help="метка замера")
     p.add_argument("--diff", action="store_true", help="напечатать список расхождений с текстом")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("eval", help="эталон полей: загрузка ответов и шаблонов")
+    eval_sub = p.add_subparsers(dest="eval_command", parser_class=_Parser, metavar="КОМАНДА")
+    p = eval_sub.add_parser("load", help="загрузить эталон из шаблона (.csv) или ответов (.json)")
+    p.add_argument(
+        "file",
+        metavar="ФАЙЛ",
+        help="файл .csv (шаблон) или .json (ответы страницы проверки)",
+    )
+    p.add_argument(
+        "--yes", action="store_true", help="заменить значения, которые файл убирает из эталона"
+    )
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     return parser
@@ -655,6 +672,57 @@ def _cmd_recognize_eval(
     return 0
 
 
+def _review_build(data: bytes) -> str:
+    """The build id of a review answers file (its cards are found by this id)."""
+    try:
+        doc = json.loads(data.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise GoldFileError("файл ответов не читается: это не JSON в кодировке UTF-8") from None
+    build = doc.get("build") if isinstance(doc, dict) else None
+    if not isinstance(build, str) or not build:
+        raise GoldFileError("в файле ответов нет поля build: сохраните ответы со страницы проверки")
+    return build
+
+
+def _file_label(path: Path, data_dir: Path) -> str:
+    """The file name stored with the load: relative to the data folder when it is inside it."""
+    try:
+        return path.resolve().relative_to(data_dir.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _cmd_eval(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.eval_command != "load":  # no subcommand given
+        raise UserError("укажите команду группы eval, например: docreader eval load ФАЙЛ")
+    path = Path(args.file)
+    suffix = path.suffix.lower()
+    if suffix not in {".csv", ".json"}:
+        raise UserError("ожидается файл .csv (шаблон) или .json (ответы страницы проверки)")
+    try:
+        data = path.read_bytes()
+    except OSError:
+        raise UserError(f"файл не читается: {path}") from None
+    if suffix == ".csv":
+        registry = {row[0] for row in conn.execute("SELECT id FROM document").fetchall()}
+        parsed = gold.parse_template(data, registry)
+    else:
+        cards = gold.find_build_cards(settings.data_dir, _review_build(data))
+        parsed = gold.parse_review_answers(data, cards)
+    report = gold.load(
+        conn,
+        parsed,
+        file_name=_file_label(path, settings.data_dir),
+        file_bytes=data,
+        yes=args.yes,
+    )
+    if args.json:
+        print(render_eval_load_json(parsed, report))
+    else:
+        print(render_eval_load_text(parsed, report))
+    return 1 if report.needs_confirmation else 0
+
+
 _Handler = Callable[[argparse.Namespace, Settings, psycopg.Connection], int]
 
 _HANDLERS: dict[str, _Handler] = {
@@ -681,6 +749,7 @@ _HANDLERS: dict[str, _Handler] = {
     "read-report": _cmd_read_report,
     "recognize-report": _cmd_recognize_report,
     "recognize-eval": _cmd_recognize_eval,
+    "eval": _cmd_eval,
 }
 
 
