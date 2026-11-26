@@ -202,19 +202,21 @@ def _normalize_name(value: str) -> str:
     return result
 
 
-# Legal forms written out in full, as they open a full name (lower case, after compare_form).
-_SPELLED_FORMS = (
-    "открытое акционерное общество",
-    "закрытое акционерное общество",
-    "публичное акционерное общество",
-    "непубличное акционерное общество",
-    "акционерное общество",
-    "общество с ограниченной ответственностью",
-    "общество с дополнительной ответственностью",
-    "федеральное государственное унитарное предприятие",
-    "государственное унитарное предприятие",
-    "муниципальное унитарное предприятие",
-)
+# Legal forms written out in full, as they open a full name, and their abbreviations
+# (lower case keys; longer forms first so that «открытое акционерное общество» wins).
+_SPELLED_FORMS: dict[str, str] = {
+    "открытое акционерное общество": "ОАО",
+    "закрытое акционерное общество": "ЗАО",
+    "публичное акционерное общество": "ПАО",
+    "непубличное акционерное общество": "НАО",
+    "акционерное общество": "АО",
+    "общество с ограниченной ответственностью": "ООО",
+    "общество с дополнительной ответственностью": "ОДО",
+    "федеральное государственное унитарное предприятие": "ФГУП",
+    "государственное унитарное предприятие": "ГУП",
+    "муниципальное унитарное предприятие": "МУП",
+}
+_SPACES_IN_QUOTES = re.compile(r'"\s*([^"]*?)\s*"')
 # Abbreviated legal forms that open a short name.
 _SHORT_FORMS = (
     "ОАО", "ЗАО", "ПАО", "НАО", "АО", "ООО", "ОДО", "ФГУП", "ГУП", "МУП",
@@ -225,10 +227,27 @@ _SHORT_IN_BRACKETS = re.compile(
 )
 
 
+def _spelled_form(normalized: str) -> str | None:
+    lower = " ".join(normalized.lower().split())
+    return next((form for form in _SPELLED_FORMS if lower.startswith(form + " ")), None)
+
+
 def spelled_legal_form(normalized: str) -> bool:
     """Whether a normalized name opens with a legal form written out in full."""
-    lower = " ".join(normalized.lower().split())
-    return lower.startswith(_SPELLED_FORMS)
+    return _spelled_form(normalized) is not None
+
+
+def canonical_short_name(normalized: str) -> str:
+    """A normalized short name with its legal form abbreviated, spaces inside quotes dropped.
+
+    «акционерное общество "Бета"» → `АО "Бета"` (analyst, 2026-11-26): the form is the same
+    either way, the name in quotes stays as written. Only a form that opens the name.
+    """
+    text = " ".join(normalized.split())
+    form = _spelled_form(text)
+    if form is not None:
+        text = _SPELLED_FORMS[form] + text[len(form):]
+    return _SPACES_IN_QUOTES.sub(r'"\1"', text)
 
 
 def short_name_after(text: str, end: int) -> tuple[int, int] | None:
@@ -378,6 +397,8 @@ def normalize_field(field: CatalogField, value: str) -> str:
 def same_value(field: CatalogField, a: str, b: str) -> bool:
     """Whether two normalized values are the same: names ignore case, the rest are equal."""
     if field.kind.value == Kind.NAME.value:
+        if field.name.endswith("_name_short"):
+            a, b = canonical_short_name(a), canonical_short_name(b)
         return a.casefold() == b.casefold()
     return a == b
 

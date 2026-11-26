@@ -1297,12 +1297,12 @@ _PREAMBLE_THREE_PARTIES = (
     "именуемое в дальнейшем Поручитель, заключили настоящий договор:"
 )
 # Findings of feature 09 in abstract form (analyst, 2026-11-26): a letter code after the
-# number in the title, full names with the abbreviation in brackets (the customer's
-# abbreviation shortens the name in quotes too).
+# number in the title; the customer's full name with its abbreviation in brackets (which
+# shortens the name in quotes too), the contractor's full name with no brackets.
 _NUMBER_WITH_CODE = "Nº ДП-17/2026 АБ-ВГД"
 _PREAMBLE_FULL_NAMES = (
     "Открытое акционерное общество «Альфа Дельта Строй» (ОАО «АДС»), именуемое "
-    "в дальнейшем Заказчик, и Акционерное общество «Бета» (АО «Бета»), именуемое "
+    "в дальнейшем Заказчик, и Акционерное общество «Бета», именуемое "
     "в дальнейшем Подрядчик, заключили настоящий договор:"
 )
 _CLAUSE_1_1 = (

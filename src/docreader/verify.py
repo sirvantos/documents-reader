@@ -24,6 +24,7 @@ from docreader.stages import State
 from docreader.textnorm import locate
 from docreader.values import (
     ValueNotNormalized,
+    canonical_short_name,
     contract_number_core,
     find_in_quote,
     normalize,
@@ -34,7 +35,6 @@ from docreader.values import (
 NO_QUOTE = "нет цитаты"
 QUOTE_NOT_FOUND = "цитата не найдена"
 VALUE_NOT_CONFIRMED = "значение не подтверждено цитатой"
-FULL_NAME = "полное наименование вместо краткого"
 PARTIES = "состав сторон не соответствует допущению"
 
 _LABELS = {f.name: f.label for f in PROTOTYPE_FIELDS}
@@ -202,13 +202,14 @@ def check_field(spec: FieldSpec, answer: FieldAnswerLike, index: TextIndex) -> F
     span = find_in_quote(spec.kind, normalized, quote)
     if span is None:
         return rejected(VALUE_NOT_CONFIRMED)
-    if spec.kind is Kind.NAME and spelled_legal_form(normalized):
-        # a full name given for the short one: take the abbreviation in brackets after it
-        short = short_name_after(quote, span[1])
-        if short is None:
-            return rejected(FULL_NAME)
-        span = short
-        normalized = normalize(Kind.NAME, quote[span[0] : span[1]])
+    if spec.name.endswith("_name_short"):
+        # a full name given for the short one: the abbreviation in brackets after it, when
+        # the preamble has one; else the party is named by its full name, which is kept
+        short = short_name_after(quote, span[1]) if spelled_legal_form(normalized) else None
+        if short is not None:
+            span = short
+            normalized = normalize(Kind.NAME, quote[span[0] : span[1]])
+        normalized = canonical_short_name(normalized)
     return FieldResult(
         spec.name,
         Result.FOUND,

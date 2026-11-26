@@ -4,8 +4,10 @@ Findings of the first measurement on the gold set (feature 09, analyst, 2026-11-
 here in abstract form: the model took the contract number together with a letter code
 after a space, and gave the full name of a party for its short name. Analyst's rules: a
 letter code after a space is never part of the contract number; the short name is the
-abbreviation in brackets right after the full name. A full name with no such
-abbreviation in its quote is rejected, not stored. Critical rules (CLAUDE.md «Model
+abbreviation in brackets right after the full name; with no brackets the party is named
+by its full name, which is kept (analyst, 2026-11-26, after the second run). The legal form
+is stored abbreviated (`АО "Бета"` for «акционерное общество «Бета»»), the name in quotes
+as written. Critical rules (CLAUDE.md «Model
 routing»): written by the main session; the implementer must not edit, weaken, skip or
 delete these tests.
 """
@@ -17,7 +19,7 @@ from dataclasses import dataclass
 import pytest
 
 from docreader.fields import Result, spec
-from docreader.verify import FULL_NAME, ClauseRange, FieldResult, TextIndex, check_field
+from docreader.verify import ClauseRange, FieldResult, TextIndex, check_field
 
 LINES = [
     "ДОГОВОР ПОДРЯДА",
@@ -106,20 +108,29 @@ def test_short_name_given_by_the_model_is_kept() -> None:
     assert r.value_normalized == 'ОАО "АДС"'
 
 
-def test_full_name_without_an_abbreviation_is_rejected() -> None:
+def test_full_name_without_brackets_is_kept_with_the_form_abbreviated() -> None:
     r = check(
         "contractor_name_short",
         value="Акционерное общество «Бета»",
         quote="Акционерное общество «Бета», именуемое в дальнейшем Подрядчик",
         clause="преамбула",
     )
-    assert r.result is Result.REJECTED
-    assert r.reason == FULL_NAME
-    assert r.proposed_value == "Акционерное общество «Бета»"
+    assert r.result is Result.FOUND
+    assert r.value_normalized == 'АО "Бета"'
+    assert r.value_text == "Акционерное общество «Бета»"  # the text stays as written
 
 
 def test_full_name_in_lower_case_is_recognised() -> None:
     r = check("contractor_name_short", value="акционерное общество «Бета»",
               quote="Акционерное общество «Бета», именуемое в дальнейшем Подрядчик")
-    assert r.result is Result.REJECTED
-    assert r.reason == FULL_NAME
+    assert r.result is Result.FOUND
+    assert r.value_normalized == 'АО "Бета"'
+
+
+def test_the_form_is_not_abbreviated_outside_the_short_names() -> None:
+    # only *_name_short fields: the prototype has no other name field, so check the helper
+    from docreader.values import canonical_short_name
+
+    assert canonical_short_name('Открытое акционерное общество "Альфа Дельта Строй"') == (
+        'ОАО "Альфа Дельта Строй"'
+    )

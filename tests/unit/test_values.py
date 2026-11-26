@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import pytest
 
+from docreader import catalog
 from docreader.fields import Kind
 from docreader.values import (
     ValueNotNormalized,
+    canonical_short_name,
     contract_number_core,
     find_in_quote,
     normalize,
+    same_value,
     short_name_after,
     spelled_legal_form,
 )
@@ -318,3 +321,40 @@ def test_short_name_found_in_brackets_after_the_full_one(quote: str, short: str)
 def test_no_short_name_in_brackets(quote: str) -> None:
     end = quote.index("»") + 1
     assert short_name_after(quote, end) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ('акционерное общество "Бета"', 'АО "Бета"'),
+        ('Открытое акционерное общество "Альфа Дельта Строй"', 'ОАО "Альфа Дельта Строй"'),
+        ('Общество с ограниченной ответственностью "Гамма"', 'ООО "Гамма"'),
+        ('Публичное акционерное общество "Дельта"', 'ПАО "Дельта"'),
+        ('Федеральное государственное унитарное предприятие "Эпсилон"', 'ФГУП "Эпсилон"'),
+        ('АО "Бета"', 'АО "Бета"'),
+        ('ОАО " АДС "', 'ОАО "АДС"'),  # spaces inside the quotes, as recognised scans give
+        ('Филиал АО "Бета"', 'Филиал АО "Бета"'),  # a form inside the name is not touched
+    ],
+)
+def test_canonical_short_name(name: str, expected: str) -> None:
+    assert canonical_short_name(name) == expected
+
+
+def _field(name: str) -> catalog.CatalogField:
+    return next(f for f in catalog.CATALOG if f.name == name)
+
+
+def test_short_names_equal_with_the_form_written_out_or_abbreviated() -> None:
+    field = _field("contractor_name_short")
+    a = normalize(Kind.NAME, "акционерное общество «Бета»")
+    b = normalize(Kind.NAME, "АО «Бета»")
+    assert same_value(field, a, b)
+    assert not same_value(field, a, normalize(Kind.NAME, "ООО «Бета»"))
+    full = normalize(Kind.NAME, "Открытое акционерное общество «Альфа Дельта Строй»")
+    assert not same_value(field, normalize(Kind.NAME, "ОАО «АДС»"), full)
+
+
+def test_full_names_keep_their_form_when_compared() -> None:
+    field = _field("customer_name_full")
+    assert not same_value(field, normalize(Kind.NAME, "акционерное общество «Бета»"),
+                          normalize(Kind.NAME, "АО «Бета»"))
