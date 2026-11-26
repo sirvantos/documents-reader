@@ -114,7 +114,10 @@ class _Parser(argparse.ArgumentParser):
 def _build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="docreader",
-        description="Приём и учёт документов-договоров: добавление, реестр, проверка копий.",
+        description=(
+            "Договоры: приём, распознавание и чтение, разбор на пункты, извлечение полей, "
+            "поиск, ответы на вопросы и замер качества на эталоне. Подробно — README.md."
+        ),
     )
     sub = parser.add_subparsers(dest="command", parser_class=_Parser, metavar="КОМАНДА")
 
@@ -269,7 +272,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--diff", action="store_true", help="напечатать список расхождений с текстом")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
-    p = sub.add_parser("eval", help="эталон полей: загрузка ответов и шаблонов")
+    p = sub.add_parser("eval", help="эталон, сравнение с ним и таблица результатов")
     eval_sub = p.add_subparsers(dest="eval_command", parser_class=_Parser, metavar="КОМАНДА")
     p = eval_sub.add_parser("load", help="загрузить эталон из шаблона (.csv) или ответов (.json)")
     p.add_argument(
