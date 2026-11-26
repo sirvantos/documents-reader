@@ -483,6 +483,12 @@ def _output_path(data_dir: Path, out: Path | None, default_name: str) -> Path:
         resolved.relative_to(data_dir.resolve())
     except ValueError:
         raise UserError("Файл можно записать только в папку данных") from None
+    if out is None:  # a generated name never collides: a counter is added
+        stem, suffix, counter = path.stem, path.suffix, 1
+        while path.exists():
+            counter += 1
+            path = path.with_name(f"{stem}-{counter}{suffix}")
+        return path
     if resolved.exists():
         raise UserError("Такой файл уже есть — укажите другой путь, поверх файла не пишем")
     return path

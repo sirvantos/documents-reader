@@ -19,7 +19,8 @@ import psycopg
 from docreader import catalog, evaluation, gold
 from docreader.errors import UserError
 from docreader.gold import SYSTEM_CONFIRMED_PATHS, GoldPath, GoldState
-from docreader.outcomes import BlindOutcome, GoldValue
+from docreader.outcomes import BlindOutcome, EvalStage, GoldValue
+from docreader.runs import code_version
 from docreader.values import same_value
 
 
@@ -182,3 +183,106 @@ def parse_blind_file(
     if not documents:
         raise UserError("Слепой контроль не начат: сначала docreader eval blind pick")
     return gold.parse_template(data, set(documents), kind=gold.LoadKind.BLIND)
+
+
+# --- the blind report (research R-10) -----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BlindReport:
+    record: int
+    totals: BlindTotals
+    review_file: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {"record": self.record, **self.totals.as_dict(), "review_file": self.review_file}
+
+
+def _gold_value(state: str, normalized: Sequence[str]) -> GoldValue:
+    return GoldValue(GoldState(state), tuple(normalized))
+
+
+def _shown(state: str | None, texts: Sequence[str] | None) -> str:
+    if state is None:
+        return ""
+    return "отсутствует" if state == GoldState.ABSENT.value else " || ".join(texts or ())
+
+
+def blind_report(conn: psycopg.Connection, data_dir: Path, label: str) -> BlindReport:
+    """Compare the blind values with the reviewed ones and write a `gold_blind` record.
+
+    Pairs: every pair of a picked document that has a blind or a gold value. A reviewed
+    value counts only when it was loaded after the blind marking of its pair; the earlier
+    ones are «not reviewed» and stay out of the cases.
+    """
+    rows = conn.execute(
+        "SELECT p.document_id, f.field, b.state, b.values_normalized, b.values_text, b.load_id,"
+        " g.state, g.values_normalized, g.values_text, g.path, g.load_id"
+        " FROM blind_pick p"
+        " JOIN LATERAL (SELECT field FROM gold_blind WHERE document_id = p.document_id"
+        "  UNION SELECT field FROM gold_field WHERE document_id = p.document_id) f ON true"
+        " LEFT JOIN gold_blind b ON b.document_id = p.document_id AND b.field = f.field"
+        " LEFT JOIN gold_field g ON g.document_id = p.document_id AND g.field = f.field"
+        " ORDER BY p.document_id, f.field"
+    ).fetchall()
+    if not any(r[2] is not None for r in rows):
+        raise UserError(
+            "Нет слепой разметки: выберите договоры (docreader eval blind pick) и загрузите "
+            "их разметку (docreader eval blind load ФАЙЛ)"
+        )
+    pairs: list[BlindPair] = []
+    shown: dict[tuple[str, str], tuple[str, str, str]] = {}
+    for doc, field, b_state, b_norm, b_text, b_load, g_state, g_norm, g_text, g_path, g_load in (
+        rows
+    ):
+        blind_value = _gold_value(b_state, b_norm) if b_state else None
+        reviewed = _gold_value(g_state, g_norm) if g_state else None
+        after = b_load is None or (g_load is not None and g_load > b_load)
+        pairs.append(BlindPair(doc, field, blind_value, reviewed,
+                               GoldPath(g_path) if g_path else None, after))
+        shown[(doc, field)] = (_shown(b_state, b_text), _shown(g_state, g_text), g_path or "")
+    totals = blind_totals(pairs)
+    cases = []
+    csv_rows = []
+    for pair in pairs:
+        outcome = blind_outcome(catalog.field(pair.field), pair)
+        if outcome is None:
+            continue
+        content = "|".join((
+            evaluation.gold_fingerprint(pair.blind), evaluation.gold_fingerprint(pair.reviewed)
+        ))
+        cases.append(evaluation.CaseRow(
+            f"{pair.document_id}/{pair.field}", pair.document_id, outcome.value,
+            evaluation.gold_fingerprint(GoldValue(GoldState.VALUE, (content,))),
+            field=pair.field,
+        ))
+        blind_text, reviewed_text, path = shown[(pair.document_id, pair.field)]
+        csv_rows.append([pair.document_id, pair.field, outcome.value, blind_text,
+                         reviewed_text, path])
+    now = datetime.now()
+
+    def write_file(record: int) -> str:
+        path = evaluation.review_path(data_dir, "blind-report", record, now)
+        evaluation.write_csv(
+            path, ["document_id", "field", "outcome", "blind", "reviewed", "path"], csv_rows
+        )
+        return evaluation.relative_label(path, data_dir)
+
+    record = evaluation.write_record(
+        conn,
+        stage=EvalStage.GOLD_BLIND,
+        label=label,
+        provenance={"code_version": code_version()},
+        gold_sha256=gold.current_sha256(conn),
+        questions_sha256=None,
+        reviewed_share=evaluation.reviewed_share(conn),
+        blind_summary=None,
+        metrics=totals.as_dict(),
+        cases=cases,
+        review_file=write_file,
+        from_file=None,
+    )
+    review_file = conn.execute(
+        "SELECT review_file FROM eval_result WHERE id = %s", (record,)
+    ).fetchone()[0]  # type: ignore[index]
+    return BlindReport(record, totals, review_file)

@@ -22,7 +22,7 @@ from typing import Any, Literal
 import psycopg
 from psycopg.types.json import Jsonb
 
-from docreader import catalog, outcomes, questions, review, rules
+from docreader import catalog, embedding, outcomes, questions, reranker, review, rules, search
 from docreader.config import Settings
 from docreader.errors import UserError
 from docreader.fields import FIELD_NAMES
@@ -477,6 +477,181 @@ def compare_fields(
         source="file" if from_file is not None else source, pairs=len(cases), totals=totals,
         provenance=provenance, review_file=review_file[0], gold_version=gold_version,
         reviewed_share=share, blind=blind,
+    )
+
+
+# --- the search measurement (research R-12) ----------------------------------------------------
+
+SEARCH_RESULTS_FORMAT = "docreader-search-results/1"
+SEARCH_VARIANTS = (EvalStage.SEARCH_PLAIN.value, EvalStage.SEARCH_RERANK.value)
+
+
+@dataclass(frozen=True)
+class SearchReport:
+    records: dict[str, int]
+    variants: dict[str, dict[str, Any]]
+    questions: int
+    review_file: str
+    no_answer: int = 0
+    table: int = 0
+
+
+@dataclass(frozen=True)
+class _Question:
+    key: str
+    document_id: str
+    text: str
+    kind: str
+    has_answer: bool
+    clause_keys: tuple[str, ...]
+
+    @property
+    def participates(self) -> bool:
+        return self.has_answer and self.kind != "table" and bool(self.clause_keys)
+
+
+def _read_search_file(path: Path) -> tuple[dict[str, dict[str, list[str]]], str]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise UserError(f"файл результатов поиска не читается: {path.name}") from None
+    if not isinstance(data, dict) or data.get("format") != SEARCH_RESULTS_FORMAT:
+        raise UserError(f"Ожидается файл формата {SEARCH_RESULTS_FORMAT}")
+    variants = data.get("variants")
+    if not isinstance(variants, dict):
+        raise UserError("В файле результатов поиска нет раздела variants")
+    out: dict[str, dict[str, list[str]]] = {}
+    for name in SEARCH_VARIANTS:
+        part = variants.get(name, {})
+        if not isinstance(part, dict) or not all(
+            isinstance(v, list) and all(isinstance(c, str) for c in v) for v in part.values()
+        ):
+            raise UserError(f"В файле результатов поиска раздел {name} записан неверно")
+        out[name] = part
+    source = data.get("source")
+    return out, source if isinstance(source, str) else ""
+
+
+def measure_search(
+    conn: psycopg.Connection,
+    settings: Settings,
+    *,
+    label: str,
+    from_file: Path | None,
+    data_dir: Path,
+) -> SearchReport:
+    """Measure the places of the correct clauses without and with the reranker and write
+    two records with one label. The calls equal `scripts/quickstart_search.py` (SC-007)."""
+    rows = conn.execute(
+        "SELECT key, document_id, text, kind, has_answer, clause_keys FROM gold_question"
+        " ORDER BY key"
+    ).fetchall()
+    asked = [_Question(k, d, t, kd, a, tuple(c)) for k, d, t, kd, a, c in rows]
+    if not asked:
+        raise UserError(
+            "Нет вопросов для замера. Загрузите их: docreader eval questions load ФАЙЛ"
+        )
+    found: dict[str, dict[str, list[str]]] = {name: {} for name in SEARCH_VARIANTS}
+    provenance: dict[str, Any]
+    from_label: str | None = None
+    if from_file is not None:
+        found, file_source = _read_search_file(from_file)
+        provenance = {"code_version": code_version(), "source": file_source}
+        from_label = relative_label(from_file, data_dir)
+    else:
+        embedder = embedding.load_embedder(settings.embedding)
+        ranker = reranker.load_reranker(settings.reranker)
+        embedding_model = embedder.check().served_model
+        reranker_model = ranker.check().served_model
+        cfg = settings.search
+        for q in asked:
+            if not q.participates:
+                continue
+            off = search.search(
+                conn, settings, q.text, document_id=q.document_id, rerank=False,
+                results=cfg.rerank_candidates, embedder=embedder,
+            )
+            on = search.search(
+                conn, settings, q.text, document_id=q.document_id, rerank=True,
+                results=cfg.rerank_candidates, embedder=embedder, reranker=ranker,
+            )
+            found["search_plain"][q.key] = [h.clause_id for h in off.hits]
+            found["search_rerank"][q.key] = [h.clause_id for h in on.hits]
+        provenance = {
+            "code_version": code_version(), "embedding_model": embedding_model,
+            "reranker_model": reranker_model,
+            "search": {
+                "candidates": cfg.candidates, "rrf_k": cfg.rrf_k,
+                "rerank_candidates": cfg.rerank_candidates,
+            },
+        }
+
+    places: dict[str, dict[str, int | None]] = {name: {} for name in SEARCH_VARIANTS}
+    for name in SEARCH_VARIANTS:
+        for q in asked:
+            if q.participates:
+                places[name][q.key] = outcomes.search_place(
+                    found[name].get(q.key, []), q.clause_keys
+                )
+    questions_version = questions.current_sha256(conn)
+    now = datetime.now()
+    metrics: dict[str, dict[str, Any]] = {}
+    ids: dict[str, int] = {}
+    with conn.transaction():
+        for name in SEARCH_VARIANTS:
+            cases = [
+                outcomes.SearchCase(q.key, places[name].get(q.key), not q.participates)
+                for q in asked
+            ]
+            metrics[name] = outcomes.search_metrics(cases).as_dict()
+            rows_out = []
+            for q in asked:
+                flags = () if q.participates else (outcomes.EXCLUDED,)
+                fingerprint = hashlib.sha256(
+                    ("\x1f".join(q.clause_keys) + "\t" + ",".join(flags)).encode("utf-8")
+                ).hexdigest()[:16]
+                rows_out.append(CaseRow(
+                    q.key, q.document_id, None, fingerprint, question_key=q.key,
+                    place=places[name].get(q.key), flags=flags,
+                ))
+            ids[name] = write_record(
+                conn,
+                stage=EvalStage(name), label=label, provenance=provenance, gold_sha256=None,
+                questions_sha256=questions_version, reviewed_share=None, blind_summary=None,
+                metrics=metrics[name], cases=rows_out, review_file=None, from_file=from_label,
+            )
+        path = review_path(
+            data_dir, "search", 0, now
+        ).with_name(
+            f"search-{ids['search_plain']}-{ids['search_rerank']}-{now:%Y%m%d-%H%M%S}.csv"
+        )
+        csv_rows = []
+        for q in asked:
+            top5 = [", ".join(found[name].get(q.key, [])[:5]) for name in SEARCH_VARIANTS]
+            shown_places = [
+                "" if not q.participates or places[name][q.key] is None
+                else str(places[name][q.key])
+                for name in SEARCH_VARIANTS
+            ]
+            csv_rows.append([
+                q.key, q.document_id, q.text, ", ".join(q.clause_keys),
+                *shown_places, *(top5 if q.participates else ["", ""]),
+            ])
+        write_csv(
+            path,
+            ("question_key", "document_id", "question", "correct_clauses", "place_plain",
+             "place_rerank", "top5_plain", "top5_rerank"),
+            csv_rows,
+        )
+        review_label = relative_label(path, data_dir)
+        conn.execute(
+            "UPDATE eval_result SET review_file = %s WHERE id = ANY(%s)",
+            (review_label, list(ids.values())),
+        )
+    return SearchReport(
+        records=ids, variants=metrics, questions=len(asked), review_file=review_label,
+        no_answer=sum(1 for q in asked if not q.has_answer),
+        table=sum(1 for q in asked if q.has_answer and q.kind == "table"),
     )
 
 

@@ -50,6 +50,8 @@ from docreader.render import (
     render_document_text,
     render_eval_blind_pick_json,
     render_eval_blind_pick_text,
+    render_eval_blind_report_json,
+    render_eval_blind_report_text,
     render_eval_compare_json,
     render_eval_compare_text,
     render_eval_export_json,
@@ -65,6 +67,8 @@ from docreader.render import (
     render_eval_results_text,
     render_eval_review_json,
     render_eval_review_text,
+    render_eval_search_json,
+    render_eval_search_text,
     render_eval_show_json,
     render_eval_show_text,
     render_eval_template_json,
@@ -293,6 +297,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="набор полей (по умолчанию все размеченные)",
     )
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+    p = eval_sub.add_parser("search", help="замер поиска на вопросах: две записи")
+    p.add_argument("--label", default="", metavar="МЕТКА", help="метка записей")
+    p.add_argument("--from", dest="from_file", metavar="ФАЙЛ", help="результаты из файла .json")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
     _add_eval_results_parsers(eval_sub)
 
     return parser
@@ -314,6 +322,9 @@ def _add_eval_results_parsers(eval_sub: argparse._SubParsersAction) -> None:
     blind_sub = p.add_subparsers(dest="blind_command", parser_class=_Parser, metavar="КОМАНДА")
     p = blind_sub.add_parser("pick", help="выбрать документы слепой разметки и записать шаблон")
     p.add_argument("--again", action="store_true", help="выбрать заново")
+    p.add_argument("--json", action="store_true", help=json_help)
+    p = blind_sub.add_parser("report", help="итог слепого контроля: запись в таблицу результатов")
+    p.add_argument("--label", default="", metavar="МЕТКА", help="метка записи")
     p.add_argument("--json", action="store_true", help=json_help)
     p = blind_sub.add_parser("load", help="загрузить слепую разметку из шаблона (.csv)")
     p.add_argument("file", metavar="ФАЙЛ", help="заполненный шаблон .csv")
@@ -803,6 +814,14 @@ def _cmd_eval(args: argparse.Namespace, settings: Settings, conn: psycopg.Connec
         )
         print(render_eval_fields_json(record) if args.json else render_eval_fields_text(record))
         return 0
+    if args.eval_command == "search":
+        measured = evaluation.measure_search(
+            conn, settings, label=args.label,
+            from_file=Path(args.from_file) if args.from_file else None,
+            data_dir=settings.data_dir,
+        )
+        print(render_eval_search_json(measured) if args.json else render_eval_search_text(measured))
+        return 0
     handler = _EVAL_HANDLERS.get(args.eval_command)
     if handler is not None:
         return handler(args, settings, conn)
@@ -875,8 +894,15 @@ def _cmd_eval_blind(
             else render_eval_blind_pick_text(report)
         )
         return 0
+    if args.blind_command == "report":
+        result = blind.blind_report(conn, settings.data_dir, args.label)
+        print(render_eval_blind_report_json(result) if args.json
+              else render_eval_blind_report_text(result))
+        return 0
     if args.blind_command != "load":
-        raise UserError("укажите команду: docreader eval blind pick или eval blind load ФАЙЛ")
+        raise UserError(
+            "укажите команду: docreader eval blind pick, eval blind load ФАЙЛ или eval blind report"
+        )
     path = Path(args.file)
     if path.suffix.lower() != ".csv":
         raise UserError("ожидается заполненный шаблон .csv")

@@ -25,6 +25,7 @@ from docreader.stages import STAGES, Stage, State
 if TYPE_CHECKING:
     from docreader.answer import Answer
     from docreader.answer_check import CheckedClaim, ShownPassage
+    from docreader.blind import BlindReport
     from docreader.blind import PickReport as BlindPickReport
     from docreader.clauseview import ClauseView, Outline, OutlineRecord
     from docreader.evaluation import (
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
         ExportReport,
         FieldsRecord,
         ResultRow,
+        SearchReport,
         ShownCase,
         ShownRecord,
     )
@@ -1854,3 +1856,77 @@ def render_eval_questions_clauses_text(report: ClausesReport) -> str:
         f"  вопросов без пункта {report.without_clause}: предложено {report.proposed}, "
         f"без подтверждённых утверждений {report.no_confirmed}",
     ])
+
+
+# --- eval blind report (feature 02, T025) -------------------------------------------------------
+
+
+def _blind_percent(part: int, whole: int) -> str:
+    return f"{part / whole * 100:.1f}".replace(".", ",") + "%" if whole else "—"
+
+
+def render_eval_blind_report_text(report: BlindReport) -> str:
+    t = report.totals
+    lines = [
+        f"Слепой контроль: запись {report.record}",
+        f"  пар {t.pairs}: совпало {t.same}, разошлось {t.differs}, нет слепого "
+        f"{t.reviewed_only}, не проверено {t.blind_only}",
+        f"  при подтверждённом значении системы: разошлось {t.confirmed_differs} из "
+        f"{t.confirmed_pairs} ({_blind_percent(t.confirmed_differs, t.confirmed_pairs)}; "
+        "ориентир ≤ 3%)",
+    ]
+    if t.not_reviewed:
+        lines.append(f"  проверено до слепой разметки (не в итоге): {t.not_reviewed}")
+    lines.append(f"  разбор: {report.review_file}")
+    return "\n".join(lines)
+
+
+def render_eval_blind_report_json(report: BlindReport) -> str:
+    return json.dumps(report.to_json(), ensure_ascii=False, indent=2)
+
+
+# --- eval search (feature 02, T037) -------------------------------------------------------------
+
+
+def _search_share(count: int, whole: int) -> str:
+    return f"{count} / {whole} ({round(count / whole * 100)}%)" if whole else f"{count} / 0"
+
+
+def _search_median(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return str(int(value)) if value == int(value) else str(value).replace(".", ",")
+
+
+def render_eval_search_text(report: SearchReport) -> str:
+    plain, rerank = report.variants["search_plain"], report.variants["search_rerank"]
+    ids = report.records
+    lines = [
+        f"Замер поиска: записи {ids['search_plain']} (без реранкера) и "
+        f"{ids['search_rerank']} (с реранкером)",
+        f"  вопросов {report.questions}: участвуют {plain['participating']}, без ответа "
+        f"{report.no_answer}, вида «таблица» {report.table}",
+    ]
+    table = [["", "первое место", "первые пять", "медиана", "не найден"]]
+    for name, m in (("без реранкера", plain), ("с реранкером", rerank)):
+        whole = m["participating"]
+        table.append([
+            name, _search_share(m["first"], whole), _search_share(m["top5"], whole),
+            _search_median(m["median_place"]), str(m["not_found"]),
+        ])
+    widths = [max(len(r[i]) for r in table) for i in range(5)]
+    for row in table:
+        cells = "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True))
+        lines.append("  " + cells.rstrip())
+    lines.append(f"  разбор: {report.review_file}")
+    return "\n".join(lines)
+
+
+def render_eval_search_json(report: SearchReport) -> str:
+    return json.dumps(
+        {
+            "records": report.records, "variants": report.variants,
+            "questions": report.questions, "review_file": report.review_file,
+        },
+        ensure_ascii=False, indent=2,
+    )
