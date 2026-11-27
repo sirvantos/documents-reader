@@ -161,6 +161,15 @@ def test_generate_never_overwrites(cli, db, data_dir, parsed_docs) -> None:  # t
     assert target.read_text(encoding="utf-8") == "# keep\n"
 
 
+def test_generate_out_outside_the_data_dir_is_refused(cli, db, tmp_path, parsed_docs) -> None:  # type: ignore[no-untyped-def]
+    _gold(db, {("D-0001", "amount_with_vat"): value("700 000 рублей", "700000.00", "2.1")})
+    target = tmp_path / "elsewhere.toml"
+    result = cli("eval", "questions", "generate", "--out", target)
+    assert result.exit_code == 1
+    assert "только в папку данных" in result.stderr
+    assert not target.exists()
+
+
 def test_clauses_from_the_answers_file(cli, db, data_dir, parsed_docs) -> None:  # type: ignore[no-untyped-def]
     questions = write(data_dir, "answers-09.toml", '''origin = "set09"
 
@@ -207,6 +216,29 @@ answer = "D-0002/2.3"
     assert first["answers"] == ["D-0002/2.2"] and "expected" not in first
     assert data["question"][1]["expected"] == "answer"  # nothing confirmed: left as is
     assert_no_values(result.stdout + result.stderr, synthetic_secrets(db))
+
+
+def test_clauses_out_refused(cli, db, tmp_path, data_dir, parsed_docs) -> None:  # type: ignore[no-untyped-def]
+    questions = write(data_dir, "answers-09.toml", '''origin = "set09"
+
+[[question]]
+text = "Какой срок оплаты?"
+document = "D-0002"
+expected = "answer"
+''')
+    answers = write(data_dir, "answers-b4-1.json", json.dumps({
+        "format": "docreader-answers-b4/1",
+        "questions": [
+            {"number": 1, "document": "D-0002", "text": "Какой срок оплаты?",
+             "outcome": "answered", "confirmed_clauses": ["D-0002/2.2"]},
+        ],
+    }, ensure_ascii=False))
+    target = tmp_path / "elsewhere.toml"
+    result = cli("eval", "questions", "clauses", "--answers", answers, "--questions",
+                 questions, "--out", target)
+    assert result.exit_code == 1
+    assert "только в папку данных" in result.stderr
+    assert not target.exists()
 
 
 def test_output_holds_no_question_texts(cli, db, parsed_docs) -> None:  # type: ignore[no-untyped-def]

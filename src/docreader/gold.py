@@ -223,8 +223,7 @@ def write_template(fields: Sequence[CatalogField], document_ids: Sequence[str]) 
         f"варианты через «{_VARIANT_SEPARATOR}»"
     )
     writer.writerow(
-        ["#подсказка", *(f"{_hint(f)}; {note}" if i == 0 else _hint(f)
-                         for i, f in enumerate(fields))]
+        ["#подсказка", *(f"{_hint(f)}; {note}" for f in fields)]
     )
     for doc in document_ids:
         writer.writerow([doc, *([""] * len(fields))])

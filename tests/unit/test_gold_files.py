@@ -347,3 +347,15 @@ def test_agree_where_model_and_rules_agree_is_agree_whatever_the_mark() -> None:
         answers({"key": "D-0003/contract_number", "answer": "agree"}), [changed]
     )
     assert parsed.values[("D-0003", "contract_number")].path is GoldPath.AGREE
+
+
+def test_template_note_is_in_every_columns_hint() -> None:
+    # converge T049 (FR-007): a column's hint alone must say how to mark absence and variants
+    import csv
+    import io
+
+    fields = list(catalog.PROTOTYPE)
+    rows = list(csv.reader(io.StringIO(write_template(fields, []).decode("utf-8-sig")),
+                           delimiter=";"))
+    for name, hint in zip(rows[0][1:], rows[2][1:], strict=True):
+        assert "«отсутствует»" in hint and "« || »" in hint, name

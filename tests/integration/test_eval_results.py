@@ -131,6 +131,14 @@ def test_export_round_trips_cyrillic(cli, data_dir, setup) -> None:  # type: ign
     assert report["records"] == 1
 
 
+def test_export_out_outside_the_data_dir_is_refused(cli, tmp_path, setup) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    run(cli, "fields")
+    result = cli("eval", "export", "--out", tmp_path / "elsewhere.csv")
+    assert result.exit_code == 1
+    assert "только в папку данных" in result.stderr
+    assert not (tmp_path / "elsewhere.csv").exists()
+
+
 def test_outputs_hold_no_values(cli, db, data_dir, setup) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     a, b = two_records(cli, data_dir, setup[0])
     secrets = synthetic_secrets(db, extra=["ООО «Гамма»", "ООО «Дельта»"])
