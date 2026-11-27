@@ -70,6 +70,7 @@ KEY_LINES: dict[str, tuple[str, ...]] = {
     "rules-f.pdf": (
         "ДОГОВОР ПОДРЯДА № Р-16/2026",
         "составляет всего с НДС (20%) _ 840 000 (Восемьсот сорок тысяч) рублей",
+        "с даты подписания до 30 сентября 2027 г. включительно.",
     ),
 }
 
@@ -113,5 +114,5 @@ def test_rules_d_has_no_term_and_no_vat_free_amount(rules: dict[str, Path]) -> N
     assert "без учёта НДС" not in text
 
 
-def test_rules_version_is_three() -> None:
-    assert RULES_GENERATOR_VERSION == 3
+def test_rules_version_is_four() -> None:
+    assert RULES_GENERATOR_VERSION == 4

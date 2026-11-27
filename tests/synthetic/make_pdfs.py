@@ -1749,7 +1749,7 @@ def make_answer_contracts(directory: str | Path) -> list[Path]:
 
 # --- rules contracts (feature 009, T003) ---------------------------------------
 
-RULES_GENERATOR_VERSION = 3  # bump when a contract's text changes (R-14)
+RULES_GENERATOR_VERSION = 4  # bump when a contract's text changes (R-14)
 
 _RULES_PARTIES_A = (
     "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), "
@@ -1802,6 +1802,11 @@ _RULES_TERM_TRAPS = (
     "5. Срок действия Договора",
     "5.1. Договор вступает в силу с даты подписания и действует до «30» июня 2028 г.",
     "Акт сверки составляется до 15 января 2028 г.",
+)
+# R-8: the end date written as «до … включительно», with no «действует»
+_RULES_TERM_INCLUSIVE = (
+    "5. Срок действия Договора",
+    "5.1. Договор заключён на срок с даты подписания до 30 сентября 2027 г. включительно.",
 )
 _RULES_NO_TERM = (
     "5. Приёмка работ",
@@ -1907,7 +1912,7 @@ _RULES_PAGES: dict[str, tuple[tuple[str, ...], ...]] = {
         ("ДОГОВОР ПОДРЯДА № Р-16/2026", "г. Энск"),
         _RULES_PARTIES_E,
         _RULES_PRICE_F,
-        _RULES_TERM_PLAIN,
+        _RULES_TERM_INCLUSIVE,
         _RULES_LIABILITY_PLAIN,
     ),
 }
@@ -1920,7 +1925,8 @@ def make_rules_contracts(directory: str | Path) -> list[Path]:
     penalty amounts outside the price), `rules-c.pdf` (two amounts without VAT in the
     price section), `rules-d.pdf` (no term clause, amount with VAT only), `rules-e.pdf`
     (legal forms spelled out without short names, «с НДС (20%) — сумма»), `rules-f.pdf`
-    (as e, the dash before the amount with VAT read from a scan as «_»). Returns the
+    (as e, the dash before the amount with VAT read from a scan as «_»; the end date as
+    «до … включительно»). Returns the
     paths in this order. Text layer only; all names and numbers fictional.
     """
     root = Path(directory)

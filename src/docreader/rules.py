@@ -18,7 +18,7 @@ from docreader import values, verify
 from docreader.fields import PROTOTYPE_FIELDS, Result, spec
 from docreader.verify import FieldResult, TextIndex
 
-RULES_VERSION = "02.3"
+RULES_VERSION = "02.4"
 
 _WS = r"\s+"
 # «ДОГОВОР ПОДРЯДА № ДП-17/2026», «ДОГОВОР\n№ Р-11/2026»; «протокол № …», «доверенность № …»
@@ -60,6 +60,9 @@ _VAT_AMOUNT_BEFORE = re.compile(
 )
 _TERM = re.compile(r"срок\s+действия", re.IGNORECASE)
 _VALID_UNTIL = re.compile(r"действует\s+(?:до|по)\s+$", re.IGNORECASE)
+# R-8: «… до 30 сентября 2027 г. включительно» — «до» before the date, «включительно» after
+_UNTIL_BEFORE = re.compile(r"\bдо\s+$", re.IGNORECASE)
+_INCLUSIVE_AFTER = re.compile(r"^\s*(?:г\.|года)?\s*включительно", re.IGNORECASE)
 _CONTEXT = 60
 
 
@@ -164,7 +167,11 @@ def _end_date(index: TextIndex, sections: Mapping[str, str | None]) -> list[_Ans
         if not (_TERM.search(own) or _TERM.search(sections.get(clause.key) or "")):
             continue
         for _, (a, b) in values.dates_in(own):
-            if not _VALID_UNTIL.search(re.sub(_WS, " ", own[max(0, a - _CONTEXT) : a])):
+            before = re.sub(_WS, " ", own[max(0, a - _CONTEXT) : a])
+            inclusive = _UNTIL_BEFORE.search(before) and _INCLUSIVE_AFTER.search(
+                re.sub(_WS, " ", own[b : b + _CONTEXT])
+            )
+            if not (_VALID_UNTIL.search(before) or inclusive):
                 continue
             s, e = _sentence(index.text, lo + a, lo + b, lo, hi)
             out.append(_Answer(True, own[a:b], index.text[s:e], clause.key))

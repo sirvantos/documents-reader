@@ -218,3 +218,21 @@ US5 (вопросы и замер поиска, P2). Схема, каталог,
 3. US3 + US4 → сравнение и таблица результатов: MVP.
 4. US2 report, US5 → итог слепого контроля, вопросы, замер поиска.
 5. Polish → защиты, документация, quickstart А, затем Б на Mac и запись итогов.
+
+## Phase 9: Convergence
+
+- [X] T043 [opus] Store the system value on a review answer «отсутствует» (`gold.parse_review_answers`), so a rebuilt page does not mark the card `changed`; end-to-end test review → load absent → rebuild per FR-001, FR-004, US1/AC5, T017 (contradicts)
+- [ ] T044 [sonnet] `eval load`: counts per field (accepted, absent, skipped, by path) in text, `--json` and `gold_load.counts` per FR-005, US1/AC6, US2/AC2 (partial)
+- [ ] T045 [sonnet] `eval compare` and `eval export`: per-field metrics diffed and exported (metrics keyed by field, not a list) per FR-016, US4/AC2 (partial)
+- [ ] T046 [sonnet] Provenance of a record shown in `eval results` / `eval show` (text and `--json`) and in `eval export`; results text with reviewed share and blind summary per US4/AC1, FR-014 (partial)
+- [ ] T047 [sonnet] Blind cases carry a «confirmed system value» flag; `eval show` filters by it so the figure «разошлось N из M при подтверждённом значении системы» opens to its cases per FR-015, SC-004 (partial)
+- [X] T048 [opus] «верно» on a card where the model and the rules agree is stored with the path «совпало» whatever its mark per FR-005 (contradicts)
+- [ ] T049 [sonnet] Template: the «отсутствует» / « || » note in every column's hint per FR-007, US2/AC1 (partial)
+- [X] T050 [opus] Rules: «действует до … включительно» for `contract_end_date`, synthetic case first per plan: R-8 (partial)
+- [ ] T051 [sonnet] `eval fields --from`: the review CSV shows the file's value as the system value per FR-027, US3/AC8 (partial)
+- [ ] T052 [sonnet] `eval search` text shows the excluded «пункт не указан» count; `questions generate` names the no-answer shortfall per US5/AC7, SC-011 (partial)
+- [ ] T053 [sonnet] Provenance: `run.settings` of the extraction runs in `fields` records and the `[reranker]` settings in `search` records per plan: R-13 (partial)
+- [ ] T054 [sonnet] Review page: keys for a third and further choices that do not clash with «другое значение» (partial)
+- [ ] T055 [haiku] Tests for the `--out` refusal of `eval export`, `eval questions generate` and `eval questions clauses` per T038 (partial)
+- [ ] T056 [opus] Documents follow the code: contracts/files.md hint row, contracts/cli.md (`eval review` note, `questions load` lines), research R-4 (short-name matching), R-10 and data-model (blind values normalized again), R-6 and the spec edge cases on question conflicts and other-kind pairs, the spec edge case on a re-parse (R-7), T015 rules version, plan file names, plan deviation 8 and T024 (`quickstart_extraction.py` keeps its own pick), T011/T015 «no psycopg» relaxed to «no database in unit tests» per plan, spec (contradicts)
+- [ ] T057 [opus] Record `scripts/survey_gold_diversity.py` (gold diversity survey, used in Б7) as an added task; fix its docstring feature number per CLAUDE.md «Survey before clarify» (unrequested)

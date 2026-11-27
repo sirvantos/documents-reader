@@ -106,6 +106,8 @@ def test_an_underscore_for_the_dash_before_the_amount(db, docs) -> None:  # type
     got = found(db, docs["rules-f"])
     assert got["amount_without_vat"] == [("700000.00", "2.1")]
     assert got["amount_with_vat"] == [("840000.00", "2.1")]
+    # R-8: «до … включительно» with no «действует» (converge T050)
+    assert got["contract_end_date"] == [("2027-09-30", "5.1")]
 
 
 def test_every_result_has_a_located_quote(db, docs) -> None:  # type: ignore[no-untyped-def]
@@ -128,4 +130,4 @@ def test_nothing_outside_the_shown_part(db, docs) -> None:  # type: ignore[no-un
 def test_module_needs_no_database() -> None:
     source = Path(rules.__file__).read_text(encoding="utf-8")
     assert "psycopg" not in source and "openai" not in source
-    assert rules.RULES_VERSION == "02.3"
+    assert rules.RULES_VERSION == "02.4"

@@ -291,7 +291,13 @@ def parse_review_answers(data: bytes, cards: list[dict[str, Any]]) -> ParsedGold
             if src is None:
                 errors.append(FileProblem(where, "«верно» на карточке без значений"))
                 continue
-            path = GoldPath.AGREE if card.get("mark") == "agree" else GoldPath.CONFIRMED
+            # «совпало» is decided by the values, not by the mark: a card marked «изменилось»
+            # whose model and rules agree is still agreed (converge G8, FR-005)
+            field = catalog.field(card["field"])
+            agreed = model is not None and bool(rules) and all(
+                values.same_value(field, model["normalized"], r["normalized"]) for r in rules
+            )
+            path = GoldPath.AGREE if agreed else GoldPath.CONFIRMED
             cells[pair] = _from_source(src, path, system)
         elif kind == "chosen":
             choice = item.get("choice")
@@ -316,7 +322,11 @@ def parse_review_answers(data: bytes, cards: list[dict[str, Any]]) -> ParsedGold
                 GoldState.VALUE, (text.strip(),), (normalized,), GoldPath.TYPED, clause_key, system
             )
         elif kind == "absent":
-            cells[pair] = CellValue(GoldState.ABSENT, (), (), GoldPath.ABSENT_MARKED)
+            # the system value is kept, or a rebuilt page would mark the card «изменилось»
+            # (converge G1, FR-004)
+            cells[pair] = CellValue(
+                GoldState.ABSENT, (), (), GoldPath.ABSENT_MARKED, None, system
+            )
         elif kind == "skip":
             continue
         else:

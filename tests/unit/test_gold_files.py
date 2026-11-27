@@ -327,3 +327,23 @@ def test_hints_ask_for_the_legal_form_and_the_kopecks() -> None:
         assert "с формой" in hints[name] and "АО «" in hints[name]
     for name in ("amount_without_vat", "amount_with_vat"):
         assert "с копейками" in hints[name]
+
+
+def test_absent_keeps_the_system_value_so_a_rebuilt_page_does_not_mark_it_changed() -> None:
+    # converge G1 (FR-004): «отсутствует» on a card with a model value
+    parsed = parse_review_answers(
+        answers({"key": "D-0002/customer_name_short", "answer": "absent"}), CARDS
+    )
+    assert parsed.values[("D-0002", "customer_name_short")] == CellValue(
+        GoldState.ABSENT, (), (), GoldPath.ABSENT_MARKED, None, 'ООО "Альфа"'
+    )
+
+
+def test_agree_where_model_and_rules_agree_is_agree_whatever_the_mark() -> None:
+    # converge G8 (FR-005): a card marked «изменилось» whose model and rules agree
+    changed = {**CARDS[0], "key": "D-0003/contract_number", "document_id": "D-0003",
+               "mark": "changed"}
+    parsed = parse_review_answers(
+        answers({"key": "D-0003/contract_number", "answer": "agree"}), [changed]
+    )
+    assert parsed.values[("D-0003", "contract_number")].path is GoldPath.AGREE
