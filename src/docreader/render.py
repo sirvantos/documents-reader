@@ -1693,10 +1693,29 @@ def _row_json(row: ResultRow, *, with_metrics: bool = False) -> dict:
         "reviewed_share": row.reviewed_share,
         "blind": row.blind,
         "review_file": row.review_file,
+        "provenance": row.provenance,
     }
     if with_metrics:
         data["metrics"] = row.metrics
     return data
+
+
+def _provenance_text(provenance: dict) -> str:
+    """The origin of a record on one line: code, model runs, settings (no contract text)."""
+    parts = [f"код {provenance.get('code_version', '—')}"]
+    for key, value in provenance.items():
+        if key == "code_version":
+            continue
+        if key == "runs":
+            parts += [
+                f"запуск {r.get('id')} ({r.get('model') or '—'}, {r.get('prompt_version') or '—'})"
+                for r in value
+            ]
+        elif isinstance(value, (dict, list)):
+            parts.append(f"{key} {json.dumps(value, ensure_ascii=False, sort_keys=True)}")
+        else:
+            parts.append(f"{key} {value}")
+    return "; ".join(parts)
 
 
 def _version_text(row: ResultRow) -> str:
@@ -1710,9 +1729,18 @@ def render_eval_results_text(rows: Sequence[ResultRow]) -> str:
         return "Записей нет: docreader eval fields, eval search или eval blind report"
     table = [["№", "дата", "метка", "этап", "версия эталона", "главные метрики"]]
     for r in rows:
+        extra = []
+        if r.reviewed_share is not None:
+            extra.append(f"проверено {r.reviewed_share:.0%}")
+        if r.stage != "gold_blind" and r.blind and "confirmed_pairs" in r.blind:
+            extra.append(
+                f"слепой контроль {r.blind.get('confirmed_differs', 0)} из "
+                f"{r.blind['confirmed_pairs']}"
+            )
+        headline = "; ".join(p for p in (_headline(r.stage, r.metrics), *extra) if p)
         table.append([
             str(r.id), f"{r.created_at:%Y-%m-%d %H:%M}", r.label or "—",
-            _STAGE_WORDS.get(r.stage, r.stage), _version_text(r), _headline(r.stage, r.metrics),
+            _STAGE_WORDS.get(r.stage, r.stage), _version_text(r), headline,
         ])
     return _aligned(table, left_columns=(2, 3, 4, 5))
 
@@ -1745,6 +1773,7 @@ def render_eval_show_text(shown: ShownRecord) -> str:
     head = _headline(row.stage, row.metrics)
     if head:
         lines.append(f"  {head}")
+    lines.append(f"  происхождение: {_provenance_text(row.provenance)}")
     overall = row.metrics.get("overall", {}) if row.stage in ("fields", "rules") else {}
     counts = overall.get("counts")
     if counts:

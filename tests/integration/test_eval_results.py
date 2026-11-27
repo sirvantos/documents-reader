@@ -147,3 +147,19 @@ def test_outputs_hold_no_values(cli, db, data_dir, setup) -> None:  # type: igno
             result = cli("eval", *args, *extra)
             assert result.exit_code == 0, (args, result.stderr)
             assert_no_values(result.stdout + result.stderr, secrets)
+
+
+def test_provenance_and_reviewed_share_are_shown(cli, data_dir, setup) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    # converge T046 (US4/AC1, FR-014) and T045 (per-field columns in the export)
+    record = run(cli, "fields", "--label", "a")["record"]
+    shown = run(cli, "show", record)["record"]
+    assert shown["provenance"]["code_version"] and shown["provenance"]["runs"]
+    assert run(cli, "results")["records"][0]["provenance"] == shown["provenance"]
+    text = cli("eval", "show", record).stdout
+    assert f"происхождение: код {shown['provenance']['code_version']}" in text
+    assert "проверено 100%" in cli("eval", "results").stdout
+    path = data_dir / run(cli, "export")["path"]
+    rows = list(csv.DictReader(io.StringIO(path.read_bytes().decode("utf-8-sig")),
+                               delimiter=";"))
+    assert json.loads(rows[0]["provenance"])["code_version"] == shown["provenance"]["code_version"]
+    assert any(k.startswith("fields.contract_number.counts.") for k in rows[0])

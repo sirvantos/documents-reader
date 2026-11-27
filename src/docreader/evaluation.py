@@ -855,12 +855,13 @@ def export_results(conn: psycopg.Connection, data_dir: Path, out: Path | None) -
     keys = sorted({k for f in flat for k in f})
     path = new_file_path(data_dir, out, "results")
     fixed = ("id", "created_at", "label", "stage", "gold_version", "current_gold",
-             "reviewed_share", "blind")
+             "reviewed_share", "blind", "provenance")
     body = [
         [
             str(r.id), r.created_at.isoformat(timespec="seconds"), r.label, r.stage,
             r.gold_version or "", "да" if r.current_gold else "нет",
             "" if r.reviewed_share is None else f"{r.reviewed_share:.4f}", blind_text(r.blind),
+            json.dumps(r.provenance, ensure_ascii=False, sort_keys=True),
             *(("" if k not in f else f"{f[k]:g}") for k in keys),
         ]
         for r, f in zip(rows, flat, strict=True)
