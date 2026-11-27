@@ -311,3 +311,19 @@ def test_not_json_rejects_the_file() -> None:
     with pytest.raises(GoldFileError):
         parse_review_answers(b"not json", CARDS)
 
+
+
+def test_hints_ask_for_the_legal_form_and_the_kopecks() -> None:
+    # analyst's blind marking, record 32 (SC-006): short names were written without the
+    # legal form and amounts without kopecks — the hints did not say either was needed
+    import csv
+    import io
+
+    fields = list(catalog.PROTOTYPE)
+    rows = list(csv.reader(io.StringIO(write_template(fields, []).decode("utf-8-sig")),
+                           delimiter=";"))
+    hints = dict(zip(rows[0][1:], rows[2][1:], strict=True))
+    for name in ("customer_name_short", "contractor_name_short"):
+        assert "с формой" in hints[name] and "АО «" in hints[name]
+    for name in ("amount_without_vat", "amount_with_vat"):
+        assert "с копейками" in hints[name]

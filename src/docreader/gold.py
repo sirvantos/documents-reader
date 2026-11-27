@@ -182,7 +182,7 @@ _KIND_WORDS: dict[CatalogKind, str] = {
 _HINTS: dict[CatalogKind, str] = {
     CatalogKind.IDENTIFIER: "как в договоре",
     CatalogKind.DATE: "ДД.ММ.ГГГГ или «25 марта 2026»",
-    CatalogKind.AMOUNT: "например 1 000 000,00",
+    CatalogKind.AMOUNT: "с копейками, например 1 000 000,60",
     CatalogKind.PERCENT: "например 20 или 0,1",
     CatalogKind.NUMBER: "целое число",
     CatalogKind.NAME: "как в договоре",
@@ -192,6 +192,16 @@ _HINTS: dict[CatalogKind, str] = {
     CatalogKind.LIST: "значения через ' || '",
     CatalogKind.RECORDS: "записи как в договоре",
 }
+
+
+# blind marking, record 32 (SC-006): «как в договоре» did not say a short name keeps its form
+_SHORT_NAME_HINT = "краткое, с формой: АО «Альфа»"
+
+
+def _hint(field: CatalogField) -> str:
+    if field.kind is CatalogKind.NAME and field.name.endswith("_name_short"):
+        return _SHORT_NAME_HINT
+    return _HINTS[field.kind]
 
 
 def _kind_word(field: CatalogField) -> str:
@@ -213,7 +223,7 @@ def write_template(fields: Sequence[CatalogField], document_ids: Sequence[str]) 
         f"варианты через «{_VARIANT_SEPARATOR}»"
     )
     writer.writerow(
-        ["#подсказка", *(f"{_HINTS[f.kind]}; {note}" if i == 0 else _HINTS[f.kind]
+        ["#подсказка", *(f"{_hint(f)}; {note}" if i == 0 else _hint(f)
                          for i, f in enumerate(fields))]
     )
     for doc in document_ids:
