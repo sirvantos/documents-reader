@@ -6,9 +6,11 @@ tasks that follow (specs/010-rule-checks/research.md).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
@@ -224,3 +226,93 @@ def apply(code: str, doc: DocFields, settings: CheckSettings) -> dict[str, RuleC
         if rule.code == code:
             return rule.fn(doc, settings)
     raise KeyError(code)
+
+
+# --- the status of a field (research R-6) -------------------------------------------------
+
+FIELDS = _ALL
+DOCUMENT_NEEDS_REVIEW = "document_needs_review"
+
+
+@dataclass(frozen=True)
+class Status:
+    """A field's status, its reasons (`rule:code` or `extraction:result`) and flags."""
+
+    status: FieldStatus
+    reasons: tuple[str, ...]
+    flags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class FieldEvaluation:
+    status: Status
+    checks: dict[str, RuleCheck]
+
+
+def _rules_of(field: str) -> tuple[Rule, ...]:
+    return tuple(r for r in RULES if field in r.fields)
+
+
+def evaluate_document(
+    doc: DocFields, settings: CheckSettings, *, document_needs_review: bool = False
+) -> dict[str, FieldEvaluation]:
+    """Every rule on every field and the status of each field (rows 3–7 of research R-6).
+
+    A rejected or failed field is not checked: its rules are `not_applied` with that
+    result as the reason (FR-002) and its status follows the extraction (FR-004).
+    """
+    outcomes: dict[str, dict[str, RuleCheck]] = {f: {} for f in FIELDS}
+    for rule in RULES:
+        for field, check in rule.fn(doc, settings).items():
+            outcomes[field][rule.code] = check
+    flags = (DOCUMENT_NEEDS_REVIEW,) if document_needs_review else ()
+    out: dict[str, FieldEvaluation] = {}
+    for field in FIELDS:
+        result = doc.rows[field].result
+        if result in ("rejected", "failed"):
+            checks = {r.code: RuleCheck(RuleOutcome.NOT_APPLIED, result) for r in _rules_of(field)}
+            status = FieldStatus.REJECTED if result == "rejected" else FieldStatus.NEEDS_REVIEW
+            out[field] = FieldEvaluation(Status(status, (f"extraction:{result}",), flags), checks)
+            continue
+        checks = outcomes[field]
+        violated = tuple(
+            f"{code}:{c.reason}" for code, c in checks.items()
+            if c.outcome is RuleOutcome.VIOLATED
+        )
+        if violated:
+            status = FieldStatus.NEEDS_REVIEW
+        elif result == "not_found":
+            status = FieldStatus.NOT_FOUND
+        else:
+            status = FieldStatus.ACCEPTED
+        out[field] = FieldEvaluation(Status(status, violated, flags), checks)
+    return out
+
+
+# --- staleness (research R-7) --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StoredStatus:
+    """What a stored status was computed from."""
+
+    extraction_run_id: int
+    checks_version: str
+    settings_sha256: str
+
+
+def settings_fingerprint(settings: CheckSettings) -> str:
+    """SHA-256 of the canonical JSON of `[checks]`: a change of a setting makes checks stale."""
+    data = json.dumps(asdict(settings), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
+
+
+def is_stale(
+    stored: StoredStatus | None, *, extraction_run_id: int, settings: CheckSettings
+) -> bool:
+    """No checks yet, or computed from another extraction, rules version or settings."""
+    return stored is None or (
+        stored.extraction_run_id != extraction_run_id
+        or stored.checks_version != CHECKS_VERSION
+        or stored.settings_sha256 != settings_fingerprint(settings)
+    )
