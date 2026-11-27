@@ -170,3 +170,19 @@ def test_search_provenance_holds_the_reranker_settings(cli, db, indexed) -> None
         "SELECT provenance FROM eval_result WHERE id = %s", (report["records"]["search_plain"],)
     ).fetchone()
     assert set(prov["reranker_settings"]) >= {"enabled", "model", "max_chars"}
+
+
+def test_text_parts_add_up_to_the_questions(cli, db, indexed) -> None:  # type: ignore[no-untyped-def]
+    # converge T052 (US5/AC7, SC-011): the «пункт не указан» questions are counted too
+    import re
+
+    result = cli("eval", "search")
+    assert result.exit_code == 0, result.stderr
+    m = re.search(
+        r"вопросов (\d+): участвуют (\d+), без ответа (\d+), вида «таблица» (\d+), "
+        r"пункт не указан (\d+)", result.stdout,
+    )
+    assert m, result.stdout
+    total, *parts = map(int, m.groups())
+    assert total == sum(parts)
+    assert json.loads(cli("eval", "search", "--json").stdout)["unspecified"] == parts[3]

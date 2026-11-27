@@ -247,3 +247,16 @@ def test_output_holds_no_question_texts(cli, db, parsed_docs) -> None:  # type: 
         assert result.exit_code == 0
         assert_no_values(result.stdout + result.stderr,
                          synthetic_secrets(db, extra=["Несуществующий пункт"]))
+
+
+def test_generate_names_the_no_answer_shortfall(cli, db, parsed_docs) -> None:  # type: ignore[no-untyped-def]
+    # converge T052: like the false-premise shortfall, the missing no-answer questions
+    _gold(db, {
+        ("D-0001", "amount_with_vat"): value("700 000 рублей", "700000.00", "2.1"),
+        ("D-0002", "advance_share"): CellValue(GoldState.ABSENT, (), (),
+                                               GoldPath.ABSENT_MARKED),
+    })
+    report = json.loads(cli("eval", "questions", "generate", "--json").stdout)
+    assert report["no_answer_shortfall"] == 9  # the set needs ten without an answer
+    text = cli("eval", "questions", "generate").stdout
+    assert "без ответа 1 (не хватило 9)" in text

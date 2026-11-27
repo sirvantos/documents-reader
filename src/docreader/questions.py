@@ -463,11 +463,13 @@ class GenerateReport:
     no_answer: int
     false_premise: int
     shortfall: int  # false-premise questions asked for and not made
+    no_answer_shortfall: int = 0  # questions without an answer short of MIN_WITHOUT_ANSWER
 
     def to_json(self) -> dict[str, Any]:
         return {
             "path": self.path, "with_answer": self.with_answer, "no_answer": self.no_answer,
             "false_premise": self.false_premise, "shortfall": self.shortfall,
+            "no_answer_shortfall": self.no_answer_shortfall,
         }
 
 
@@ -577,7 +579,8 @@ def generate_questions(
     entries += premises
     _write_new(path, _write_set("generated", entries))
     return GenerateReport(_relative(path, data_dir), with_answer, no_answer, len(premises),
-                          max(0, false_premise - len(premises)))
+                          max(0, false_premise - len(premises)),
+                          max(0, MIN_WITHOUT_ANSWER - no_answer))
 
 
 # --- clauses -------------------------------------------------------------------------------

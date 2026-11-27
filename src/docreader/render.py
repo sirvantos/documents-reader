@@ -1886,7 +1886,9 @@ def render_eval_questions_load_text(report: QuestionsReport) -> str:
 def render_eval_questions_generate_text(report: GenerateReport) -> str:
     return "\n".join([
         f"Предложенные вопросы: {report.path}",
-        f"  с ответом {report.with_answer}, без ответа {report.no_answer}, "
+        f"  с ответом {report.with_answer}, без ответа {report.no_answer}"
+        + (f" (не хватило {report.no_answer_shortfall})" if report.no_answer_shortfall else "")
+        + ", "
         f"с ложной посылкой {report.false_premise} (не хватило пар {report.shortfall})",
         "  просмотрите файл, уберите лишние и загрузите: docreader eval questions load …",
     ])
@@ -1947,7 +1949,8 @@ def render_eval_search_text(report: SearchReport) -> str:
         f"Замер поиска: записи {ids['search_plain']} (без реранкера) и "
         f"{ids['search_rerank']} (с реранкером)",
         f"  вопросов {report.questions}: участвуют {plain['participating']}, без ответа "
-        f"{report.no_answer}, вида «таблица» {report.table}",
+        f"{report.no_answer}, вида «таблица» {report.table}, "
+        f"пункт не указан {report.unspecified}",
     ]
     table = [["", "первое место", "первые пять", "медиана", "не найден"]]
     for name, m in (("без реранкера", plain), ("с реранкером", rerank)):
@@ -1969,6 +1972,8 @@ def render_eval_search_json(report: SearchReport) -> str:
         {
             "records": report.records, "variants": report.variants,
             "questions": report.questions, "review_file": report.review_file,
+            "no_answer": report.no_answer, "table": report.table,
+            "unspecified": report.unspecified,
         },
         ensure_ascii=False, indent=2,
     )

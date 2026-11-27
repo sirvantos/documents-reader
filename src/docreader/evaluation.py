@@ -499,6 +499,7 @@ class SearchReport:
     review_file: str
     no_answer: int = 0
     table: int = 0
+    unspecified: int = 0  # has an answer, not a table, but no clause is given: out of metrics
 
 
 @dataclass(frozen=True)
@@ -658,6 +659,9 @@ def measure_search(
         records=ids, variants=metrics, questions=len(asked), review_file=review_label,
         no_answer=sum(1 for q in asked if not q.has_answer),
         table=sum(1 for q in asked if q.has_answer and q.kind == "table"),
+        unspecified=sum(
+            1 for q in asked if q.has_answer and q.kind != "table" and not q.clause_keys
+        ),
     )
 
 
