@@ -70,8 +70,9 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 </style></head><body>
 <header><b>Проверка полей</b><span id="count"></span><div class="bar"><i id="fill"></i></div>
 <button id="dl">Скачать ответы</button>
-<span class="muted"><kbd>1</kbd> <kbd>2</kbd> <kbd>Q</kbd> <kbd>W</kbd> значение · <kbd>3</kbd> другое ·
-<kbd>4</kbd> отсутствует · <kbd>0</kbd> пропустить · <kbd>←</kbd> <kbd>→</kbd> карточки</span>
+<span class="muted"><kbd>1</kbd> <kbd>2</kbd> <kbd>Q</kbd> <kbd>W</kbd> значение ·
+<kbd>3</kbd> другое · <kbd>4</kbd> отсутствует · <kbd>0</kbd> пропустить ·
+<kbd>←</kbd> <kbd>→</kbd> карточки</span>
 </header>
 <main id="list"></main>
 <script type="application/json" id="cards">{{CARDS}}</script>
