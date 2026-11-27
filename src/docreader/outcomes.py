@@ -250,13 +250,19 @@ def _numbers(data: Any, prefix: str = "") -> dict[str, float]:
     if isinstance(data, dict):
         for key, value in data.items():
             out.update(_numbers(value, f"{prefix}{key}."))
+    elif isinstance(data, list):
+        # a list of per-field dicts (stored so by older records too) is keyed by `field`
+        for item in data:
+            if isinstance(item, dict) and isinstance(item.get("field"), str):
+                rest = {k: v for k, v in item.items() if k != "field"}
+                out.update(_numbers(rest, f"{prefix}{item['field']}."))
     elif isinstance(data, (int, float)) and not isinstance(data, bool):
         out[prefix.rstrip(".")] = data
     return out
 
 
 def metric_numbers(data: Any) -> dict[str, float]:
-    """The numeric leaves of a metrics dict by dotted key (lists are not descended into)."""
+    """The numeric leaves of a metrics dict by dotted key (lists of per-field dicts are keyed by their `field`)."""
     return _numbers(data)
 
 

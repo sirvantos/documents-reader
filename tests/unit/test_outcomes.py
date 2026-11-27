@@ -349,3 +349,25 @@ def test_search_metrics_without_participants() -> None:
 
     m = search_metrics([SearchCase("q", None, True)])
     assert m.participating == 0 and m.share_first is None and m.median_place is None
+
+
+def test_per_field_metrics_are_diffable_by_field_name() -> None:
+    # converge T045 (FR-016): `fields` is stored as a list, compare and export key it by field
+    from docreader.outcomes import metric_numbers
+
+    def metrics(correct: int) -> dict:  # type: ignore[type-arg]
+        return {
+            "overall": {"scored": 4},
+            "fields": [
+                {"field": "contract_number", "counts": {"correct": correct}, "shares": {}},
+                {"field": "amount_with_vat", "counts": {"correct": 1}, "shares": {}},
+            ],
+        }
+
+    assert metric_numbers(metrics(2)) == {
+        "overall.scored": 4,
+        "fields.contract_number.counts.correct": 2,
+        "fields.amount_with_vat.counts.correct": 1,
+    }
+    result = compare(rec(F, {}, metrics(2)), rec(F, {}, metrics(3)))
+    assert result.metrics["fields.contract_number.counts.correct"] == (2, 3)
