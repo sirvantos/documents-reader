@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from docreader.answer_check import AnswerOutcome, ClaimStatus
 from docreader.check_queue import QueueBuilt
 from docreader.checks import CHECKS_VERSION, CheckReport, CheckSummary, FieldStatus
+from docreader.evaluation import CheckReportRecord
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
 from docreader.gold import GoldPath, LoadKind
@@ -1652,6 +1653,7 @@ _SEARCH_STAGES = frozenset({"search_plain", "search_rerank"})
 _STAGE_WORDS = {
     "fields": "поля", "rules": "правила", "search_plain": "поиск без реранкера",
     "search_rerank": "поиск с реранкером", "gold_blind": "слепой контроль",
+    "checks": "польза правил",
 }
 
 
@@ -1673,6 +1675,12 @@ def _headline(stage: str, metrics: dict) -> str:
         return (
             f"разошлось {metrics.get('confirmed_differs', 0)} из {metrics['confirmed_pairs']}"
             f" при подтверждённом значении системы"
+        )
+    if stage == "checks":
+        o = metrics.get("overall", {})
+        return (
+            f"в очереди неверных {_part_text(o.get('wrong_in_queue', 0), o.get('wrong', 0))}, "
+            f"верных {_part_text(o.get('right_in_queue', 0), o.get('right', 0))}"
         )
     if "participating" in metrics:
         n = metrics["participating"]
@@ -2037,6 +2045,48 @@ def render_check_summary_text(summary: CheckSummary) -> str:
         f"исправлено {d['correct']}, в договоре нет {d['absent']}); "
         f"значение системы изменилось у {summary.system_changed}"
     )
+    return "\n".join(lines)
+
+
+def render_check_report_json(report: CheckReportRecord) -> str:
+    return json.dumps({
+        "record": report.record,
+        "label": report.label,
+        "checks_version": CHECKS_VERSION,
+        "gold_version": report.gold_version[:12],
+        "metrics": report.metrics,
+        "outside": {"no_gold": report.no_gold, "stale": report.stale},
+        "review_file": report.review_file,
+    }, ensure_ascii=False, indent=2)
+
+
+def render_check_report_text(report: CheckReportRecord) -> str:
+    """Text of `check report`: counts and rule codes only, never a value."""
+    o = report.metrics["overall"]
+
+    def share(part: int, whole: int) -> str:
+        return f"{part} из {whole}" + (f" ({part / whole:.0%})" if whole else "")
+
+    label = f" «{report.label}»" if report.label else ""
+    lines = [
+        f"Польза правил: запись {report.record}{label} (правила {CHECKS_VERSION}), "
+        f"версия эталона {report.gold_version[:12]}",
+        f"  пар {o['pairs']}: верных {o['right']}, неверных {o['wrong']}; в очереди: "
+        f"неверных {share(o['wrong_in_queue'], o['wrong'])}, "
+        f"верных {share(o['right_in_queue'], o['right'])}",
+    ]
+    rules = report.metrics["rules"]
+    if rules:
+        width = max(len(r) for r in rules)
+        lines.append(f"  {'правило':<{width}}  сработало  на неверных")
+        lines += [
+            f"  {r:<{width}}  {v['fired']:>9}  {v['fired_on_wrong']:>11}"
+            for r, v in sorted(rules.items())
+        ]
+    lines.append(
+        f"  договоров вне отчёта: без эталона {report.no_gold}, проверки устарели {report.stale}"
+    )
+    lines.append(f"  разбор: {report.review_file}")
     return "\n".join(lines)
 
 

@@ -57,6 +57,56 @@ class CheckOutcome(StrEnum):
     ACCEPTED_RIGHT = "accepted_right"
 
 
+_RIGHT = (Outcome.CORRECT,)
+_WRONG = (Outcome.WRONG, Outcome.MISSED, Outcome.INVENTED)
+
+
+def check_outcome(gold: Outcome, queued: bool) -> CheckOutcome | None:
+    """The report outcome of a pair; None when the pair is outside the report (06 R-10)."""
+    if gold in _RIGHT:
+        return CheckOutcome.QUEUED_RIGHT if queued else CheckOutcome.ACCEPTED_RIGHT
+    if gold in _WRONG:
+        return CheckOutcome.QUEUED_WRONG if queued else CheckOutcome.ACCEPTED_WRONG
+    return None
+
+
+@dataclass(frozen=True)
+class CheckCase:
+    """One pair of the report: its outcome and the rules that fired (were violated) on it."""
+
+    document_id: str
+    field: str
+    outcome: CheckOutcome
+    fired: tuple[str, ...]
+
+
+def check_metrics(cases: Sequence[CheckCase]) -> dict[str, Any]:
+    """Per rule, per field (catalog order) and overall counts of the usefulness report."""
+    wrong = (CheckOutcome.QUEUED_WRONG, CheckOutcome.ACCEPTED_WRONG)
+    right = (CheckOutcome.QUEUED_RIGHT, CheckOutcome.ACCEPTED_RIGHT)
+
+    def counts(part: Sequence[CheckCase]) -> dict[str, int]:
+        return {
+            "wrong": sum(c.outcome in wrong for c in part),
+            "wrong_in_queue": sum(c.outcome is CheckOutcome.QUEUED_WRONG for c in part),
+            "right": sum(c.outcome in right for c in part),
+            "right_in_queue": sum(c.outcome is CheckOutcome.QUEUED_RIGHT for c in part),
+        }
+
+    rules: dict[str, dict[str, int]] = {}
+    for c in cases:
+        for rule in c.fired:
+            entry = rules.setdefault(rule, {"fired": 0, "fired_on_wrong": 0})
+            entry["fired"] += 1
+            entry["fired_on_wrong"] += c.outcome in wrong
+    names = sorted({c.field for c in cases}, key=lambda n: _catalog_index(n))
+    return {
+        "rules": rules,
+        "fields": [{"field": n, **counts([c for c in cases if c.field == n])} for n in names],
+        "overall": {"pairs": len(cases), **counts(cases)},
+    }
+
+
 # --- the pair outcome (research R-7) -------------------------------------------------------
 
 # Flags of a case: why there is no result, or a rejected system value.
@@ -217,6 +267,10 @@ _BLIND_RANK = {
     BlindOutcome.SAME: 0, BlindOutcome.BLIND_ONLY: 1, BlindOutcome.REVIEWED_ONLY: 1,
     BlindOutcome.DIFFERS: 2,
 }
+_CHECK_RANK = {
+    CheckOutcome.ACCEPTED_RIGHT: 0, CheckOutcome.QUEUED_WRONG: 1,
+    CheckOutcome.QUEUED_RIGHT: 2, CheckOutcome.ACCEPTED_WRONG: 3,
+}
 _SEARCH = frozenset({EvalStage.SEARCH_PLAIN, EvalStage.SEARCH_RERANK})
 
 
@@ -299,6 +353,11 @@ def _rank(stage: EvalStage, case: StoredCase) -> int | None:
     if stage is EvalStage.GOLD_BLIND:
         try:
             return _BLIND_RANK[BlindOutcome(case.outcome or "")]
+        except ValueError:
+            return None
+    if stage is EvalStage.CHECKS:
+        try:
+            return _CHECK_RANK[CheckOutcome(case.outcome or "")]
         except ValueError:
             return None
     try:

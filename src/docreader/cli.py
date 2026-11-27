@@ -50,6 +50,8 @@ from docreader.render import (
     render_answer_text,
     render_check_queue_json,
     render_check_queue_text,
+    render_check_report_json,
+    render_check_report_text,
     render_check_summary_json,
     render_check_summary_text,
     render_check_text,
@@ -196,6 +198,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--all", action="store_true", help="проверить все договоры с извлечением")
     p.add_argument("--again", action="store_true", help="пересчитать и актуальные проверки")
+    p.add_argument("--label", metavar="МЕТКА", help="для report: метка записи")
     p.add_argument("--out", metavar="ПАПКА", help="для queue: папка внутри папки данных")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
@@ -572,6 +575,12 @@ def _cmd_check(args: argparse.Namespace, settings: Settings, conn: psycopg.Conne
             conn, settings, args.ids[1:] or None, Path(args.out) if args.out else None
         )
         print(render_check_queue_json(built) if args.json else render_check_queue_text(built))
+        return 0
+    if args.ids and args.ids[0] == "report":
+        if len(args.ids) > 1:
+            raise UserError("check report: лишние аргументы")
+        done = evaluation.check_report(conn, settings, label=args.label or "")
+        print(render_check_report_json(done) if args.json else render_check_report_text(done))
         return 0
     if args.ids and args.ids[0] in _CHECK_SUBCOMMANDS:
         raise UserError(f"check {args.ids[0]}: пока не реализовано")
