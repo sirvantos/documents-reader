@@ -10,7 +10,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from dataclasses import field as dataclass_field
 from datetime import date
@@ -239,6 +239,22 @@ def apply(code: str, doc: DocFields, settings: CheckSettings) -> dict[str, RuleC
 
 FIELDS = _ALL
 DOCUMENT_NEEDS_REVIEW = "document_needs_review"
+HUMAN_FLAGS = {
+    DecisionKind.CONFIRM: "human_confirmed",
+    DecisionKind.CORRECT: "human_corrected",
+    DecisionKind.ABSENT: "human_absent",
+}
+SYSTEM_CHANGED_FLAG = "system_changed"
+
+
+@dataclass(frozen=True)
+class StoredDecision:
+    """An analyst's decision and the system value it was taken on (research R-6, R-9)."""
+
+    kind: DecisionKind
+    value_normalized: str | None
+    system_result: str
+    system_normalized: str | None
 SYSTEM_CHANGED = "system_changed"
 
 
@@ -262,13 +278,42 @@ def _rules_of(field: str) -> tuple[Rule, ...]:
 
 
 def evaluate_document(
-    doc: DocFields, settings: CheckSettings, *, document_needs_review: bool = False
+    doc: DocFields,
+    settings: CheckSettings,
+    *,
+    document_needs_review: bool = False,
+    decisions: Mapping[str, StoredDecision] | None = None,
 ) -> dict[str, FieldEvaluation]:
-    """Every rule on every field and the status of each field (rows 3–7 of research R-6).
+    """Every rule on every field and the status of each field (research R-6).
 
     A rejected or failed field is not checked: its rules are `not_applied` with that
-    result as the reason (FR-002) and its status follows the extraction (FR-004).
+    result as the reason (FR-002) and its status follows the extraction (FR-004). A
+    decision of the analyst wins while the system value it was taken on is unchanged
+    (row 1); once that value changed, the field goes back to the queue (row 2, FR-009).
+    The rules are run and stored either way.
     """
+    base = _evaluate_without_decisions(doc, settings, document_needs_review)
+    for field, decision in (decisions or {}).items():
+        row = doc.rows[field]
+        ev = base[field]
+        same = (row.result, row.value_normalized) == (
+            decision.system_result, decision.system_normalized
+        )
+        if same:
+            status = (FieldStatus.NOT_FOUND if decision.kind is DecisionKind.ABSENT
+                      else FieldStatus.ACCEPTED)
+            new = Status(status, (), (*ev.status.flags, HUMAN_FLAGS[decision.kind]))
+        else:
+            new = Status(FieldStatus.NEEDS_REVIEW, ev.status.reasons,
+                         (*ev.status.flags, SYSTEM_CHANGED_FLAG))
+        base[field] = FieldEvaluation(new, ev.checks)
+    return base
+
+
+def _evaluate_without_decisions(
+    doc: DocFields, settings: CheckSettings, document_needs_review: bool
+) -> dict[str, FieldEvaluation]:
+    """Rows 3–7 of research R-6."""
     outcomes: dict[str, dict[str, RuleCheck]] = {f: {} for f in FIELDS}
     for rule in RULES:
         for field, check in rule.fn(doc, settings).items():
@@ -556,6 +601,7 @@ def run_checks(
             evaluation = evaluate_document(
                 doc, settings.checks,
                 document_needs_review=document_needs_review(conn, doc_id),
+                decisions=load_decisions(conn, doc_id),
             )
             _store(conn, settings, run_id, doc_id, extraction_run_id, evaluation)
             counts = Counter(ev.status.status.value for ev in evaluation.values())
@@ -638,3 +684,43 @@ def summarize(conn: psycopg.Connection, settings: Settings) -> CheckSummary:
     for kind, n in conn.execute("SELECT kind, count(*) FROM field_decision GROUP BY kind"):
         decisions[kind] = n
     return CheckSummary(len(docs), len(stale), fields, total, decisions, changed)
+
+
+# --- decisions (research R-6 rows 1–2, R-8) ------------------------------------------------
+
+
+def load_decisions(conn: psycopg.Connection, doc_id: str) -> dict[str, StoredDecision]:
+    rows = conn.execute(
+        "SELECT field, kind, value_normalized, system_result, system_normalized"
+        " FROM field_decision WHERE document_id = %s",
+        (doc_id,),
+    ).fetchall()
+    return {f: StoredDecision(DecisionKind(k), v, r, n) for f, k, v, r, n in rows}
+
+
+def recheck(conn: psycopg.Connection, settings: Settings, doc_ids: Sequence[str]) -> int:
+    """Recompute and store the checks of these documents (after decisions); fields counted."""
+    report = run_checks(conn, settings, list(doc_ids), all_=False, again=True) if doc_ids else None
+    return 0 if report is None else sum(sum(d.counts.values()) for d in report.documents)
+
+
+def effective_value(conn: psycopg.Connection, doc_id: str, field: str) -> str | None:
+    """The value later features use (research R-8): the analyst's while their decision holds,
+    else the system value of an accepted field, else none."""
+    row = conn.execute(
+        "SELECT s.status, s.flags, v.value_normalized, d.value_normalized"
+        " FROM field_status s JOIN field_value v USING (document_id, field)"
+        " LEFT JOIN field_decision d USING (document_id, field)"
+        " WHERE s.document_id = %s AND s.field = %s",
+        (doc_id, field),
+    ).fetchone()
+    if row is None:
+        return None
+    status, flags, system, decided = row
+    if HUMAN_FLAGS[DecisionKind.CORRECT] in flags:
+        return str(decided)
+    if HUMAN_FLAGS[DecisionKind.ABSENT] in flags:
+        return None
+    if status == FieldStatus.ACCEPTED:
+        return None if system is None else str(system)
+    return None

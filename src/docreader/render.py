@@ -16,7 +16,7 @@ from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 from docreader.answer_check import AnswerOutcome, ClaimStatus
-from docreader.check_queue import QueueBuilt
+from docreader.check_queue import CheckLoadReport, QueueBuilt
 from docreader.checks import CHECKS_VERSION, CheckReport, CheckSummary, FieldStatus
 from docreader.evaluation import CheckReportRecord
 from docreader.fields import Result
@@ -2105,3 +2105,29 @@ def render_check_queue_text(built: QueueBuilt) -> str:
         f"  договоров с устаревшими проверками: {built.stale}"
         + (" (сначала docreader check)" if built.stale else ""),
     ])
+
+
+_DECISION_WORDS = {"confirm": "подтверждено", "correct": "исправлено", "absent": "в договоре нет"}
+_LOAD_ERRORS = {
+    "agree_without_value": "«верно» без найденного значения",
+    "kind_invalid": "значение не приводится к виду поля",
+    "unknown_card": "карточки нет в сборке",
+    "unknown_answer": "неизвестный ответ",
+}
+
+
+def render_check_load_text(report: CheckLoadReport) -> str:
+    """`check load`: counts, card keys and reason words only (FR-013)."""
+    accepted = sum(report.accepted.values())
+    parts = ", ".join(f"{_DECISION_WORDS[k]} {n}" for k, n in report.accepted.items())
+    lines = [
+        f"Решения: ответы страницы очереди ({report.cards} карточек)",
+        f"  принято {accepted}: {parts}; пропущено {report.skipped}",
+    ]
+    if report.errors:
+        lines.append(f"  не принято {len(report.errors)}:")
+        lines += [f"    карточка {k} — {_LOAD_ERRORS.get(r, r)}" for k, r in report.errors]
+    if report.not_applied:
+        lines.append(f"  не применено {report.not_applied}: договора или поля больше нет")
+    lines.append(f"  статусы пересчитаны у {report.recomputed} полей")
+    return "\n".join(lines)

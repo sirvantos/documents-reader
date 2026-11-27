@@ -33,7 +33,7 @@ from docreader import (
     textview,
 )
 from docreader.answer_check import AnswerOutcome
-from docreader.check_queue import build_queue
+from docreader.check_queue import build_queue, load_answers
 from docreader.checks import run_checks, summarize
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
@@ -48,6 +48,7 @@ from docreader.render import (
     NOTHING_TO_INDEX,
     render_answer_json,
     render_answer_text,
+    render_check_load_text,
     render_check_queue_json,
     render_check_queue_text,
     render_check_report_json,
@@ -559,7 +560,6 @@ def _cmd_extract(args: argparse.Namespace, settings: Settings, conn: psycopg.Con
     return 0
 
 
-_CHECK_SUBCOMMANDS = ("summary", "queue", "load", "report")
 
 
 def _cmd_check(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
@@ -582,8 +582,13 @@ def _cmd_check(args: argparse.Namespace, settings: Settings, conn: psycopg.Conne
         done = evaluation.check_report(conn, settings, label=args.label or "")
         print(render_check_report_json(done) if args.json else render_check_report_text(done))
         return 0
-    if args.ids and args.ids[0] in _CHECK_SUBCOMMANDS:
-        raise UserError(f"check {args.ids[0]}: пока не реализовано")
+    if args.ids and args.ids[0] == "load":
+        if len(args.ids) != 2:
+            raise UserError("check load: укажите один файл ответов страницы очереди")
+        loaded = load_answers(conn, settings, Path(args.ids[1]))
+        print(json.dumps(loaded.to_json(), ensure_ascii=False, indent=2) if args.json
+              else render_check_load_text(loaded))
+        return 0
     if args.all and args.ids:
         raise UserError("Нельзя указать --all вместе с идентификаторами")
     ids = [format_document_id(parse_document_id(i)) for i in args.ids] or None

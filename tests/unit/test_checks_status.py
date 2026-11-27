@@ -127,3 +127,57 @@ def test_fingerprint_is_stable_and_follows_every_key() -> None:
     assert len(a) == 64
     assert a != settings_fingerprint(CheckSettings(end_date_max="2041-12-31"))
     assert a != settings_fingerprint(CheckSettings(end_date_min="2016-01-01"))
+
+
+# --- decisions: rows 1–2 of research R-6 (T018) --------------------------------------------
+
+from docreader.checks import DecisionKind, StoredDecision  # noqa: E402
+
+
+def _decision(kind: DecisionKind, *, result: str = "found", normalized: str | None = "1200000.00",
+              value: str | None = None) -> StoredDecision:
+    return StoredDecision(kind, value, result, normalized)
+
+
+def test_confirm_or_correct_on_the_same_system_value_is_accepted() -> None:
+    wrong = found("1 250 000", "1250000.00")
+    d = doc(amount_with_vat=wrong)
+    for kind, flag in ((DecisionKind.CONFIRM, "human_confirmed"),
+                       (DecisionKind.CORRECT, "human_corrected")):
+        decision = _decision(kind, normalized="1250000.00",
+                             value="1200000.00" if kind is DecisionKind.CORRECT else None)
+        item = evaluate(d, decisions={"amount_with_vat": decision})["amount_with_vat"]
+        assert item.status.status is ACCEPTED
+        assert item.status.flags == (flag,)
+        assert item.status.reasons == ()
+        # the rules are still run and stored
+        assert item.checks["vat_consistent"].outcome is RuleOutcome.VIOLATED
+
+
+def test_absent_decision_is_not_found() -> None:
+    d = doc(contract_end_date=found("31.12.2045", "2045-12-31"))
+    decision = _decision(DecisionKind.ABSENT, normalized="2045-12-31")
+    item = evaluate(d, decisions={"contract_end_date": decision})["contract_end_date"]
+    assert item.status.status is NOT_FOUND_STATUS
+    assert item.status.flags == ("human_absent",)
+
+
+def test_changed_system_value_puts_the_field_back_in_the_queue() -> None:
+    decision = _decision(DecisionKind.CONFIRM, normalized="1250000.00")
+    item = evaluate(doc(), decisions={"amount_with_vat": decision})["amount_with_vat"]
+    assert item.status.status is NEEDS_REVIEW
+    assert "system_changed" in item.status.flags
+
+
+def test_a_decision_on_a_result_that_changed_is_a_change_too() -> None:
+    decision = _decision(DecisionKind.ABSENT, result="not_found", normalized=None)
+    item = evaluate(doc(), decisions={"contract_end_date": decision})["contract_end_date"]
+    assert item.status.status is NEEDS_REVIEW
+    assert item.status.flags == ("system_changed",)
+
+
+def test_decision_with_document_review_keeps_both_flags() -> None:
+    decision = _decision(DecisionKind.CONFIRM)
+    item = evaluate(doc(), document_needs_review=True,
+                    decisions={"amount_with_vat": decision})["amount_with_vat"]
+    assert item.status.flags == ("document_needs_review", "human_confirmed")

@@ -6,6 +6,7 @@ to date. The page is the one of feature 02 (`review_page.render_html`, check mod
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from collections.abc import Sequence
@@ -23,6 +24,7 @@ from docreader.checks import (
     DecisionKind,
     FieldStatus,
     documents_with_extraction,
+    recheck,
     split_fresh,
 )
 from docreader.config import Settings
@@ -177,6 +179,14 @@ def build_queue(
     docs = _documents(conn, ids)
     fresh, stale = split_fresh(conn, settings, docs)
     build, folder = new_build(settings, out, parent="checks", prefix="queue")
+    earlier = {
+        (d, f): {"kind": k, "value": v, "system_normalized": n}
+        for d, f, k, v, n in conn.execute(
+            "SELECT document_id, field, kind, value_text, system_normalized FROM field_decision"
+            " WHERE document_id = ANY(%s)",
+            (fresh,),
+        ).fetchall()
+    }
     rows = conn.execute(
         "SELECT s.document_id, s.field, s.status, s.reasons, s.flags, v.result, v.value_text,"
         " v.value_normalized, v.quote, v.quote_start, v.quote_end, v.clause_key, v.pages,"
@@ -199,7 +209,7 @@ def build_queue(
                 card = {
                     "key": f"{doc}/{field}", "document_id": doc, "field": field,
                     "status": status, "reasons": list(reasons), "flags": list(flags),
-                    "system": system, "decision": None,
+                    "system": system, "decision": earlier.get((doc, field)),
                 }
                 cards.append(card)
                 spec = catalog.field(field)
@@ -233,4 +243,90 @@ def build_queue(
         by_field=by_field,
         system_changed=sum(SYSTEM_CHANGED in c["flags"] for c in cards),
         stale=len(stale),
+    )
+
+
+# --- loading the answers (research R-9, T018) ----------------------------------------------
+
+
+@dataclass
+class CheckLoadReport:
+    cards: int
+    accepted: dict[str, int]
+    skipped: int
+    errors: list[tuple[str, str]]
+    not_applied: int
+    recomputed: int
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "cards": self.cards, "accepted": self.accepted, "skipped": self.skipped,
+            "errors": [{"key": k, "reason": r} for k, r in self.errors],
+            "not_applied": self.not_applied, "recomputed": self.recomputed,
+        }
+
+
+def _build_cards(settings: Settings, build: object) -> list[dict[str, Any]]:
+    """The cards of the build the answers name, from `checks/queue-…/cards.json`."""
+    root = settings.data_dir / "checks"
+    for path in sorted(root.glob("queue-*/cards.json")) if root.is_dir() else []:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if doc.get("format") == CARDS_FORMAT and doc.get("build") == build:
+            return list(doc["cards"])
+    raise UserError(
+        f"Сборка очереди «{build}» не найдена в папке данных (checks/queue-…): "
+        "соберите очередь заново — docreader check queue"
+    )
+
+
+def load_answers(conn: psycopg.Connection, settings: Settings, path: Path) -> CheckLoadReport:
+    """Store the decisions of a queue page answers file and recompute those documents.
+
+    The system value of a decision is the one shown on the card (cards.json of the build);
+    if the extraction changed since, the next status marks it «system_changed» (R-6 row 2).
+    A decision for a document or field no longer extracted is not applied (counted).
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        raise UserError(f"Файл ответов не прочитать: {path}") from None
+    parse_answers(data, [])  # a file that is not an answers file stops here, with its reason
+    cards = _build_cards(settings, json.loads(data).get("build"))
+    parsed = parse_answers(data, cards)
+    by_key = {c["key"]: c for c in cards}
+    sha = hashlib.sha256(data).hexdigest()
+    accepted = {k.value: 0 for k in DecisionKind}
+    not_applied = 0
+    touched: set[str] = set()
+    with conn.transaction():
+        for (doc, field), decision in parsed.decisions.items():
+            exists = conn.execute(
+                "SELECT 1 FROM field_value WHERE document_id = %s AND field = %s", (doc, field)
+            ).fetchone()
+            if exists is None:
+                not_applied += 1
+                continue
+            system = by_key[f"{doc}/{field}"]["system"]
+            conn.execute(
+                "INSERT INTO field_decision (document_id, field, kind, value_text,"
+                " value_normalized, clause_key, system_result, system_normalized,"
+                " answers_sha256) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                " ON CONFLICT (document_id, field) DO UPDATE SET kind = EXCLUDED.kind,"
+                " value_text = EXCLUDED.value_text, value_normalized = EXCLUDED.value_normalized,"
+                " clause_key = EXCLUDED.clause_key, system_result = EXCLUDED.system_result,"
+                " system_normalized = EXCLUDED.system_normalized,"
+                " answers_sha256 = EXCLUDED.answers_sha256, decided_at = now()",
+                (doc, field, decision.kind, decision.value_text, decision.value_normalized,
+                 decision.clause_key, system["result"], system["normalized"], sha),
+            )
+            accepted[decision.kind.value] += 1
+            touched.add(doc)
+    recomputed = recheck(conn, settings, sorted(touched))
+    return CheckLoadReport(
+        cards=len(parsed.decisions) + parsed.skipped + len(parsed.errors),
+        accepted=accepted, skipped=parsed.skipped, errors=parsed.errors,
+        not_applied=not_applied, recomputed=recomputed,
     )
