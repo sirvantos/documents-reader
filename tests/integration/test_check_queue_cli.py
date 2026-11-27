@@ -110,6 +110,19 @@ def test_queue_of_named_documents(cli, data_dir, checked) -> None:  # type: igno
     assert report["by_field"] == {"amount_without_vat": 1, "amount_with_vat": 1}
 
 
+def test_queue_with_no_cards_writes_an_empty_page(cli, data_dir, checked) -> None:  # type: ignore[no-untyped-def]
+    # The working set may give no cards at all (quickstart Б1: 336 of 336 accepted).
+    report = _json(cli, "queue", checked["check-clean"])
+    assert report["cards"] == 0
+    folder = _folder(data_dir, report)
+    cards = json.loads((folder / "cards.json").read_text(encoding="utf-8"))
+    assert cards["cards"] == []
+    assert (folder / "index.html").is_file()
+    text = cli("check", "queue", checked["check-clean"])
+    assert text.exit_code == 0, text.stderr
+    assert "карточек 0" in text.stdout
+
+
 def test_queue_names_stale_documents_and_leaves_them_out(
     cli, data_dir, checked, use_model
 ) -> None:  # type: ignore[no-untyped-def]
