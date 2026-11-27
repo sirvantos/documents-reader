@@ -16,13 +16,24 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from docreader import catalog, embedding, outcomes, questions, reranker, review, rules, search
+from docreader import (
+    catalog,
+    checks,
+    embedding,
+    outcomes,
+    questions,
+    reranker,
+    review,
+    rules,
+    search,
+)
 from docreader.config import Settings
 from docreader.errors import UserError
 from docreader.fields import FIELD_NAMES
@@ -30,6 +41,7 @@ from docreader.gold import REVIEW_PATHS, GoldState, current_sha256
 from docreader.ids import format_clause_id
 from docreader.outcomes import (
     BlindOutcome,
+    CheckOutcome,
     EvalStage,
     FieldCase,
     GoldValue,
@@ -485,6 +497,127 @@ def compare_fields(
     )
 
 
+# --- the rule usefulness report (feature 06, research R-10) -----------------------------------
+
+_DECISION_FLAGS = frozenset({"human_confirmed", "human_corrected", "human_absent",
+                             checks.SYSTEM_CHANGED})
+_QUEUE = (checks.FieldStatus.NEEDS_REVIEW.value, checks.FieldStatus.REJECTED.value)
+
+
+@dataclass(frozen=True)
+class CheckReportRecord:
+    """The written record of `check report`: counts, ids and rule codes only."""
+
+    record: int
+    label: str
+    gold_version: str
+    metrics: dict[str, Any]
+    no_gold: int
+    stale: int
+    review_file: str
+
+
+def _decision_free_statuses(
+    conn: psycopg.Connection, settings: Settings, doc: str
+) -> dict[str, str]:
+    """Status of every field of a document as the rules give it, without any decision."""
+    stored = {
+        field: (status, set(flags))
+        for field, status, flags in conn.execute(
+            "SELECT field, status, flags FROM field_status WHERE document_id = %s", (doc,)
+        )
+    }
+    if not any(flags & _DECISION_FLAGS for _, flags in stored.values()):
+        return {f: status for f, (status, _) in stored.items()}
+    loaded = checks.load_document(conn, doc)
+    assert loaded is not None  # fresh checks exist only for a document with extraction
+    evaluated = checks.evaluate_document(
+        loaded[0], settings.checks, document_needs_review=checks.document_needs_review(conn, doc)
+    )
+    return {f: ev.status.status.value for f, ev in evaluated.items()}
+
+
+def check_report(conn: psycopg.Connection, settings: Settings, *, label: str) -> CheckReportRecord:
+    """Measure the rules against the gold set and write one record of stage `checks`."""
+    gold, written = _gold_rows(conn)
+    if not gold:
+        raise UserError(
+            "Нет эталона: отчёт о пользе правил считается по нему. "
+            "Загрузите его: docreader eval load ФАЙЛ"
+        )
+    gold_docs = {doc for doc, _ in gold}
+    fresh, stale = checks.split_fresh(conn, settings, checks.documents_with_extraction(conn))
+    no_gold = sum(d not in gold_docs for d in (*fresh, *stale))
+    stale_count = sum(d in gold_docs for d in stale)
+    docs = [d for d in fresh if d in gold_docs]
+    fields = list(catalog.PROTOTYPE)
+    collected = _collect_extraction(conn, docs, [f.name for f in fields])
+    fired: dict[tuple[str, str], list[str]] = {}
+    for doc, field, rule in conn.execute(
+        "SELECT document_id, field, rule FROM field_check WHERE document_id = ANY(%s)"
+        " AND outcome = 'violated' ORDER BY rule", (docs,)
+    ):
+        fired.setdefault((doc, field), []).append(rule)
+    check_runs = sorted({r for (r,) in conn.execute(
+        "SELECT DISTINCT run_id FROM field_status WHERE document_id = ANY(%s)", (docs,)
+    )})
+    cases: list[outcomes.CheckCase] = []
+    rows_out: list[CaseRow] = []
+    csv_rows: list[list[str]] = []
+    for doc in docs:
+        statuses = _decision_free_statuses(conn, settings, doc)
+        for field in fields:
+            pair = (doc, field.name)
+            g = gold.get(pair)
+            result = outcomes.field_outcome(
+                field, g, collected.values.get(pair), extracted=True
+            )
+            verdict = outcomes.check_outcome(result.outcome, statuses[field.name] in _QUEUE)
+            if verdict is None:
+                continue
+            rules_fired = tuple(sorted(fired.get(pair, ())))
+            cases.append(outcomes.CheckCase(doc, field.name, verdict, rules_fired))
+            rows_out.append(CaseRow(
+                f"{doc}/{field.name}", doc, verdict.value, gold_fingerprint(g),
+                field=field.name, flags=rules_fired,
+            ))
+            assert g is not None  # a pair with a verdict is labelled
+            s = collected.shown.get(pair)
+            csv_rows.append([
+                doc, field.name, verdict.value, GOLD_SEPARATOR.join(rules_fired),
+                s.value if s else "",
+                ABSENT_WORD if g.state is GoldState.ABSENT else GOLD_SEPARATOR.join(written[pair]),
+            ])
+    metrics = outcomes.check_metrics(cases)
+    gold_version = current_sha256(conn)
+    provenance: dict[str, Any] = {
+        "checks_version": checks.CHECKS_VERSION,
+        "settings": asdict(settings.checks),
+        "extraction_runs": [r["id"] for r in collected.provenance["runs"]],
+        "check_runs": check_runs,
+    }
+    now = datetime.now()
+
+    def write_review(record: int) -> str:
+        path = review_path(settings.data_dir, "checks", record, now)
+        write_csv(
+            path, ("document_id", "field", "outcome", "rules", "system", "gold"), csv_rows
+        )
+        return relative_label(path, settings.data_dir)
+
+    record = write_record(
+        conn, stage=EvalStage.CHECKS, label=label, provenance=provenance,
+        gold_sha256=gold_version, questions_sha256=None, reviewed_share=reviewed_share(conn),
+        blind_summary=latest_blind_summary(conn), metrics=metrics, cases=rows_out,
+        review_file=write_review, from_file=None,
+    )
+    row = conn.execute("SELECT review_file FROM eval_result WHERE id = %s", (record,)).fetchone()
+    assert row is not None
+    return CheckReportRecord(
+        record, label, gold_version, metrics, no_gold, stale_count, row[0]
+    )
+
+
 # --- the search measurement (research R-12) ----------------------------------------------------
 
 SEARCH_RESULTS_FORMAT = "docreader-search-results/1"
@@ -784,6 +917,11 @@ def _search_filter(kind: str, case: ShownCase) -> bool:
     }[kind]
 
 
+_OUTCOME_ENUMS: dict[str, type[StrEnum]] = {
+    "gold_blind": BlindOutcome, "checks": CheckOutcome,
+}
+
+
 def show_record(
     conn: psycopg.Connection, record: int, field: str | None, outcome: str | None,
     *, confirmed: bool = False,
@@ -794,7 +932,7 @@ def show_record(
     if outcome is not None:
         allowed = (
             SEARCH_FILTERS if search
-            else tuple(o.value for o in (BlindOutcome if row.stage == "gold_blind" else Outcome))
+            else tuple(o.value for o in _OUTCOME_ENUMS.get(row.stage, Outcome))
         )
         if outcome not in allowed:
             raise UserError(f"Для этапа {row.stage} исход — один из: {', '.join(allowed)}")

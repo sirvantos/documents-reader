@@ -16,6 +16,9 @@ from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 from docreader.answer_check import AnswerOutcome, ClaimStatus
+from docreader.check_queue import CheckLoadReport, QueueBuilt
+from docreader.checks import CHECKS_VERSION, CheckReport, CheckSummary, FieldStatus
+from docreader.evaluation import CheckReportRecord
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
 from docreader.gold import GoldPath, LoadKind
@@ -1650,6 +1653,7 @@ _SEARCH_STAGES = frozenset({"search_plain", "search_rerank"})
 _STAGE_WORDS = {
     "fields": "поля", "rules": "правила", "search_plain": "поиск без реранкера",
     "search_rerank": "поиск с реранкером", "gold_blind": "слепой контроль",
+    "checks": "польза правил",
 }
 
 
@@ -1671,6 +1675,12 @@ def _headline(stage: str, metrics: dict) -> str:
         return (
             f"разошлось {metrics.get('confirmed_differs', 0)} из {metrics['confirmed_pairs']}"
             f" при подтверждённом значении системы"
+        )
+    if stage == "checks":
+        o = metrics.get("overall", {})
+        return (
+            f"в очереди неверных {_part_text(o.get('wrong_in_queue', 0), o.get('wrong', 0))}, "
+            f"верных {_part_text(o.get('right_in_queue', 0), o.get('right', 0))}"
         )
     if "participating" in metrics:
         n = metrics["participating"]
@@ -1977,3 +1987,147 @@ def render_eval_search_json(report: SearchReport) -> str:
         },
         ensure_ascii=False, indent=2,
     )
+
+
+def render_check_text(report: CheckReport) -> str:
+    """Text of `docreader check`: counts, ids and rule codes only, never a value or a quote."""
+    lines: list[str] = []
+    for doc in report.documents:
+        c = doc.counts
+        lines.append(
+            f"{doc.document_id}  проверено  принято {c['accepted']}, "
+            f"требует просмотра {c['needs_review']}, отклонено {c['rejected']}, "
+            f"не найдено {c['not_found']}"
+        )
+        if doc.violated:
+            lines.append(f"        нарушено: {', '.join(doc.violated)}")
+    lines += [
+        f"{s.document_id}  пропущено  нет извлечения — docreader extract {s.document_id}"
+        for s in report.skipped
+    ]
+    t = report.totals
+    f = t["fields"]
+    run = f"запуск {report.run_id}, " if report.run_id is not None else ""
+    lines.append(
+        f"Итого: проверено {t['checked']}, пропущено {t['skipped']}; "
+        f"полей: принято {f['accepted']}, требует просмотра {f['needs_review']}, "
+        f"отклонено {f['rejected']}, не найдено {f['not_found']} ({run}правила {CHECKS_VERSION})"
+    )
+    return "\n".join(lines)
+
+
+def render_check_summary_json(summary: CheckSummary) -> str:
+    return json.dumps(summary.to_json(), ensure_ascii=False, indent=2)
+
+
+def render_check_summary_text(summary: CheckSummary) -> str:
+    """Text of `check summary`: counts only."""
+    heads = ("принято", "требует просмотра", "отклонено", "не найдено")
+    statuses = [s.value for s in FieldStatus]
+    width = max(len(f) for f in summary.fields)
+    widths = [max(len(h), 6) for h in heads]
+
+    def row(name: str, counts: dict[str, int]) -> str:
+        cells = "  ".join(f"{counts[s]:>{w}}" for s, w in zip(statuses, widths, strict=True))
+        return f"  {name:<{width}}  {cells}"
+
+    head = "  ".join(f"{h:>{w}}" for h, w in zip(heads, widths, strict=True))
+    lines = [
+        f"Статусы полей (правила {CHECKS_VERSION}): договоров {summary.documents}, "
+        f"проверки устарели у {summary.stale}",
+        f"  {'поле':<{width}}  {head}",
+        *(row(f, c) for f, c in summary.fields.items()),
+        row("всего", summary.total),
+    ]
+    d = summary.decisions
+    lines.append(
+        f"Решения аналитика: {sum(d.values())} (подтверждено {d['confirm']}, "
+        f"исправлено {d['correct']}, в договоре нет {d['absent']}); "
+        f"значение системы изменилось у {summary.system_changed}"
+    )
+    return "\n".join(lines)
+
+
+def render_check_report_json(report: CheckReportRecord) -> str:
+    return json.dumps({
+        "record": report.record,
+        "label": report.label,
+        "checks_version": CHECKS_VERSION,
+        "gold_version": report.gold_version[:12],
+        "metrics": report.metrics,
+        "outside": {"no_gold": report.no_gold, "stale": report.stale},
+        "review_file": report.review_file,
+    }, ensure_ascii=False, indent=2)
+
+
+def render_check_report_text(report: CheckReportRecord) -> str:
+    """Text of `check report`: counts and rule codes only, never a value."""
+    o = report.metrics["overall"]
+
+    def share(part: int, whole: int) -> str:
+        return f"{part} из {whole}" + (f" ({part / whole:.0%})" if whole else "")
+
+    label = f" «{report.label}»" if report.label else ""
+    lines = [
+        f"Польза правил: запись {report.record}{label} (правила {CHECKS_VERSION}), "
+        f"версия эталона {report.gold_version[:12]}",
+        f"  пар {o['pairs']}: верных {o['right']}, неверных {o['wrong']}; в очереди: "
+        f"неверных {share(o['wrong_in_queue'], o['wrong'])}, "
+        f"верных {share(o['right_in_queue'], o['right'])}",
+    ]
+    rules = report.metrics["rules"]
+    if rules:
+        width = max(len(r) for r in rules)
+        lines.append(f"  {'правило':<{width}}  сработало  на неверных")
+        lines += [
+            f"  {r:<{width}}  {v['fired']:>9}  {v['fired_on_wrong']:>11}"
+            for r, v in sorted(rules.items())
+        ]
+    lines.append(
+        f"  договоров вне отчёта: без эталона {report.no_gold}, проверки устарели {report.stale}"
+    )
+    lines.append(f"  разбор: {report.review_file}")
+    return "\n".join(lines)
+
+
+def render_check_queue_json(built: QueueBuilt) -> str:
+    return json.dumps(built.to_json(), ensure_ascii=False, indent=2)
+
+
+def render_check_queue_text(built: QueueBuilt) -> str:
+    """Text of `check queue`: path and counts, never a value."""
+    by = built.by_status
+    return "\n".join([
+        f"Очередь: {built.path}",
+        f"  карточек {built.cards}: требует просмотра {by['needs_review']}, "
+        f"отклонено {by['rejected']}; значение системы изменилось {built.system_changed}",
+        "  по полям: " + (", ".join(f"{f} {n}" for f, n in built.by_field.items()) or "—"),
+        f"  договоров с устаревшими проверками: {built.stale}"
+        + (" (сначала docreader check)" if built.stale else ""),
+    ])
+
+
+_DECISION_WORDS = {"confirm": "подтверждено", "correct": "исправлено", "absent": "в договоре нет"}
+_LOAD_ERRORS = {
+    "agree_without_value": "«верно» без найденного значения",
+    "kind_invalid": "значение не приводится к виду поля",
+    "unknown_card": "карточки нет в сборке",
+    "unknown_answer": "неизвестный ответ",
+}
+
+
+def render_check_load_text(report: CheckLoadReport) -> str:
+    """`check load`: counts, card keys and reason words only (FR-013)."""
+    accepted = sum(report.accepted.values())
+    parts = ", ".join(f"{_DECISION_WORDS[k]} {n}" for k, n in report.accepted.items())
+    lines = [
+        f"Решения: ответы страницы очереди ({report.cards} карточек)",
+        f"  принято {accepted}: {parts}; пропущено {report.skipped}",
+    ]
+    if report.errors:
+        lines.append(f"  не принято {len(report.errors)}:")
+        lines += [f"    карточка {k} — {_LOAD_ERRORS.get(r, r)}" for k, r in report.errors]
+    if report.not_applied:
+        lines.append(f"  не применено {report.not_applied}: договора или поля больше нет")
+    lines.append(f"  статусы пересчитаны у {report.recomputed} полей")
+    return "\n".join(lines)

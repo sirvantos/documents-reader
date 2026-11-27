@@ -257,3 +257,60 @@ def test_settings_for_run_is_json_serialisable(data_dir: Path) -> None:
             "max_chars": 16000,
         },
     }
+
+
+# --- [checks] (feature 06) ----------------------------------------------------
+
+
+def test_checks_defaults_without_settings_file(data_dir: Path) -> None:
+    c = load_settings(env_for(data_dir)).checks
+    assert c.vat_rate == 20.0
+    assert c.end_date_min == "2015-01-01"
+    assert c.end_date_max == "2040-12-31"
+
+
+def test_checks_values_read_from_file(data_dir: Path) -> None:
+    write_settings(
+        data_dir,
+        "[checks]\nvat_rate = 18\nend_date_min = \"2016-01-01\"\n"
+        "end_date_max = \"2030-06-30\"\n",
+    )
+    c = load_settings(env_for(data_dir)).checks
+    assert (c.vat_rate, c.end_date_min, c.end_date_max) == (18.0, "2016-01-01", "2030-06-30")
+    assert isinstance(c.vat_rate, float)
+
+
+def test_checks_partial_override_keeps_other_defaults(data_dir: Path) -> None:
+    write_settings(data_dir, "[checks]\nvat_rate = 0\n")
+    c = load_settings(env_for(data_dir)).checks
+    assert (c.vat_rate, c.end_date_min, c.end_date_max) == (0.0, "2015-01-01", "2040-12-31")
+
+
+@pytest.mark.parametrize("vat", ["0", "100", "7.5"])
+def test_checks_vat_rate_bounds_accepted(data_dir: Path, vat: str) -> None:
+    write_settings(data_dir, f"[checks]\nvat_rate = {vat}\n")
+    assert load_settings(env_for(data_dir)).checks.vat_rate == float(vat)
+
+
+@pytest.mark.parametrize(
+    ("text", "key"),
+    [
+        ("[checks]\nvat_rate = -1\n", "vat_rate"),
+        ("[checks]\nvat_rate = 100.5\n", "vat_rate"),
+        ("[checks]\nvat_rate = \"20\"\n", "vat_rate"),
+        ("[checks]\nvat_rate = true\n", "vat_rate"),
+        ("[checks]\nend_date_min = \"2015-13-01\"\n", "end_date_min"),
+        ("[checks]\nend_date_max = \"31.12.2040\"\n", "end_date_max"),
+        ("[checks]\nend_date_min = 2015\n", "end_date_min"),
+        ("[checks]\nend_date_min = \"2041-01-01\"\n", "end_date_min"),
+        (
+            "[checks]\nend_date_min = \"2020-01-01\"\nend_date_max = \"2019-12-31\"\n",
+            "end_date_min",
+        ),
+        ("[checks]\nunknown_key = 1\n", "unknown_key"),
+    ],
+)
+def test_bad_checks_settings_rejected(data_dir: Path, text: str, key: str) -> None:
+    write_settings(data_dir, text)
+    with pytest.raises(EnvironmentProblem, match=rf"settings\.toml.*checks\.{key}"):
+        load_settings(env_for(data_dir))

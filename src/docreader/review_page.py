@@ -20,8 +20,16 @@ def _embed(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
 
 
-def render_html(build: str, cards: list[dict[str, Any]]) -> str:
-    meta = {"build": build, "format": REVIEW_FORMAT}
+def render_html(
+    build: str,
+    cards: list[dict[str, Any]],
+    *,
+    answers_format: str = REVIEW_FORMAT,
+    check: bool = False,
+) -> str:
+    """The page; `check=True` is the queue page of feature 06: cards with only a system
+    value (one «верно» choice on a found value), answers saved as `check-review-<build>.json`."""
+    meta = {"build": build, "format": answers_format, "check": check}
     return (
         _PAGE.replace("{{TITLE}}", html.escape(build))
         .replace("{{META}}", _embed(meta))
@@ -80,10 +88,10 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 <script>
 const cards = JSON.parse(document.getElementById('cards').textContent);
 const meta = JSON.parse(document.getElementById('meta').textContent);
-const KEY = 'gold-review:' + meta.build;
+const KEY = (meta.check ? 'check-review:' : 'gold-review:') + meta.build;
 const MARK = {changed: 'значение изменилось после проверки', disagree: 'разошлось',
   rules_only: 'нашли только правила', none: 'никто не нашёл', model_only: 'нашла только модель',
-  agree: 'совпало'};
+  agree: 'совпало', needs_review: 'требует просмотра', rejected: 'отклонено'};
 // keys of the choices; «3», «4» and «0» are taken, so the third and later ones are letters
 const CHOICE_KEYS = ['1', '2', 'q', 'w', 'e', 'r'];
 const SINGLE = ['agree', 'model_only', 'rules_only'];
@@ -104,6 +112,10 @@ function distinct(c) {
 // the choices of a card: [answer object, label]
 function options(c) {
   const out = [];
+  if (meta.check) {
+    if (c.system && c.system.result === 'found') out.push([{answer: 'agree'}, 'верно']);
+    return out;
+  }
   const one = SINGLE.includes(c.mark) || (c.mark === 'changed' && distinct(c) === 1);
   if (one) { out.push([{answer: 'agree'}, 'верно']); return out; }
   if (c.model) out.push([{answer: 'chosen', choice: 'model'}, 'модель: ' + c.model.value]);
@@ -165,10 +177,16 @@ function draw() {
       el('span', 'mark', MARK[c.mark] || c.mark),
       el('span', 'muted', (n + 1) + ' / ' + cards.length));
     card.append(head);
-    if (c.model) card.append(sourceBlock('Модель', c.model));
+    if (meta.check && c.reasons && c.reasons.length)
+      card.append(el('div', 'warn', 'причины: ' + c.reasons.join(', ')));
+    if (meta.check && c.flags && c.flags.includes('system_changed'))
+      card.append(el('div', 'warn', 'значение системы изменилось после решения'));
+    if (c.model) card.append(sourceBlock(
+      meta.check && c.system.unconfirmed ? 'Предложение модели — цитата не подтверждена' :
+      meta.check ? 'Значение системы' : 'Модель', c.model));
     c.rules.forEach((r, i) =>
       card.append(sourceBlock(c.rules.length > 1 ? 'Правила ' + (i + 1) : 'Правила', r)));
-    if (c.system && c.system.result === 'rejected') {
+    if (!meta.check && c.system && c.system.result === 'rejected') {
       const box = el('div', 'src');
       box.append(el('div', 'warn', 'Модель предложила значение, но проверка его отклонила: ' +
         (c.system.reason || '—')));
@@ -256,7 +274,8 @@ document.getElementById('dl').onclick = () => {
   const blob = new Blob([JSON.stringify({format: meta.format, build: meta.build, cards: out},
     null, 1)], {type: 'application/json'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = 'gold-review-' + meta.build + '.json'; document.body.append(a); a.click();
+  a.download = (meta.check ? 'check-review-' : 'gold-review-') + meta.build + '.json';
+  document.body.append(a); a.click();
   a.remove();
 };
 draw();

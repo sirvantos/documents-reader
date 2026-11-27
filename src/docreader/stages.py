@@ -41,6 +41,7 @@ class RunStage(StrEnum):
     RECOGNITION = "recognition"
     STRUCTURE = "structure"  # feature 04: parse
     EXTRACTION = "extraction"  # feature 05: extract
+    CHECKS = "checks"  # feature 06: check
     INDEXING = "indexing"  # feature 07: index
 
 

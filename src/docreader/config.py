@@ -13,6 +13,7 @@ import re
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -160,6 +161,15 @@ class AnswerSettings:
 
 
 @dataclass(frozen=True)
+class CheckSettings:
+    """Values of the [checks] section (feature 06, research R-6)."""
+
+    vat_rate: float = 20.0  # VAT rate in percent, used by the amount checks
+    end_date_min: str = "2015-01-01"  # ISO date; earliest accepted contract end date
+    end_date_max: str = "2040-12-31"  # ISO date; latest accepted contract end date
+
+
+@dataclass(frozen=True)
 class Settings:
     data_dir: Path
     database_url: str
@@ -174,6 +184,7 @@ class Settings:
     search: SearchSettings = field(default_factory=SearchSettings)
     reranker: RerankerSettings = field(default_factory=RerankerSettings)
     answer: AnswerSettings = field(default_factory=AnswerSettings)
+    checks: CheckSettings = field(default_factory=CheckSettings)
 
     @property
     def originals_dir(self) -> Path:
@@ -301,6 +312,16 @@ def is_local_model_url(url: str) -> bool:
 
 def _in_unit_interval(v: Any) -> bool:
     return 0 <= v <= 1
+
+
+def _is_iso_date(v: str) -> bool:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        return False
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        return False
+    return True
 
 
 def _is_compilable_pattern(v: str) -> bool:
@@ -463,6 +484,12 @@ _SCHEMA["answer"] = {
     "max_tokens": ("max_tokens", int, lambda v: 64 <= v <= 32768, "целое от 64 до 32768"),
     "max_retries": ("max_retries", int, lambda v: 0 <= v <= 5, "целое от 0 до 5"),
 }
+_SCHEMA["checks"] = {
+    # Keys of [checks] map one-to-one to CheckSettings fields (feature 06, research R-6).
+    "vat_rate": ("vat_rate", float, lambda v: 0 <= v <= 100, "число от 0 до 100"),
+    "end_date_min": ("end_date_min", str, _is_iso_date, "дата в формате ГГГГ-ММ-ДД"),
+    "end_date_max": ("end_date_max", str, _is_iso_date, "дата в формате ГГГГ-ММ-ДД"),
+}
 READING_TABLE = "reading"
 RECOGNITION_TABLE = "recognition"
 STRUCTURE_TABLE = "structure"
@@ -471,6 +498,7 @@ EMBEDDING_TABLE = "embedding"
 SEARCH_TABLE = "search"
 RERANKER_TABLE = "reranker"
 ANSWER_TABLE = "answer"
+CHECKS_TABLE = "checks"
 
 
 def _type_matches(kind: type, value: Any) -> bool:
@@ -508,6 +536,7 @@ def _read_settings_file(data_dir: Path) -> dict:
     search_values: dict = {}
     reranker_values: dict = {}
     answer_values: dict = {}
+    checks_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
             raise bad(f"неизвестный раздел [{table}]")
@@ -529,6 +558,8 @@ def _read_settings_file(data_dir: Path) -> dict:
             target = reranker_values
         elif table == ANSWER_TABLE:
             target = answer_values
+        elif table == CHECKS_TABLE:
+            target = checks_values
         else:
             target = values
         for key, value in entries.items():
@@ -571,4 +602,13 @@ def _read_settings_file(data_dir: Path) -> dict:
                 f"search.rerank_candidates ({rerank_candidates})"
             )
         values["answer"] = answer
+    if CHECKS_TABLE in doc:
+        checks = CheckSettings(**checks_values)
+        # checked on the complete section, so a missing bound falls back to its default
+        if date.fromisoformat(checks.end_date_min) > date.fromisoformat(checks.end_date_max):
+            raise bad(
+                f"checks.end_date_min = {checks.end_date_min!r}: нужно не позже "
+                f"checks.end_date_max ({checks.end_date_max})"
+            )
+        values["checks"] = checks
     return values

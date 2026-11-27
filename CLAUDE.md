@@ -265,5 +265,14 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   field names, outcomes, paths) may be sent to the agent; the files it writes (templates, the
   review page and its answers, review files, generated questions, exports) hold contract
   values and are never sent.
+- `uv run docreader check [ID…] [--all] [--again]` — rule checks and statuses of the six prototype
+  fields of extracted contracts (feature 06); no model runs. `check summary` (counts of
+  statuses per field); `check queue` (local queue page in `$DOCREADER_DATA_DIR/checks/queue-…/`,
+  the analyst's decisions are downloaded as a file); `check load FILE` (decisions from that
+  file); `check report [--label]` (usefulness of the rules by the feature 02 gold set, a
+  results-table record of stage `checks`). The terminal output of every `check` command
+  (counts, ids, field, rule and status names, reasons) may be sent to the agent; the queue
+  page, `cards.json`, the answers file and the report review CSV hold contract values and are
+  never sent. Settings in `[checks]`: `vat_rate`, `end_date_min`, `end_date_max`.
 - On this dev server, manual CLI runs use a throwaway data dir and database
   (`docreader_demo`), never `~/docreader-data` or the `docreader` database (see tasks T050).
