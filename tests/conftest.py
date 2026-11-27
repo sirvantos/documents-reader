@@ -47,6 +47,9 @@ REGISTRY_TABLES = (
     "clause",
     # feature 05 (extraction)
     "field_value",
+    # feature 02 (gold set and results table)
+    "gold_load",
+    "eval_result",
 )
 LIBPQ_ENV = ("PGHOST", "PGHOSTADDR", "PGSERVICE", "PGDATABASE")
 

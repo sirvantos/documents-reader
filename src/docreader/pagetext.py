@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from docreader.config import ReadingSettings
 from docreader.ocr import display_point, pdf_point
-from docreader.textnorm import normalize_chars
+from docreader.textnorm import fix_recognized, normalize_chars
 
 Box = tuple[float, float, float, float]  # (left, bottom, right, top)
 
@@ -660,7 +660,7 @@ def lines_from_recognized(
     disp_h = width if rotation in (90, 270) else height
     segments: list[Segment] = []
     for item in lines:
-        text = _line_text(_collapse_spaces(item["text"]))
+        text = _line_text(fix_recognized(_collapse_spaces(item["text"])))
         if not text:
             continue
         left, bottom, right, top = item["bbox"]

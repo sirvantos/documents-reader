@@ -67,3 +67,45 @@ def test_compare_form_offsets():
     folded, offsets = compare_form(" а\n\n б ")
     assert folded == "а б"
     assert offsets == [1, 2, 5]
+
+
+# Second try, only when the exact search finds nothing (analyst's measurement, record 19,
+# 2026-11-27): the model's quote dropped a dash standing between words, or wrote the spaces
+# inside a number differently. The span still points into the original text.
+PRICE = ("Цена увеличивается на НДС (20%) — 111 200 (Сто одиннадцать тысяч двести) рублей, "
+         "и составляет всего с НДС (20%) — 4560 789 (Четыре миллиона) рублей 20 копеек.")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "и составляет всего с НДС (20%) 4560 789 (Четыре миллиона) рублей",  # no dash
+        "и составляет всего с НДС (20%) — 4 560 789 (Четыре миллиона) рублей",  # spaces
+        "и составляет всего с НДС (20%) 4 560 789 (Четыре миллиона) рублей",  # both
+        "и составляет всего с НДС (20%) - 4560789 (Четыре миллиона) рублей",
+    ],
+)
+def test_quote_found_without_a_dash_or_with_other_spaces_in_numbers(phrase: str) -> None:
+    (got,) = spans(PRICE, phrase)
+    assert got.startswith("и составляет всего с НДС (20%) — 4560 789")
+    assert got.endswith("рублей")
+
+
+def test_loose_search_does_not_join_words_or_drop_other_signs() -> None:
+    assert locate(PRICE, "и составляет всего с НДС 20% 4560 789") == []  # brackets dropped
+    assert locate(PRICE, "исоставляет всего с НДС (20%) — 4560 789") == []  # words joined
+    assert locate("номер 12-34 и 56", "номер 1234 и 56") == []  # a dash inside a number stays
+
+
+def test_exact_match_wins_over_the_loose_one() -> None:
+    text = "всего — 10 рублей; всего 10 рублей"
+    assert spans(text, "всего 10 рублей") == ["всего 10 рублей"]
+
+
+def test_loose_search_skips_a_free_standing_underscore() -> None:
+    # analyst's measurement, record 21: a scan read the dash before an amount as «_»
+    # and the amount went to the next line; the model's quote has no dash at all
+    text = "и составляет всего с НДС (20%) _\n7 300 500 (Семь миллионов) рублей"
+    (got,) = spans(text, "и составляет всего с НДС (20%) 7 300 500 (Семь миллионов) рублей")
+    assert got == text
+    assert locate("поле код_вида 12", "поле кодвида 12") == []  # inside a word it stays

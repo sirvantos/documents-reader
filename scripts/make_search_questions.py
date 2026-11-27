@@ -33,18 +33,10 @@ from docreader.db import connect
 from docreader.errors import EnvironmentProblem
 from docreader.fields import FIELD_NAMES
 from docreader.ids import format_clause_id
+from docreader.questions import TEMPLATES
 
 DEFAULT_FILE = Path("questions") / "rerank-08.toml"
 
-# One question per prototype field; the answer is the clause of the field's quote.
-TEMPLATES: dict[str, str] = {
-    "contract_number": "Какой номер договора?",
-    "customer_name_short": "Кто заказчик по договору?",
-    "contractor_name_short": "Кто подрядчик (исполнитель) по договору?",
-    "amount_without_vat": "Какая цена договора без НДС?",
-    "amount_with_vat": "Какая цена договора с учётом НДС?",
-    "contract_end_date": "До какого срока действует договор?",
-}
 
 _ANALYST_EXAMPLE = (
     "# Свои вопросы об условиях (оплата, неустойка, сроки) — по одному договору каждый;\n"

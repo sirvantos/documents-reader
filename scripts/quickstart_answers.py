@@ -21,7 +21,10 @@ The three servers are checked before the first question.
 
 Printed and saved (next to the questions file, `answers-b4-summary-....txt`): numbers and ids
 only. Never a question, a `contains` value or a contract text. The full answers go to
-`answers-b4-....txt` next to the questions file; only the analyst reads it.
+`answers-b4-....txt` next to the questions file; only the analyst reads it. The same stamp
+names `answers-b4-....json` (format `docreader-answers-b4/1`: per question the number, the
+contract, the text, the outcome and the clauses of the confirmed claims): it holds question
+texts, so it stays in the data folder; `eval questions clauses` reads it.
 """
 
 # No `from __future__ import annotations`: the tests load this file without registering it in
@@ -409,7 +412,18 @@ def _recheck(conn: psycopg.Connection, claims: Sequence[Any]) -> tuple[int, int]
     return checked, missing
 
 
-def _measure(questions: list[Question]) -> tuple[Summary, list[str]]:
+ANSWERS_FORMAT = "docreader-answers-b4/1"
+
+
+def _record(q: Question, outcome: str | None, clauses: Sequence[str]) -> dict[str, Any]:
+    """One entry of the machine-readable answers file (read by `eval questions clauses`)."""
+    return {
+        "number": q.number, "document": q.document, "text": q.text, "outcome": outcome,
+        "confirmed_clauses": list(dict.fromkeys(clauses)),
+    }
+
+
+def _measure(questions: list[Question]) -> tuple[Summary, list[str], list[dict[str, Any]]]:
     """Ask every question; returns the summary and the answers text blocks (analyst's file)."""
     settings = load_settings()
     client = llm.load_client(
@@ -433,6 +447,7 @@ def _measure(questions: list[Question]) -> tuple[Summary, list[str]]:
     llm_model, embedding_model, reranker_model = (str(s.model) for s in states)
     rows: list[Row] = []
     blocks: list[str] = []
+    records: list[dict[str, Any]] = []
     rechecked = missing = 0
     code = prompt = ""
     with connect(settings) as conn:
@@ -447,10 +462,14 @@ def _measure(questions: list[Question]) -> tuple[Summary, list[str]]:
                     Row(q.number, q.document, q.expected, None, 0, 0, False, None, str(exc))
                 )
                 blocks.append(f"{q.number}. {q.text}\nошибка в наборе: {exc}")
+                records.append(_record(q, None, []))
                 continue
             code = result.provenance.code_version
             prompt = result.provenance.prompt_version
             verdict = judge(q, result.claims)
+            records.append(_record(q, result.outcome.value, [
+                c.clause_id for c in result.claims if c.confirmed and c.clause_id
+            ]))
             rows.append(
                 Row(
                     q.number, q.document, q.expected, result.outcome.value,
@@ -481,7 +500,7 @@ def _measure(questions: list[Question]) -> tuple[Summary, list[str]]:
         rechecked=rechecked,
         recheck_missing=missing,
     )
-    return summary, blocks
+    return summary, blocks, records
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -498,7 +517,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             os.environ.update(read_env(Path(args.env_file)))
         path = questions_path(args.questions, os.environ)
         questions = read_questions(path)
-        summary, blocks = _measure(questions)
+        summary, blocks, records = _measure(questions)
     except QuestionsFileError as exc:
         print(exc, file=sys.stderr)
         return 1
@@ -512,6 +531,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     stamp = f"{datetime.now():%Y%m%d-%H%M%S}"
     answers_path = path.parent / f"answers-b4-{stamp}.txt"
     summary_path = path.parent / f"answers-b4-summary-{stamp}.txt"
+    json_path = path.parent / f"answers-b4-{stamp}.json"
+    json_path.write_text(
+        json.dumps({"format": ANSWERS_FORMAT, "questions": records}, ensure_ascii=False, indent=2)
+        + "\n",
+        encoding="utf-8",
+    )
     answers_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
     text = "\n".join(render(summary)) + "\n"
     summary_path.write_text(text, encoding="utf-8")

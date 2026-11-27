@@ -1296,6 +1296,15 @@ _PREAMBLE_THREE_PARTIES = (
     + "ООО «Бета», именуемое в дальнейшем Подрядчик, и ООО «Гамма», "
     "именуемое в дальнейшем Поручитель, заключили настоящий договор:"
 )
+# Findings of feature 09 in abstract form (analyst, 2026-11-26): a letter code after the
+# number in the title; the customer's full name with its abbreviation in brackets (which
+# shortens the name in quotes too), the contractor's full name with no brackets.
+_NUMBER_WITH_CODE = "Nº ДП-17/2026 АБ-ВГД"
+_PREAMBLE_FULL_NAMES = (
+    "Открытое акционерное общество «Альфа Дельта Строй» (ОАО «АДС»), именуемое "
+    "в дальнейшем Заказчик, и Акционерное общество «Бета», именуемое "
+    "в дальнейшем Подрядчик, заключили настоящий договор:"
+)
 _CLAUSE_1_1 = (
     "1.1. На основании протокола № 722 от 1 марта 2026 г. Подрядчик выполняет работы."
 )
@@ -1325,11 +1334,12 @@ def _extraction_pages(
     extra_clauses: tuple[str, ...] = (),
     *,
     requisites: bool = True,
+    number: str = "№ ДП-17/2026",
 ) -> tuple[tuple[str, ...], ...]:
     """Logical lines per page of an extraction contract; wrapping is done by _wrap_page."""
     page1 = (
         "ДОГОВОР ПОДРЯДА",
-        "№ ДП-17/2026",
+        number,
         "г. Энск",
         preamble,
         "1. Предмет договора",
@@ -1481,10 +1491,30 @@ _EXTRACTION_VARIANTS: dict[str, _ExtractionVariant] = {
 
 EXTRACTION_VARIANTS: tuple[str, ...] = tuple(_EXTRACTION_VARIANTS)
 
+# Variants for the program's corrections of a model answer (feature 09 findings). They are
+# kept out of EXTRACTION_VARIANTS until the real model's answers on them are recorded on
+# the Mac: the level-1 tests give them a scripted (wrong) answer.
+_CHECK_VARIANTS: dict[str, _ExtractionVariant] = {
+    "full_names": _ExtractionVariant(
+        _extraction_pages(preamble=_PREAMBLE_FULL_NAMES, number=_NUMBER_WITH_CODE),
+        {
+            **_BASE_FIELDS,
+            "customer_name_short": _found('ОАО "АДС"', "преамбула", 1),
+            "contractor_name_short": _found('АО "Бета"', "преамбула", 1),
+        },
+        _NO_OTHER_PARTY,
+    ),
+}
+CHECK_VARIANTS: tuple[str, ...] = tuple(_CHECK_VARIANTS)
+
+
+def _variant(name: str) -> _ExtractionVariant:
+    return _EXTRACTION_VARIANTS.get(name) or _CHECK_VARIANTS[name]
+
 
 def extraction_truth(variant: str) -> dict[str, object]:
     """The expected results of one variant (the content of `<variant>.truth.json`)."""
-    v = _EXTRACTION_VARIANTS[variant]
+    v = _variant(variant)
     return {
         "variant": variant,
         "generator_version": GENERATOR_VERSION,
@@ -1495,7 +1525,7 @@ def extraction_truth(variant: str) -> dict[str, object]:
 
 def make_extraction_contract(path: str | Path, variant: str = "base") -> Path:
     """One synthetic contract of feature 05 (R-14), the PDF only."""
-    return _write(Path(path), _extraction_pdf(_EXTRACTION_VARIANTS[variant].pages))
+    return _write(Path(path), _extraction_pdf(_variant(variant).pages))
 
 
 def make_extraction_contracts(directory: str | Path) -> list[Path]:
@@ -1714,6 +1744,196 @@ def make_answer_contracts(directory: str | Path) -> list[Path]:
     return [
         _write(root / f"{name}.pdf", _extraction_pdf(_ANSWER_PAGES[name]))
         for name in ("answer-a", "answer-b")
+    ]
+
+
+# --- rules contracts (feature 009, T003) ---------------------------------------
+
+RULES_GENERATOR_VERSION = 4  # bump when a contract's text changes (R-14)
+
+_RULES_PARTIES_A = (
+    "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), "
+    "именуемое в дальнейшем «Заказчик», и Общество с ограниченной ответственностью "
+    "«Бета» (ООО «Бета»), именуемое в дальнейшем «Подрядчик», заключили настоящий договор:"
+)
+_RULES_PARTIES_B = (
+    "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), "
+    "именуемое в дальнейшем «Заказчик», действующее на основании доверенности "
+    "№ 77-Д от 03 марта 2026 г., и Общество с ограниченной ответственностью «Бета» "
+    "(ООО «Бета»), именуемое в дальнейшем «Подрядчик», заключили настоящий договор:"
+)
+_RULES_SECTION_1 = (
+    "1. Предмет Договора",
+    "1.1. Подрядчик выполняет работы по ремонту здания, а Заказчик принимает "
+    "и оплачивает результат работ.",
+)
+_RULES_SECTION_3 = (
+    "3. Порядок расчётов",
+    "3.1. Оплата производится в течение 10 банковских дней с даты подписания акта.",
+)
+_RULES_SECTION_4 = (
+    "4. Права и обязанности Сторон",
+    "4.1. Подрядчик выполняет работы собственными силами.",
+)
+_RULES_SECTION_6 = (
+    "6. Гарантии",
+    "6.1. Подрядчик гарантирует качество работ в течение 12 месяцев с даты приёмки.",
+)
+_RULES_LIABILITY_PLAIN = (
+    "7. Ответственность",
+    "7.1. Стороны несут ответственность в соответствии с законодательством "
+    "Российской Федерации.",
+)
+_RULES_LIABILITY_PENALTY = (
+    "7. Ответственность",
+    "7.1. За просрочку Подрядчик уплачивает штраф 50 000 рублей 00 копеек.",
+    "7.2. Обеспечение исполнения Договора составляет 120 000 рублей 00 копеек.",
+)
+_RULES_SECTION_8 = (
+    "8. Адреса и реквизиты сторон",
+    "Заказчик: ООО «Альфа», ИНН 0000000000",
+    "Подрядчик: ООО «Бета», ИНН 0000000001",
+)
+_RULES_TERM_PLAIN = (
+    "5. Срок действия Договора",
+    "5.1. Договор вступает в силу с даты подписания и действует до «31» декабря 2027 г.",
+)
+_RULES_TERM_TRAPS = (
+    "5. Срок действия Договора",
+    "5.1. Договор вступает в силу с даты подписания и действует до «30» июня 2028 г.",
+    "Акт сверки составляется до 15 января 2028 г.",
+)
+# R-8: the end date written as «до … включительно», with no «действует»
+_RULES_TERM_INCLUSIVE = (
+    "5. Срок действия Договора",
+    "5.1. Договор заключён на срок с даты подписания до 30 сентября 2027 г. включительно.",
+)
+_RULES_NO_TERM = (
+    "5. Приёмка работ",
+    "5.1. Приёмка выполненных работ оформляется актом приёмки-передачи.",
+)
+_RULES_PRICE_A = (
+    "2.1. Цена Договора составляет 2 400 000 (два миллиона четыреста тысяч) рублей "
+    "00 копеек без учёта НДС, НДС 20% — 480 000 рублей 00 копеек, всего с учётом НДС "
+    "2 880 000 (два миллиона восемьсот восемьдесят тысяч) рублей 00 копеек.",
+)
+_RULES_PRICE_B = (
+    "2.1. Цена Договора составляет 3 600 000 (три миллиона шестьсот тысяч) рублей "
+    "00 копеек без учёта НДС, НДС 20% — 720 000 рублей 00 копеек, всего с учётом НДС "
+    "4 320 000 (четыре миллиона триста двадцать тысяч) рублей 00 копеек.",
+)
+_RULES_PRICE_C = (
+    "2.1. Цена Договора составляет 900 000 (девятьсот тысяч) рублей 00 копеек "
+    "без учёта НДС, НДС 20% — 180 000 рублей 00 копеек, всего с учётом НДС "
+    "1 080 000 (один миллион восемьдесят тысяч) рублей 00 копеек.",
+    "2.2. Стоимость первого этапа составляет 300 000 рублей 00 копеек без учёта НДС.",
+)
+_RULES_PRICE_D = ("2.1. Цена Договора составляет 1 200 000 рублей 00 копеек, включая НДС.",)
+# analyst's measurement, record 24 (2026-11-27): the legal form spelled out with no short
+# name in brackets, and the rate in brackets between «с НДС» and the amount
+_RULES_PARTIES_E = (
+    "Открытое акционерное общество «Гамма», именуемое в дальнейшем «Заказчик», "
+    "и акционерное общество «Дельта», именуемое в дальнейшем «Подрядчик», "
+    "заключили настоящий договор:"
+)
+_RULES_PRICE_E = (
+    "2.1. Цена настоящего Договора составляет — 1 500 000 (Один миллион пятьсот тысяч) "
+    "рублей 00 копеек без НДС. Цена настоящего Договора увеличивается на НДС (20%) — "
+    "300 000 (Триста тысяч) рублей 00 копеек, и составляет всего с НДС (20%) — "
+    "1 800 000 (Один миллион восемьсот тысяч) рублей 00 копеек.",
+)
+# record 26: a scan read the dash before the amount with VAT as «_»
+_RULES_PRICE_F = (
+    "2.1. Цена настоящего Договора составляет — 700 000 (Семьсот тысяч) рублей 00 копеек "
+    "без НДС. Цена настоящего Договора увеличивается на НДС (20%) — 140 000 (Сто сорок "
+    "тысяч) рублей 00 копеек, и составляет всего с НДС (20%) _ 840 000 (Восемьсот сорок "
+    "тысяч) рублей 00 копеек.",
+)
+
+
+def _rules_pages(
+    head: tuple[str, ...],
+    preamble: str,
+    price: tuple[str, ...],
+    term: tuple[str, ...],
+    liability: tuple[str, ...],
+) -> tuple[tuple[str, ...], ...]:
+    """Two pages of a rules contract: head and preamble, clauses 1–4, then 5–8."""
+    page1 = (
+        *head,
+        preamble,
+        *_RULES_SECTION_1,
+        "2. Цена Договора",
+        *price,
+        *_RULES_SECTION_3,
+        *_RULES_SECTION_4,
+    )
+    page2 = (*term, *_RULES_SECTION_6, *liability, *_RULES_SECTION_8)
+    return (page1, page2)
+
+
+_RULES_PAGES: dict[str, tuple[tuple[str, ...], ...]] = {
+    "rules-a": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-11/2026", "г. Энск"),
+        _RULES_PARTIES_A,
+        _RULES_PRICE_A,
+        _RULES_TERM_PLAIN,
+        _RULES_LIABILITY_PLAIN,
+    ),
+    "rules-b": _rules_pages(
+        ("Протокол № 314 от 12 мая 2026 г.", "ДОГОВОР № Р-12/2026", "г. Энск"),
+        _RULES_PARTIES_B,
+        _RULES_PRICE_B,
+        _RULES_TERM_TRAPS,
+        _RULES_LIABILITY_PENALTY,
+    ),
+    "rules-c": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-13/2026", "г. Энск"),
+        _RULES_PARTIES_A,
+        _RULES_PRICE_C,
+        _RULES_TERM_PLAIN,
+        _RULES_LIABILITY_PLAIN,
+    ),
+    "rules-d": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-14/2026", "г. Энск"),
+        _RULES_PARTIES_A,
+        _RULES_PRICE_D,
+        _RULES_NO_TERM,
+        _RULES_LIABILITY_PLAIN,
+    ),
+    "rules-e": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-15/2026", "г. Энск"),
+        _RULES_PARTIES_E,
+        _RULES_PRICE_E,
+        _RULES_TERM_PLAIN,
+        _RULES_LIABILITY_PLAIN,
+    ),
+    "rules-f": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-16/2026", "г. Энск"),
+        _RULES_PARTIES_E,
+        _RULES_PRICE_F,
+        _RULES_TERM_INCLUSIVE,
+        _RULES_LIABILITY_PLAIN,
+    ),
+}
+
+
+def make_rules_contracts(directory: str | Path) -> list[Path]:
+    """Writes the six synthetic contracts of feature 009 (T003) into the folder.
+
+    `rules-a.pdf` (plain), `rules-b.pdf` (traps: other documents' numbers and dates,
+    penalty amounts outside the price), `rules-c.pdf` (two amounts without VAT in the
+    price section), `rules-d.pdf` (no term clause, amount with VAT only), `rules-e.pdf`
+    (legal forms spelled out without short names, «с НДС (20%) — сумма»), `rules-f.pdf`
+    (as e, the dash before the amount with VAT read from a scan as «_»; the end date as
+    «до … включительно»). Returns the
+    paths in this order. Text layer only; all names and numbers fictional.
+    """
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    return [
+        _write(root / f"{name}.pdf", _extraction_pdf(_RULES_PAGES[name]))
+        for name in ("rules-a", "rules-b", "rules-c", "rules-d", "rules-e", "rules-f")
     ]
 
 

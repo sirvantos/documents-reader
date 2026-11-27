@@ -182,3 +182,9 @@ def test_empty_fragments_are_dropped_and_no_lines_is_fine() -> None:
     assert layout([]).lines == []
     result = layout([frag("  ", 50, 700, 60), frag("Текст", 50, 680, 90)])
     assert [ln.text for ln in result.lines] == ["Текст"]
+
+
+def test_a_lone_bar_before_a_digit_group_is_read_as_one() -> None:
+    # analyst's measurement, record 21: Tesseract read the leading «1» of an amount as «|»
+    result = layout([frag("Цена составляет — | 047 208 рублей", 50, 700, 300)])
+    assert [ln.text for ln in result.lines] == ["Цена составляет — 1 047 208 рублей"]

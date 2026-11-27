@@ -9,10 +9,14 @@ from docreader.stages import STAGES, RunStage, Stage, State, later_stages
 
 
 def _check_values(column: str) -> list[str]:
-    """Values of the latest `CHECK (column IN (...))` across the migrations, in order."""
+    """Values of the latest `CHECK (column IN (...))` of `stage_status` across the
+    migrations, in order. Migrations that do not touch `stage_status` are skipped: other
+    tables have columns of the same names (`eval_result.stage`, `gold_field.state`)."""
     found: list[str] | None = None
     for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
         sql = path.read_text(encoding="utf-8")
+        if "stage_status" not in sql:
+            continue
         for match in re.finditer(rf"CHECK \({column} IN \(([^)]*)\)\)", sql):
             found = re.findall(r"'([a-z_]+)'", match.group(1))
     assert found, f"no CHECK on {column}"

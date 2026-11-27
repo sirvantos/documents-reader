@@ -18,11 +18,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from docreader.fields import PROTOTYPE_FIELDS, FieldSpec, Result
+from docreader.fields import PROTOTYPE_FIELDS, FieldSpec, Kind, Result
 from docreader.ids import format_clause_id
 from docreader.stages import State
 from docreader.textnorm import locate
-from docreader.values import ValueNotNormalized, find_in_quote, normalize
+from docreader.values import (
+    ValueNotNormalized,
+    canonical_short_name,
+    contract_number_core,
+    find_in_quote,
+    normalize,
+    short_name_after,
+    spelled_legal_form,
+)
 
 NO_QUOTE = "нет цитаты"
 QUOTE_NOT_FOUND = "цитата не найдена"
@@ -185,6 +193,8 @@ def check_field(spec: FieldSpec, answer: FieldAnswerLike, index: TextIndex) -> F
         normalized = normalize(spec.kind, value)
     except ValueNotNormalized as exc:
         return rejected(str(exc))
+    if spec.name == "contract_number":
+        normalized = contract_number_core(normalized)
     place = _place(index, answer.quote or "", answer.clause)
     if place is None:
         return rejected(QUOTE_NOT_FOUND)
@@ -192,6 +202,14 @@ def check_field(spec: FieldSpec, answer: FieldAnswerLike, index: TextIndex) -> F
     span = find_in_quote(spec.kind, normalized, quote)
     if span is None:
         return rejected(VALUE_NOT_CONFIRMED)
+    if spec.name.endswith("_name_short"):
+        # a full name given for the short one: the abbreviation in brackets after it, when
+        # the preamble has one; else the party is named by its full name, which is kept
+        short = short_name_after(quote, span[1]) if spelled_legal_form(normalized) else None
+        if short is not None:
+            span = short
+            normalized = normalize(Kind.NAME, quote[span[0] : span[1]])
+        normalized = canonical_short_name(normalized)
     return FieldResult(
         spec.name,
         Result.FOUND,

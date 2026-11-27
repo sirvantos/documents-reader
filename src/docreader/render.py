@@ -9,6 +9,7 @@ import csv
 import io
 import itertools
 import json
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import PurePath
@@ -17,18 +18,38 @@ from typing import TYPE_CHECKING
 from docreader.answer_check import AnswerOutcome, ClaimStatus
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
+from docreader.gold import GoldPath, LoadKind
 from docreader.quality import FLAG_NAMES, FLAG_ORDER
 from docreader.stages import STAGES, Stage, State
 
 if TYPE_CHECKING:
     from docreader.answer import Answer
     from docreader.answer_check import CheckedClaim, ShownPassage
+    from docreader.blind import BlindReport
+    from docreader.blind import PickReport as BlindPickReport
     from docreader.clauseview import ClauseView, Outline, OutlineRecord
+    from docreader.evaluation import (
+        CompareReport,
+        ExportReport,
+        FieldsRecord,
+        ResultRow,
+        SearchReport,
+        ShownCase,
+        ShownRecord,
+    )
     from docreader.extraction import ExtractedDocument, ExtractRun
     from docreader.fieldview import FieldsView, FieldView
+    from docreader.gold import FieldCounts, LoadReport, ParsedGold
     from docreader.indexing import IndexedDocument, IndexRun
+    from docreader.outcomes import CaseChange, FieldTotals, OutcomeCounts
     from docreader.parsing import ParsedDocument, ParseRun
     from docreader.passageview import PassageView
+    from docreader.questions import (
+        ClausesReport,
+        GenerateReport,
+        QuestionsReport,
+    )
+    from docreader.review import ReviewBuilt
     from docreader.search import Hit, SearchResult
 
 _KIND_LABELS = (
@@ -1324,3 +1345,635 @@ def render_answer_text(answer: Answer) -> str:
         lines.append("")
         lines += block
     return "\n".join(lines) + "\n"
+
+
+# --- eval load (contracts/cli.md «docreader eval load») ---
+
+_ACCEPTED_WORDS: tuple[tuple[GoldPath, str], ...] = (
+    (GoldPath.AGREE, "совпало"),
+    (GoldPath.CONFIRMED, "подтверждено"),
+    (GoldPath.CHOSEN, "выбрано из двух"),
+    (GoldPath.TYPED, "вписано"),
+    (GoldPath.TEMPLATE, "из шаблона"),
+)
+
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    """«N слово» with the Russian form of the word for N."""
+    if n % 10 == 1 and n % 100 != 11:
+        word = one
+    elif 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        word = few
+    else:
+        word = many
+    return f"{n} {word}"
+
+
+def _accepted_parts(kind: LoadKind, paths: dict[str, int], absent: int) -> list[str]:
+    parts: list[str] = []
+    for path, word in _ACCEPTED_WORDS:
+        n = paths.get(path.value, 0)
+        if path is GoldPath.TEMPLATE and kind is LoadKind.TEMPLATE:
+            n -= absent  # a template «отсутствует» cell is stored with path template
+        if n:
+            parts.append(f"{word} {n}")
+    if absent:
+        parts.append(f"отсутствует {absent}")
+    return parts
+
+
+def _field_part(kind: LoadKind, name: str, counts: FieldCounts) -> str:
+    """«name accepted/covered» with the by-path split when it is not just «из шаблона»."""
+    head = f"{name} {counts.accepted}/{counts.covered}"
+    parts = _accepted_parts(kind, counts.paths, counts.absent)
+    if counts.absent or len(counts.paths) > 1 or kind is LoadKind.REVIEW:
+        return f"{head} ({', '.join(parts)})" if parts else head
+    return head
+
+
+def render_eval_load_text(parsed: ParsedGold, report: LoadReport) -> str:
+    """Output of `eval load`: counts, problems and the version; never a cell value."""
+    docs = {doc for doc, _ in parsed.coverage}
+    fields = {field for _, field in parsed.coverage}
+    lines: list[str] = []
+    if parsed.kind is LoadKind.REVIEW:
+        cards = _plural(len(parsed.coverage), "карточка", "карточки", "карточек")
+        lines.append(f"Загрузка: ответы страницы проверки ({cards})")
+    else:
+        rows = _plural(len(docs), "строка", "строки", "строк")
+        columns = _plural(len(fields), "поле", "поля", "полей")
+        lines.append(f"Загрузка: шаблон ({rows}, {columns})")
+
+    accepted = len(parsed.values)
+    parts = _accepted_parts(parsed.kind, report.paths, report.absent)
+    head = f"  принято {accepted}" + (f": {', '.join(parts)}" if parts else "")
+    lines.append(f"{head}; пропущено {report.unlabeled}")
+
+    reasons = Counter(e.reason for e in parsed.errors)
+    for error in parsed.errors:
+        lines.append(f"  ошибок вида {reasons[error.reason]}: {error.where} — {error.reason}")
+    if parsed.skipped_rows:
+        skipped = "; ".join(f"{s.where} — {s.reason}" for s in parsed.skipped_rows)
+        lines.append(f"  пропущены строки: {skipped}")
+
+    diff = report.diff
+    lines.append(
+        f"  в пределах файла: добавлено {len(diff.added)}, изменено {len(diff.changed)}, "
+        f"убрано {len(diff.removed)}"
+    )
+    if diff.other_kind:
+        lines.append(f"  из файла другого вида: {len(diff.other_kind)}")
+    if report.fields:
+        by_field = ", ".join(_field_part(parsed.kind, n, c) for n, c in report.fields.items())
+        lines.append(f"  по полям: {by_field}")
+    lines.append(f"  версия эталона: {report.gold_sha256[:12]}")
+    if report.needs_confirmation:
+        removed = _plural(len(diff.removed), "значение", "значения", "значений")
+        lines.append(f"  убирается {removed}: повторите с --yes, чтобы заменить")
+    return "\n".join(lines)
+
+
+def render_eval_load_json(parsed: ParsedGold, report: LoadReport) -> str:
+    """JSON of `eval load`: counts and problem places only, no values and no text."""
+    diff = report.diff
+    payload = {
+        "kind": parsed.kind.value,
+        "added": len(diff.added),
+        "changed": len(diff.changed),
+        "removed": len(diff.removed),
+        "same": len(diff.same),
+        "other_kind": len(diff.other_kind),
+        "paths": dict(report.paths),
+        "absent": report.absent,
+        "unlabeled": report.unlabeled,
+        "fields": {name: c.as_json() for name, c in report.fields.items()},
+        "errors": [{"where": e.where, "reason": e.reason} for e in parsed.errors],
+        "skipped_rows": [{"where": s.where, "reason": s.reason} for s in parsed.skipped_rows],
+        "needs_confirmation": report.needs_confirmation,
+        "load_id": report.load_id,
+        "gold_sha256": report.gold_sha256,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+# --- eval review (contracts/cli.md «docreader eval review») ---
+
+_MARK_WORDS = (
+    ("changed", "изменилось"),
+    ("disagree", "разошлось"),
+    ("rules_only", "только правила"),
+    ("none", "никто"),
+    ("model_only", "только модель"),
+    ("agree", "совпало"),
+)
+
+
+def render_eval_review_text(built: ReviewBuilt) -> str:
+    """Output of `eval review`: path and counts; never a value or a quote."""
+    parts = ", ".join(f"{word} {built.marks.get(mark, 0)}" for mark, word in _MARK_WORDS)
+    lines = [
+        f"Страница проверки: {built.path}",
+        f"  карточек {built.cards}: {parts}",
+        f"  уже с ответом из эталона: {built.carried}",
+    ]
+    if built.blind_waiting:
+        lines.append(
+            "  ждут слепой разметки (карточки не показаны): " + ", ".join(built.blind_waiting)
+        )
+    if built.without_places:
+        lines.append(
+            f"  без разбора на пункты (parse не выполнен): "
+            f"{_plural(built.without_places, 'документ', 'документа', 'документов')}"
+            " — места для их карточек не построены"
+        )
+    lines.append("  места для карточек без значения — только поиск по словам")
+    return "\n".join(lines)
+
+
+def render_eval_review_json(built: ReviewBuilt) -> str:
+    """JSON of `eval review`: path and counts only."""
+    payload = {
+        "path": built.path,
+        "build": built.build,
+        "cards": built.cards,
+        "marks": built.marks,
+        "carried": built.carried,
+        "blind_waiting": built.blind_waiting,
+        "without_places": built.without_places,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+# --- eval fields (contracts/cli.md «docreader eval fields») ---
+
+_OUTCOME_WORDS = (
+    ("correct", "верно"),
+    ("wrong", "неверно"),
+    ("missed", "пропущено"),
+    ("invented", "придумано"),
+    ("unlabeled", "не размечено"),
+    ("no_result", "нет результата"),
+    ("manual", "вручную"),
+)
+_TABLE_HEADS = ("верно", "неверно", "пропущено", "придумано", "нет рез.", "не разм.")
+_TABLE_KEYS = ("correct", "wrong", "missed", "invented", "no_result", "unlabeled")
+
+
+def _counts_by_name(counts: OutcomeCounts) -> dict[str, int]:
+    return {o.value: n for o, n in counts.counts.items()}
+
+
+def _provenance_short(record: FieldsRecord) -> str:
+    prov = record.provenance
+    if record.stage == "rules":
+        return f"правила {prov.get('rules_version', '')}"
+    if "runs" in prov:
+        runs = prov["runs"]
+        parts = sorted({f"подсказка {r['prompt_version']}, {r['model']}" for r in runs})
+        return "извлечение; " + ("; ".join(parts) if parts else "результатов нет")
+    return f"файл; {prov.get('source', '')}".rstrip("; ")
+
+
+def _blind_short(blind: dict | None) -> str:
+    if blind is None:
+        return "слепой контроль: не проводился"
+    return f"слепой контроль: запись {blind.get('record', '?')}"
+
+
+def _field_table(items: Sequence[FieldTotals]) -> list[str]:
+    rows: list[list[str]] = []
+    for item in items:
+        counts = _counts_by_name(item.counts)
+        scored = item.counts.scored
+        row = [item.field, f"{counts['correct']}/{scored}"]
+        row += [str(counts[k]) for k in _TABLE_KEYS[1:]]
+        rows.append(row)
+    heads = ["поле", *_TABLE_HEADS]
+    width = [max(len(r[i]) for r in [heads, *rows]) for i in range(len(heads))]
+    lines = ["  " + "  ".join(h.ljust(w) if i == 0 else h.rjust(w)
+                              for i, (h, w) in enumerate(zip(heads, width, strict=True)))]
+    for r in rows:
+        lines.append("  " + "  ".join(c.ljust(w) if i == 0 else c.rjust(w)
+                                      for i, (c, w) in enumerate(zip(r, width, strict=True))))
+    return lines
+
+
+def render_eval_fields_text(record: FieldsRecord) -> str:
+    """Output of `eval fields`: numbers and field names only; never a value or a quote."""
+    counts = _counts_by_name(record.totals.overall)
+    label = f" «{record.label}»" if record.label else ""
+    share = (
+        "" if record.reviewed_share is None else f", из проверки {record.reviewed_share:.0%}"
+    )
+    parts = ", ".join(
+        f"{word} {counts[key]}" for key, word in _OUTCOME_WORDS if counts[key] or key == "correct"
+    )
+    lines = [
+        f"Сравнение полей: запись {record.record}{label} ({_provenance_short(record)})",
+        f"  версия эталона {record.gold_version[:12]}{share}; {_blind_short(record.blind)}",
+        f"  пар {record.pairs}: {parts}",
+    ]
+    if record.totals.fields:
+        lines += _field_table(record.totals.fields)
+    if record.totals.not_extracted:
+        lines.append("  поля, которые этап не извлекает (нет результата):")
+        lines += _field_table(record.totals.not_extracted)
+    lines.append(f"  разбор: {record.review_file}")
+    return "\n".join(lines)
+
+
+def render_eval_fields_json(record: FieldsRecord) -> str:
+    """JSON of `eval fields`: counts, field names and paths only."""
+
+    def item(t: FieldTotals) -> dict:
+        return {"field": t.field, "counts": _counts_by_name(t.counts)}
+
+    payload = {
+        "record": record.record,
+        "stage": record.stage,
+        "label": record.label,
+        "pairs": record.pairs,
+        "counts": _counts_by_name(record.totals.overall),
+        "fields": [item(t) for t in record.totals.fields],
+        "not_extracted": [item(t) for t in record.totals.not_extracted],
+        "review_file": record.review_file,
+        "gold_version": record.gold_version,
+        "reviewed_share": record.reviewed_share,
+        "blind": record.blind,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+# --- eval template and blind control (contracts/cli.md) ---
+
+
+def render_eval_template_text(path: str, documents: int, fields: int, field_set: str) -> str:
+    sets = {"prototype": "прототипа", "queue1": "очередь 1", "all": "весь каталог"}
+    first = "" if field_set == "prototype" else "; прототипа 6 — первыми"
+    return "\n".join([
+        f"Шаблон: {path}",
+        f"  документов {documents}, полей {fields} ({sets[field_set]}{first})",
+        "  ячейки пусты; «отсутствует» — поля нет в договоре; варианты — через « || »",
+    ])
+
+
+def render_eval_template_json(path: str, documents: int, fields: int) -> str:
+    return json.dumps(
+        {"path": path, "documents": documents, "fields": fields}, ensure_ascii=False, indent=2
+    )
+
+
+def render_eval_blind_pick_text(report: BlindPickReport) -> str:
+    layer = ", ".join(report.text_layer) if report.text_layer else "нет"
+    return "\n".join([
+        f"Слепой контроль: {', '.join(report.documents)} (текстовый слой: {layer})",
+        f"Шаблон: {report.template} — разметьте до проверки их карточек",
+    ])
+
+
+def render_eval_blind_pick_json(report: BlindPickReport) -> str:
+    return json.dumps(
+        {"documents": report.documents, "text_layer": report.text_layer,
+         "template": report.template},
+        ensure_ascii=False, indent=2,
+    )
+
+
+# --- eval results, show, compare, export (contracts/cli.md) ---
+
+_ALL_OUTCOME_WORDS = {
+    **dict(_OUTCOME_WORDS),
+    "same": "совпало", "differs": "разошлось", "blind_only": "только слепое",
+    "reviewed_only": "только проверка",
+}
+_SEARCH_STAGES = frozenset({"search_plain", "search_rerank"})
+_STAGE_WORDS = {
+    "fields": "поля", "rules": "правила", "search_plain": "поиск без реранкера",
+    "search_rerank": "поиск с реранкером", "gold_blind": "слепой контроль",
+}
+
+
+def _part_text(part: float, whole: float) -> str:
+    return f"{part:g}/{whole:g}" + (f" ({part / whole:.0%})" if whole else "")
+
+
+def _headline(stage: str, metrics: dict) -> str:
+    """The main numbers of a record in one phrase."""
+    if stage in ("fields", "rules"):
+        overall = metrics.get("overall", {})
+        correct = overall.get("counts", {}).get("correct")
+        if correct is None:
+            return ""
+        return f"верно {_part_text(correct, overall.get('scored', 0))}"
+    if stage == "gold_blind":
+        if "confirmed_pairs" not in metrics:
+            return ""
+        return (
+            f"разошлось {metrics.get('confirmed_differs', 0)} из {metrics['confirmed_pairs']}"
+            f" при подтверждённом значении системы"
+        )
+    if "participating" in metrics:
+        n = metrics["participating"]
+        return (
+            f"первое место {_part_text(metrics.get('first', 0), n)}, "
+            f"первые пять {_part_text(metrics.get('top5', 0), n)}, "
+            f"не найден {metrics.get('not_found', 0)}"
+        )
+    return ""
+
+
+def _row_json(row: ResultRow, *, with_metrics: bool = False) -> dict:
+    data = {
+        "id": row.id,
+        "created_at": row.created_at.isoformat(timespec="seconds"),
+        "label": row.label,
+        "stage": row.stage,
+        "gold_version": row.gold_version,
+        "current_gold": row.current_gold,
+        "reviewed_share": row.reviewed_share,
+        "blind": row.blind,
+        "review_file": row.review_file,
+        "provenance": row.provenance,
+    }
+    if with_metrics:
+        data["metrics"] = row.metrics
+    return data
+
+
+def _provenance_text(provenance: dict) -> str:
+    """The origin of a record on one line: code, model runs, settings (no contract text)."""
+    parts = [f"код {provenance.get('code_version', '—')}"]
+    for key, value in provenance.items():
+        if key == "code_version":
+            continue
+        if key == "runs":
+            parts += [
+                f"запуск {r.get('id')} ({r.get('model') or '—'}, {r.get('prompt_version') or '—'})"
+                for r in value
+            ]
+        elif isinstance(value, (dict, list)):
+            parts.append(f"{key} {json.dumps(value, ensure_ascii=False, sort_keys=True)}")
+        else:
+            parts.append(f"{key} {value}")
+    return "; ".join(parts)
+
+
+def _version_text(row: ResultRow) -> str:
+    if row.gold_version is None:
+        return "—"
+    return row.gold_version[:12] + ("" if row.current_gold else " (прежняя)")
+
+
+def render_eval_results_text(rows: Sequence[ResultRow]) -> str:
+    if not rows:
+        return "Записей нет: docreader eval fields, eval search или eval blind report"
+    table = [["№", "дата", "метка", "этап", "версия эталона", "главные метрики"]]
+    for r in rows:
+        extra = []
+        if r.reviewed_share is not None:
+            extra.append(f"проверено {r.reviewed_share:.0%}")
+        if r.stage != "gold_blind" and r.blind and "confirmed_pairs" in r.blind:
+            extra.append(
+                f"слепой контроль {r.blind.get('confirmed_differs', 0)} из "
+                f"{r.blind['confirmed_pairs']}"
+            )
+        headline = "; ".join(p for p in (_headline(r.stage, r.metrics), *extra) if p)
+        table.append([
+            str(r.id), f"{r.created_at:%Y-%m-%d %H:%M}", r.label or "—",
+            _STAGE_WORDS.get(r.stage, r.stage), _version_text(r), headline,
+        ])
+    return _aligned(table, left_columns=(2, 3, 4, 5))
+
+
+def render_eval_results_json(rows: Sequence[ResultRow]) -> str:
+    return json.dumps(
+        {"records": [_row_json(r, with_metrics=True) for r in rows]}, ensure_ascii=False, indent=2
+    )
+
+
+def _case_line(row: ResultRow, case: ShownCase) -> str:
+    flags = f" [{', '.join(case.flags)}]" if case.flags else ""
+    if row.stage in _SEARCH_STAGES:
+        if "excluded" in case.flags:
+            what = "вне метрик"
+        else:
+            what = f"место {case.place}" if case.place is not None else "не найден"
+        return f"  {case.question_key} {case.document_id} {what}{flags}"
+    word = _ALL_OUTCOME_WORDS.get(case.outcome or "", case.outcome or "—")
+    return f"  {case.document_id} {case.field} {word}{flags}"
+
+
+def render_eval_show_text(shown: ShownRecord) -> str:
+    row = shown.row
+    label = f" «{row.label}»" if row.label else ""
+    lines = [
+        f"Запись {row.id}{label}: {_STAGE_WORDS.get(row.stage, row.stage)}, "
+        f"версия эталона {_version_text(row)}",
+    ]
+    head = _headline(row.stage, row.metrics)
+    if head:
+        lines.append(f"  {head}")
+    lines.append(f"  происхождение: {_provenance_text(row.provenance)}")
+    overall = row.metrics.get("overall", {}) if row.stage in ("fields", "rules") else {}
+    counts = overall.get("counts")
+    if counts:
+        lines.append("  " + ", ".join(
+            f"{word} {counts[key]}" for key, word in _OUTCOME_WORDS if counts.get(key)
+        ))
+    lines.append(f"Случаев по фильтру: {len(shown.cases)}")
+    lines += [_case_line(row, c) for c in shown.cases]
+    return "\n".join(lines)
+
+
+def render_eval_show_json(shown: ShownRecord) -> str:
+    payload = {
+        "record": _row_json(shown.row, with_metrics=True),
+        "cases": [
+            {
+                "case_key": c.case_key, "document_id": c.document_id, "field": c.field,
+                "question_key": c.question_key, "outcome": c.outcome, "place": c.place,
+                "flags": list(c.flags),
+            }
+            for c in shown.cases
+        ],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _changes_json(items: Sequence[CaseChange]) -> list[dict]:
+    return [{"case_key": c.case_key, "before": c.before, "after": c.after} for c in items]
+
+
+def render_eval_compare_text(report: CompareReport) -> str:
+    c = report.comparison
+    lines = [
+        f"Сравнение записей {report.a.id} и {report.b.id}: "
+        f"{_STAGE_WORDS.get(report.a.stage, report.a.stage)}"
+    ]
+    if c.gold_differs:
+        lines.append(
+            f"  разные версии эталона: {_version_text(report.a)} и {_version_text(report.b)} — "
+            "часть различий из-за эталона, она в отдельной группе"
+        )
+    changed = [(k, a, b) for k, (a, b) in c.metrics.items() if a != b]
+    if changed:
+        lines.append("  метрики, которые изменились:")
+        lines += [f"    {k}: {a:g} → {b:g}" for k, a, b in changed]
+    else:
+        lines.append("  метрики не изменились")
+    groups = (
+        ("стало лучше", c.better), ("стало хуже", c.worse), ("вне сравнения", c.outside),
+        ("из-за эталона", c.by_gold),
+    )
+    for title, items in groups:
+        if not items and title == "из-за эталона":
+            continue
+        lines.append(f"  {title}: {len(items)}")
+        lines += [f"    {i.case_key}: {i.before} → {i.after}" for i in items]
+    return "\n".join(lines)
+
+
+def render_eval_compare_json(report: CompareReport) -> str:
+    c = report.comparison
+    payload = {
+        "a": report.a.id,
+        "b": report.b.id,
+        "stage": report.a.stage,
+        "gold_differs": c.gold_differs,
+        "metrics": {k: [a, b] for k, (a, b) in c.metrics.items()},
+        "better": _changes_json(c.better),
+        "worse": _changes_json(c.worse),
+        "outside": _changes_json(c.outside),
+        "by_gold": _changes_json(c.by_gold),
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def render_eval_export_text(report: ExportReport) -> str:
+    return f"Выгрузка: {report.path}\n  записей {report.records}"
+
+
+def render_eval_export_json(report: ExportReport) -> str:
+    return json.dumps({"path": report.path, "records": report.records}, ensure_ascii=False)
+
+
+# --- eval questions (contracts/cli.md «Вопросы») ---
+
+
+def render_eval_questions_load_text(report: QuestionsReport) -> str:
+    lines: list[str] = []
+    for f in report.files:
+        lines.append(
+            f"Вопросы: {f.file} — загружено {f.loaded}, заменено {f.replaced}, "
+            f"ошибок {len(f.errors)}"
+        )
+        lines += [f"  вопрос {e.number}: {e.reason}" for e in f.errors]
+    c = report.composition
+    lines.append(
+        f"Набор: {_plural(c.total, 'вопрос', 'вопроса', 'вопросов')} — текст {c.text}, "
+        f"таблица {c.table}, оба {c.both}; без ответа {c.no_answer}; "
+        f"с ложной посылкой {c.false_premise}"
+    )
+    lines += [f"  {w}" for w in report.warnings]
+    for conflict in report.conflicts:
+        lines.append(
+            f"  вопрос {conflict.key} есть в двух файлах ({conflict.files[0]} и "
+            f"{conflict.files[1]}): признаки взяты из последнего"
+        )
+    return "\n".join(lines)
+
+
+def render_eval_questions_generate_text(report: GenerateReport) -> str:
+    return "\n".join([
+        f"Предложенные вопросы: {report.path}",
+        f"  с ответом {report.with_answer}, без ответа {report.no_answer}"
+        + (f" (не хватило {report.no_answer_shortfall})" if report.no_answer_shortfall else "")
+        + ", "
+        f"с ложной посылкой {report.false_premise} (не хватило пар {report.shortfall})",
+        "  просмотрите файл, уберите лишние и загрузите: docreader eval questions load …",
+    ])
+
+
+def render_eval_questions_clauses_text(report: ClausesReport) -> str:
+    return "\n".join([
+        f"Пункты из ответов: {report.path}",
+        f"  вопросов без пункта {report.without_clause}: предложено {report.proposed}, "
+        f"без подтверждённых утверждений {report.no_confirmed}",
+    ])
+
+
+# --- eval blind report (feature 02, T025) -------------------------------------------------------
+
+
+def _blind_percent(part: int, whole: int) -> str:
+    return f"{part / whole * 100:.1f}".replace(".", ",") + "%" if whole else "—"
+
+
+def render_eval_blind_report_text(report: BlindReport) -> str:
+    t = report.totals
+    lines = [
+        f"Слепой контроль: запись {report.record}",
+        f"  пар {t.pairs}: совпало {t.same}, разошлось {t.differs}, нет слепого "
+        f"{t.reviewed_only}, не проверено {t.blind_only}",
+        f"  при подтверждённом значении системы: разошлось {t.confirmed_differs} из "
+        f"{t.confirmed_pairs} ({_blind_percent(t.confirmed_differs, t.confirmed_pairs)}; "
+        "ориентир ≤ 3%)",
+    ]
+    if t.not_reviewed:
+        lines.append(f"  проверено до слепой разметки (не в итоге): {t.not_reviewed}")
+    lines.append(f"  разбор: {report.review_file}")
+    return "\n".join(lines)
+
+
+def render_eval_blind_report_json(report: BlindReport) -> str:
+    return json.dumps(report.to_json(), ensure_ascii=False, indent=2)
+
+
+# --- eval search (feature 02, T037) -------------------------------------------------------------
+
+
+def _search_share(count: int, whole: int) -> str:
+    return f"{count} / {whole} ({round(count / whole * 100)}%)" if whole else f"{count} / 0"
+
+
+def _search_median(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return str(int(value)) if value == int(value) else str(value).replace(".", ",")
+
+
+def render_eval_search_text(report: SearchReport) -> str:
+    plain, rerank = report.variants["search_plain"], report.variants["search_rerank"]
+    ids = report.records
+    lines = [
+        f"Замер поиска: записи {ids['search_plain']} (без реранкера) и "
+        f"{ids['search_rerank']} (с реранкером)",
+        f"  вопросов {report.questions}: участвуют {plain['participating']}, без ответа "
+        f"{report.no_answer}, вида «таблица» {report.table}, "
+        f"пункт не указан {report.unspecified}",
+    ]
+    table = [["", "первое место", "первые пять", "медиана", "не найден"]]
+    for name, m in (("без реранкера", plain), ("с реранкером", rerank)):
+        whole = m["participating"]
+        table.append([
+            name, _search_share(m["first"], whole), _search_share(m["top5"], whole),
+            _search_median(m["median_place"]), str(m["not_found"]),
+        ])
+    widths = [max(len(r[i]) for r in table) for i in range(5)]
+    for row in table:
+        cells = "  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True))
+        lines.append("  " + cells.rstrip())
+    lines.append(f"  разбор: {report.review_file}")
+    return "\n".join(lines)
+
+
+def render_eval_search_json(report: SearchReport) -> str:
+    return json.dumps(
+        {
+            "records": report.records, "variants": report.variants,
+            "questions": report.questions, "review_file": report.review_file,
+            "no_answer": report.no_answer, "table": report.table,
+            "unspecified": report.unspecified,
+        },
+        ensure_ascii=False, indent=2,
+    )
