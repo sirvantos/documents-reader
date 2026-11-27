@@ -100,3 +100,12 @@ def test_loose_search_does_not_join_words_or_drop_other_signs() -> None:
 def test_exact_match_wins_over_the_loose_one() -> None:
     text = "всего — 10 рублей; всего 10 рублей"
     assert spans(text, "всего 10 рублей") == ["всего 10 рублей"]
+
+
+def test_loose_search_skips_a_free_standing_underscore() -> None:
+    # analyst's measurement, record 21: a scan read the dash before an amount as «_»
+    # and the amount went to the next line; the model's quote has no dash at all
+    text = "и составляет всего с НДС (20%) _\n7 300 500 (Семь миллионов) рублей"
+    (got,) = spans(text, "и составляет всего с НДС (20%) 7 300 500 (Семь миллионов) рублей")
+    assert got == text
+    assert locate("поле код_вида 12", "поле кодвида 12") == []  # inside a word it stays

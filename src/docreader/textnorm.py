@@ -103,6 +103,22 @@ def compare_form(text: str) -> tuple[str, list[int]]:
     return "".join(chars), offsets
 
 
+# a lone «|» touching a digit, or right before a three-digit group, is the digit «1»
+_BAR_AS_ONE = re.compile(r"(?<=\d)\||\|(?=\d)|\|(?= \d{3}(?!\d))")
+
+
+def fix_recognized(text: str) -> str:
+    """Recognised line text with the OCR confusion «1» → «|» undone.
+
+    Analyst's measurement, record 21 (2026-11-27): Tesseract read the leading «1» of an
+    amount on a scan as «|» («— | 025 116»), so the amount could not be confirmed. Only a
+    line with a single «|» is changed: several bars in a line are most likely table rules.
+    """
+    if text.count("|") != 1:
+        return text
+    return _BAR_AS_ONE.sub("1", text)
+
+
 def locate(text: str, phrase: str) -> list[tuple[int, int]]:
     """`[start, end)` in `text` of every occurrence of `phrase` in the comparison form.
 
@@ -128,6 +144,7 @@ def _loose(folded: str, offsets: list[int]) -> tuple[str, list[int]]:
 
     Analyst's measurement, record 19 (2026-11-27): the model's quote dropped the «—» before
     an amount, or wrote «4 560 789» for «4560 789». A dash inside a word or a number stays.
+    Record 21: a scan read that dash as «_», so a free-standing «_» is dropped the same way.
     """
     chars: list[str] = []
     kept: list[int] = []
@@ -135,7 +152,7 @@ def _loose(folded: str, offsets: list[int]) -> tuple[str, list[int]]:
     for i, ch in enumerate(folded):
         before = folded[i - 1] if i > 0 else " "
         after = folded[i + 1] if i + 1 < n else " "
-        if ch == "-" and before == " " and after == " ":
+        if ch in "-_" and before == " " and after == " ":
             continue
         if ch == " ":
             if before.isdigit() and after.isdigit():
