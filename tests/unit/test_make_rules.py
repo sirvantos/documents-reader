@@ -13,7 +13,7 @@ import pytest
 
 from tests.synthetic.make_pdfs import RULES_GENERATOR_VERSION, make_rules_contracts
 
-FILES = ("rules-a.pdf", "rules-b.pdf", "rules-c.pdf", "rules-d.pdf", "rules-e.pdf")
+FILES = ("rules-a.pdf", "rules-b.pdf", "rules-c.pdf", "rules-d.pdf", "rules-e.pdf", "rules-f.pdf")
 
 KEY_LINES: dict[str, tuple[str, ...]] = {
     "rules-a.pdf": (
@@ -67,6 +67,10 @@ KEY_LINES: dict[str, tuple[str, ...]] = {
         "увеличивается на НДС (20%) — 300 000 (Триста тысяч) рублей 00 копеек",
         "составляет всего с НДС (20%) — 1 800 000 (Один миллион восемьсот тысяч) рублей",
     ),
+    "rules-f.pdf": (
+        "ДОГОВОР ПОДРЯДА № Р-16/2026",
+        "составляет всего с НДС (20%) _ 840 000 (Восемьсот сорок тысяч) рублей",
+    ),
 }
 
 
@@ -109,5 +113,5 @@ def test_rules_d_has_no_term_and_no_vat_free_amount(rules: dict[str, Path]) -> N
     assert "без учёта НДС" not in text
 
 
-def test_rules_version_is_two() -> None:
-    assert RULES_GENERATOR_VERSION == 2
+def test_rules_version_is_three() -> None:
+    assert RULES_GENERATOR_VERSION == 3

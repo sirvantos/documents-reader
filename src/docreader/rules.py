@@ -47,14 +47,15 @@ _NAME_SPELLED = re.compile(
 _PRICE_SECTION = re.compile(r"цен", re.IGNORECASE)
 _WITHOUT_VAT = re.compile(r"^\W*без\s+(?:учёта\s+|учета\s+)?НДС", re.IGNORECASE)
 _WITH_VAT_AFTER = re.compile(r"^\W*(?:с\s+учётом|с\s+учетом|включая)\s+НДС", re.IGNORECASE)
-# the rate may stand between «НДС» and the amount, in brackets or not: «с НДС (20%) — …»
+# the rate may stand between «НДС» and the amount, in brackets or not: «с НДС (20%) — …»;
+# a scan may read that dash as «_» (record 26)
 _RATE = r"(?:\s*\(?\s*\d+(?:[.,]\d+)?\s*%\s*\)?)"
 _WITH_VAT_BEFORE = re.compile(
-    r"(?:с\s+учётом|с\s+учетом|включая|\bс)\s+НДС" + _RATE + r"?\W{0,3}$", re.IGNORECASE
+    r"(?:с\s+учётом|с\s+учетом|включая|\bс)\s+НДС" + _RATE + r"?[\W_]{0,3}$", re.IGNORECASE
 )
 # the VAT amount itself: «НДС 20% — …», «на НДС (20%) — …», not «с НДС (20%) — …»
 _VAT_AMOUNT_BEFORE = re.compile(
-    r"(?<!\bс\s)(?<!учётом\s)(?<!учетом\s)(?<!включая\s)НДС" + _RATE + r"\s*[—–-]?\s*$",
+    r"(?<!\bс\s)(?<!учётом\s)(?<!учетом\s)(?<!включая\s)НДС" + _RATE + r"\s*[—–_-]?\s*$",
     re.IGNORECASE,
 )
 _TERM = re.compile(r"срок\s+действия", re.IGNORECASE)

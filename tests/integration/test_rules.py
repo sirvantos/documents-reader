@@ -101,6 +101,13 @@ def test_spelled_legal_forms_and_a_rate_in_brackets(db, docs) -> None:  # type: 
     assert got["amount_with_vat"] == [("1800000.00", "2.1")]  # the VAT amount is not taken
 
 
+def test_an_underscore_for_the_dash_before_the_amount(db, docs) -> None:  # type: ignore[no-untyped-def]
+    # analyst's measurement, record 26: «с НДС (20%) _ сумма» on a scan
+    got = found(db, docs["rules-f"])
+    assert got["amount_without_vat"] == [("700000.00", "2.1")]
+    assert got["amount_with_vat"] == [("840000.00", "2.1")]
+
+
 def test_every_result_has_a_located_quote(db, docs) -> None:  # type: ignore[no-untyped-def]
     for doc in docs.values():
         index, sections = _inputs(db, doc)
