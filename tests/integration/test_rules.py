@@ -128,4 +128,4 @@ def test_nothing_outside_the_shown_part(db, docs) -> None:  # type: ignore[no-un
 def test_module_needs_no_database() -> None:
     source = Path(rules.__file__).read_text(encoding="utf-8")
     assert "psycopg" not in source and "openai" not in source
-    assert rules.RULES_VERSION == "02.2"
+    assert rules.RULES_VERSION == "02.3"

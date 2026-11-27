@@ -18,7 +18,7 @@ from docreader import values, verify
 from docreader.fields import PROTOTYPE_FIELDS, Result, spec
 from docreader.verify import FieldResult, TextIndex
 
-RULES_VERSION = "02.2"
+RULES_VERSION = "02.3"
 
 _WS = r"\s+"
 # «ДОГОВОР ПОДРЯДА № ДП-17/2026», «ДОГОВОР\n№ Р-11/2026»; «протокол № …», «доверенность № …»
