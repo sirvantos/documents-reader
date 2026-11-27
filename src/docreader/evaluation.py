@@ -14,7 +14,7 @@ import io
 import json
 from collections import Counter
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -229,13 +229,14 @@ def _collect_extraction(
                 value, format_clause_id(doc, key) if key else "", cite or ""
             )
     runs: list[dict[str, Any]] = []
-    for run_id, model, prompt, started in conn.execute(
-        "SELECT id, model, prompt_version, started_at FROM run WHERE id = ANY(%s) ORDER BY id",
+    for run_id, model, prompt, started, run_settings in conn.execute(
+        "SELECT id, model, prompt_version, started_at, settings FROM run"
+        " WHERE id = ANY(%s) ORDER BY id",
         (sorted(run_ids),),
     ):
         runs.append({
             "id": run_id, "model": model, "prompt_version": prompt,
-            "started_at": started.isoformat(),
+            "started_at": started.isoformat(), "settings": run_settings,
         })
     return Collected(values, shown, {"code_version": code_version(), "runs": runs})
 
@@ -580,6 +581,7 @@ def measure_search(
         provenance = {
             "code_version": code_version(), "embedding_model": embedding_model,
             "reranker_model": reranker_model,
+            "reranker_settings": asdict(settings.reranker),
             "search": {
                 "candidates": cfg.candidates, "rrf_k": cfg.rrf_k,
                 "rerank_candidates": cfg.rerank_candidates,

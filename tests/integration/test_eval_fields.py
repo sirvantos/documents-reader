@@ -240,3 +240,14 @@ def test_output_holds_no_values(cli, db, setup) -> None:  # type: ignore[no-unty
     text = cli("eval", "fields").stdout
     assert "разбор: eval/" in text
     assert "customer_name_short" in text
+
+
+def test_provenance_holds_the_settings_of_the_extraction_runs(cli, db, setup) -> None:  # type: ignore[no-untyped-def]
+    # converge T053 (research R-13)
+    report = run_fields(cli)
+    [prov] = db.execute(
+        "SELECT provenance FROM eval_result WHERE id = %s", (report["record"],)
+    ).fetchone()
+    [run] = prov["runs"]
+    stored = db.execute("SELECT settings FROM run WHERE id = %s", (run["id"],)).fetchone()[0]
+    assert run["settings"] == stored and stored

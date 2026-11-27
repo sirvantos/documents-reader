@@ -161,3 +161,12 @@ def test_output_holds_no_question_texts(cli, db, indexed) -> None:  # type: igno
         result = cli("eval", "search", *extra)
         assert result.exit_code == 0, result.stderr
         assert_no_values(result.stdout + result.stderr, secrets)
+
+
+def test_search_provenance_holds_the_reranker_settings(cli, db, indexed) -> None:  # type: ignore[no-untyped-def]
+    # converge T053 (research R-13)
+    report = measure(cli)
+    [prov] = db.execute(
+        "SELECT provenance FROM eval_result WHERE id = %s", (report["records"]["search_plain"],)
+    ).fetchone()
+    assert set(prov["reranker_settings"]) >= {"enabled", "model", "max_chars"}

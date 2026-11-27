@@ -262,7 +262,10 @@ def _numbers(data: Any, prefix: str = "") -> dict[str, float]:
 
 
 def metric_numbers(data: Any) -> dict[str, float]:
-    """The numeric leaves of a metrics dict by dotted key (lists of per-field dicts are keyed by their `field`)."""
+    """The numeric leaves of a metrics dict by dotted key.
+
+    A list of per-field dicts is keyed by the `field` of each item.
+    """
     return _numbers(data)
 
 
