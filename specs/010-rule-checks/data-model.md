@@ -1,7 +1,8 @@
 # Data Model: Проверки правилами и статусы полей
 
-Миграция `0008_checks.sql`. Таблицы фич 01–05 и 02 только читаются; `field_value`
-не меняется (research R-8).
+Миграция `0008_checks.sql`. Таблицы фич 01–05 и 02 только читаются, кроме общих: запуск
+в `run`, состояние этапа в `stage_status`, запись отчёта в `eval_result` / `eval_case`;
+`field_value` и `gold_field` не меняются (research R-8).
 
 ## Перечисления (`StrEnum` в коде, CHECK в базе)
 
@@ -11,6 +12,7 @@
 | `FieldStatus` | `accepted`, `needs_review`, `rejected`, `not_found` | `field_status.status` |
 | `DecisionKind` | `confirm`, `correct`, `absent` | `field_decision.kind` |
 | `EvalStage` | + `checks` | `eval_result.stage` (CHECK заменяется) |
+| `CheckOutcome` | `queued_wrong`, `queued_right`, `accepted_wrong`, `accepted_right` | `eval_case.outcome` этапа `checks` (CHECK заменяется: исходы фичи 02 и эти четыре; research R-10) |
 
 Пометки (`field_status.flags`, массив): `document_needs_review`, `system_changed`,
 `human_confirmed`, `human_corrected`, `human_absent`. Коды причин правил — research R-2.
@@ -55,8 +57,8 @@ PK (`document_id`, `field`). Устарел, если `extraction_run_id` ≠ т
 | `value_text` | text NULL | вписанное значение; только у `correct` |
 | `value_normalized` | text NULL | приведённое по виду поля; только у `correct` |
 | `clause_key` | text NULL | пункт, если аналитик указал; только у `correct` |
-| `system_result` | text | `field_value.result` на момент решения |
-| `system_normalized` | text NULL | `field_value.value_normalized` на момент решения |
+| `system_result` | text | `field_value.result` на карточке сборки, по которой принято решение (`cards.json`, research R-9) |
+| `system_normalized` | text NULL | `field_value.value_normalized` на той же карточке |
 | `answers_sha256` | char(64) | отпечаток загруженного файла ответов |
 | `decided_at` | timestamptz | время загрузки |
 

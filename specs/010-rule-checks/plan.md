@@ -39,8 +39,9 @@
 Приведение и сравнение значений — `values.py` (фичи 05 и 02), каталог — `catalog.py`.
 
 **Storage**: PostgreSQL 17; миграция `0008_checks.sql` — `field_check`, `field_status`,
-`field_decision`; новый этап `checks` в `eval_result.stage` (данные —
-[data-model.md](data-model.md)). Таблицы фич 01–05 и 02 только читаются. Файлы — в папке
+`field_decision`; новый этап `checks` в `eval_result.stage` и четыре исхода отчёта
+в `eval_case.outcome` (данные — [data-model.md](data-model.md)). Таблицы фич 01–05 и 02
+только читаются, кроме общих `run`, `stage_status`, `eval_result`, `eval_case`. Файлы — в папке
 данных: `checks/queue-<сборка>/` (страница, `cards.json`, картинки), скачанные ответы,
 разборы отчёта.
 
@@ -130,6 +131,7 @@ specs/010-rule-checks/
 ```text
 src/docreader/
 ├── migrations/0008_checks.sql   # новый: field_check, field_status, field_decision; этап checks
+│                           #   и исходы отчёта в CHECK eval_result / eval_case
 ├── numwords.py             # новый: русские числительные прописью → целое (R-3)
 ├── checks.py               # новый: реестр правил, CHECKS_VERSION, статус поля, решения,
 │                           #   устаревание, effective_value, сводка, отчёт по эталону
@@ -137,8 +139,8 @@ src/docreader/
 │                           #   pageimage), разбор ответов
 ├── config.py               # + CheckSettings [checks]: vat_rate, end_date_min, end_date_max
 ├── stages.py               # + RunStage.CHECKS
-├── outcomes.py             # + EvalStage.CHECKS, метрики пользы правил
-├── evaluation.py           # + запись этапа checks в eval_result/eval_case
+├── outcomes.py             # + EvalStage.CHECKS, CheckOutcome, метрики пользы правил
+├── evaluation.py           # + запись этапа checks в eval_result/eval_case; show/compare для него
 ├── review_page.py          # формат ответов параметром (gold-review / check-review)
 ├── render.py               # вывод команд check
 └── cli.py                  # группа check
@@ -150,8 +152,13 @@ tests/
 ├── unit/test_checks_rules.py        # каждое правило: дефект / без дефекта / не применялось
 ├── unit/test_checks_status.py       # таблица статусов, решения, изменение значения системы
 ├── unit/test_check_queue.py         # порядок, карточки, разбор ответов
+├── unit/test_check_report.py        # метрики пользы правил
+├── unit/test_make_checks.py         # генератор договоров с ошибками
 ├── integration/test_migration_0008.py
-├── integration/test_check_cli.py    # check, summary, queue, load, повторное извлечение
+├── integration/check_fixtures.py    # ответы ScriptedModel к договорам генератора
+├── integration/test_check_cli.py    # check, summary, queue, повторное извлечение
+├── integration/test_check_catch.py  # SC-002: каждое правило ловит свои ошибки
+├── integration/test_check_decisions.py  # check load, решения, «значение системы изменилось»
 ├── integration/test_check_report.py # отчёт по синтетическому эталону, запись eval_result
 ├── integration/test_check_output_guard.py  # вывод без значений и текста
 └── synthetic/make_pdfs.py           # + make_check_contracts: договоры с внесёнными ошибками
@@ -167,9 +174,9 @@ tests/
   решения аналитика и «значение системы изменилось»; правила согласованности НДС и прописи
   (решающие правила); проверка «без значений в выводе».
 - **Sonnet** (тесты пишет Opus заранее): `numwords`, остальные правила, сводка, страница
-  очереди и разбор ответов, отчёт и запись `eval_result`, команды CLI.
-- **Haiku**: группа CLI и аргументы, форматирование вывода, генератор синтетических
-  договоров с ошибками.
+  очереди и разбор ответов, отчёт и запись `eval_result`, команды CLI с их аргументами
+  и выводом (идут одной задачей с командой).
+- **Haiku**: настройки `[checks]`, генератор синтетических договоров с ошибками.
 
 ## Complexity Tracking
 
