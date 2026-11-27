@@ -1937,6 +1937,127 @@ def make_rules_contracts(directory: str | Path) -> list[Path]:
     ]
 
 
+# --- check contracts (feature 06, T006) ----------------------------------------
+
+CHECK_GENERATOR_VERSION = 1  # bump when a contract's text changes (R-14)
+
+_CHECK_PARTIES_SAME = (
+    "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), "
+    "именуемое в дальнейшем «Заказчик», и Общество с ограниченной ответственностью "
+    "«Альфа» (ООО «Альфа»), именуемое в дальнейшем «Подрядчик», заключили настоящий договор:"
+)
+_CHECK_TERM_2027 = (
+    "5. Срок действия Договора",
+    "5.1. Договор вступает в силу с даты подписания и действует до «31» декабря 2027 г.",
+)
+_CHECK_TERM_2045 = (
+    "5. Срок действия Договора",
+    "5.1. Договор вступает в силу с даты подписания и действует до «31» декабря 2045 г.",
+)
+_CHECK_PRICE_CLEAN = (
+    "2.1. Цена Договора составляет 1 000 000 (один миллион) рублей 00 копеек без учёта НДС, "
+    "НДС (20%) — 200 000 (двести тысяч) рублей 00 копеек, всего с учётом НДС "
+    "1 200 000 (один миллион двести тысяч) рублей 00 копеек.",
+)
+_CHECK_PRICE_WORDS = (
+    "2.1. Цена Договора составляет 1 000 000 (один миллион сто тысяч) рублей 00 копеек "
+    "без учёта НДС, НДС (20%) — 200 000 (двести тысяч) рублей 00 копеек, всего с учётом НДС "
+    "1 200 000 (один миллион двести тысяч) рублей 00 копеек.",
+)
+_CHECK_PRICE_VAT = (
+    "2.1. Цена Договора составляет 1 000 000 (один миллион) рублей 00 копеек без учёта НДС, "
+    "НДС (20%) — 250 000 (двести пятьдесят тысяч) рублей 00 копеек, всего с учётом НДС "
+    "1 250 000 (один миллион двести пятьдесят тысяч) рублей 00 копеек.",
+)
+_CHECK_PRICE_RATE10 = (
+    "2.1. Цена Договора составляет 1 000 000 (один миллион) рублей 00 копеек без учёта НДС, "
+    "НДС (10%) — 100 000 (сто тысяч) рублей 00 копеек, всего с учётом НДС "
+    "1 100 000 (один миллион сто тысяч) рублей 00 копеек.",
+)
+_CHECK_PRICE_EXEMPT = (
+    "2.1. Цена Договора составляет 900 000 (девятьсот тысяч) рублей 00 копеек, НДС не облагается.",
+)
+_CHECK_PRICE_ZERO = (
+    "2.1. Цена Договора составляет 0 (ноль) рублей 00 копеек без учёта НДС, "
+    "НДС (20%) — 0 (ноль) рублей 00 копеек, всего с учётом НДС "
+    "0 (ноль) рублей 00 копеек.",
+)
+_CHECK_PRICE_NOVAT = (
+    "2.1. Цена Договора составляет 1 000 000 (один миллион) рублей 00 копеек без учёта НДС.",
+)
+
+
+def _check_contract_pages(
+    number: str, preamble: str, price: tuple[str, ...], term: tuple[str, ...]
+) -> tuple[tuple[str, ...], ...]:
+    return _rules_pages(
+        (f"ДОГОВОР ПОДРЯДА № {number}", "г. Энск"),
+        preamble,
+        price,
+        term,
+        _RULES_LIABILITY_PLAIN,
+    )
+
+
+_CHECK_PAGES: dict[str, tuple[tuple[str, ...], ...]] = {
+    "check-clean": _check_contract_pages(
+        "К-21/2026", _RULES_PARTIES_A, _CHECK_PRICE_CLEAN, _CHECK_TERM_2027
+    ),
+    "check-words": _check_contract_pages(
+        "К-22/2026", _RULES_PARTIES_A, _CHECK_PRICE_WORDS, _CHECK_TERM_2027
+    ),
+    "check-vat": _check_contract_pages(
+        "К-23/2026", _RULES_PARTIES_A, _CHECK_PRICE_VAT, _CHECK_TERM_2027
+    ),
+    "check-rate10": _check_contract_pages(
+        "К-24/2026", _RULES_PARTIES_A, _CHECK_PRICE_RATE10, _CHECK_TERM_2027
+    ),
+    "check-exempt": _check_contract_pages(
+        "К-25/2026", _RULES_PARTIES_A, _CHECK_PRICE_EXEMPT, _CHECK_TERM_2027
+    ),
+    "check-zero": _check_contract_pages(
+        "К-26/2026", _RULES_PARTIES_A, _CHECK_PRICE_ZERO, _CHECK_TERM_2027
+    ),
+    "check-date": _check_contract_pages(
+        "К-27/2026", _RULES_PARTIES_A, _CHECK_PRICE_CLEAN, _CHECK_TERM_2045
+    ),
+    "check-same": _check_contract_pages(
+        "К-28/2026", _CHECK_PARTIES_SAME, _CHECK_PRICE_CLEAN, _CHECK_TERM_2027
+    ),
+    "check-noamount": _check_contract_pages(
+        "К-29/2026", _RULES_PARTIES_A, _CHECK_PRICE_NOVAT, _CHECK_TERM_2027
+    ),
+}
+
+
+def make_check_contracts(directory: str | Path) -> list[Path]:
+    """Writes the nine synthetic contracts of feature 06 (T006) into the folder.
+
+    `check-clean.pdf` (consistent amounts), `check-words` (words of the amount without VAT
+    differ from the digits), `check-vat` (the amount with VAT is 1 250 000), `check-rate10`
+    (VAT at 10%), `check-exempt` (one amount, «НДС не облагается»), `check-zero` (zero
+    amounts), `check-date` (the term to 31 December 2045), `check-same` (customer and
+    contractor both «ООО «Альфа»»), `check-noamount` (no amount with VAT). Returns the
+    paths in this order. Text layer only; all names and numbers fictional.
+    """
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    return [
+        _write(root / f"{name}.pdf", _extraction_pdf(_CHECK_PAGES[name]))
+        for name in (
+            "check-clean",
+            "check-words",
+            "check-vat",
+            "check-rate10",
+            "check-exempt",
+            "check-zero",
+            "check-date",
+            "check-same",
+            "check-noamount",
+        )
+    ]
+
+
 # --- demo set ------------------------------------------------------------------
 
 
