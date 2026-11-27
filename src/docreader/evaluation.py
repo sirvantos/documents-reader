@@ -408,6 +408,10 @@ def compare_fields(
     if from_file is not None:
         rows, file_source = _collect_file(from_file)
         values = _from_file_values(rows, fields)
+        shown = {
+            pair: Shown(raw, "", "") for pair, (_, raw) in rows.items()
+            if raw is not None and pair in values
+        }
         provenance: dict[str, Any] = {"code_version": code_version(), "source": file_source}
         stage = EvalStage.FIELDS
         extracted = {name: True for name in names}

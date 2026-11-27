@@ -251,3 +251,20 @@ def test_provenance_holds_the_settings_of_the_extraction_runs(cli, db, setup) ->
     [run] = prov["runs"]
     stored = db.execute("SELECT settings FROM run WHERE id = %s", (run["id"],)).fetchone()[0]
     assert run["settings"] == stored and stored
+
+
+def test_review_file_of_a_results_file_shows_its_values(cli, db, data_dir, setup) -> None:  # type: ignore[no-untyped-def]
+    # converge T051 (FR-027, US3/AC8): the system column holds the file's value
+    d1, _, _ = setup
+    path = data_dir / "eval" / "results2.json"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps({
+        "format": "docreader-field-results/1", "source": "синтетика",
+        "values": [{"document": d1, "field": "customer_name_short", "result": "found",
+                    "value": "ООО «Гамма»"}],
+    }, ensure_ascii=False), encoding="utf-8")
+    report = run_fields(cli, "--from", path)
+    raw = (data_dir / report["review_file"]).read_bytes()
+    rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig")), delimiter=";"))
+    row = next(r for r in rows if (r["document_id"], r["field"]) == (d1, "customer_name_short"))
+    assert row["system"] == "ООО «Гамма»" and row["clause"] == "" and row["quote"] == ""
