@@ -16,6 +16,7 @@ from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 from docreader.answer_check import AnswerOutcome, ClaimStatus
+from docreader.checks import CHECKS_VERSION, CheckReport
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
 from docreader.gold import GoldPath, LoadKind
@@ -1977,3 +1978,30 @@ def render_eval_search_json(report: SearchReport) -> str:
         },
         ensure_ascii=False, indent=2,
     )
+
+
+def render_check_text(report: CheckReport) -> str:
+    """Text of `docreader check`: counts, ids and rule codes only, never a value or a quote."""
+    lines: list[str] = []
+    for doc in report.documents:
+        c = doc.counts
+        lines.append(
+            f"{doc.document_id}  проверено  принято {c['accepted']}, "
+            f"требует просмотра {c['needs_review']}, отклонено {c['rejected']}, "
+            f"не найдено {c['not_found']}"
+        )
+        if doc.violated:
+            lines.append(f"        нарушено: {', '.join(doc.violated)}")
+    lines += [
+        f"{s.document_id}  пропущено  нет извлечения — docreader extract {s.document_id}"
+        for s in report.skipped
+    ]
+    t = report.totals
+    f = t["fields"]
+    run = f"запуск {report.run_id}, " if report.run_id is not None else ""
+    lines.append(
+        f"Итого: проверено {t['checked']}, пропущено {t['skipped']}; "
+        f"полей: принято {f['accepted']}, требует просмотра {f['needs_review']}, "
+        f"отклонено {f['rejected']}, не найдено {f['not_found']} ({run}правила {CHECKS_VERSION})"
+    )
+    return "\n".join(lines)

@@ -9,14 +9,21 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
+from dataclasses import field as dataclass_field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 
-from docreader import catalog, numwords, values
-from docreader.config import CheckSettings
+import psycopg
+
+from docreader import catalog, numwords, runs, stages, textnorm, values
+from docreader.config import CheckSettings, Settings
+from docreader.errors import UserError
+from docreader.ids import parse_document_id
+from docreader.stages import RunStage, Stage, State
 
 # Changes with any change of a rule or of the status table (research R-2).
 CHECKS_VERSION = "06.1"
@@ -316,3 +323,249 @@ def is_stale(
         or stored.checks_version != CHECKS_VERSION
         or stored.settings_sha256 != settings_fingerprint(settings)
     )
+
+
+# --- the command: load, check, store (research R-1, R-7, R-12) ------------------------------
+
+AFTER_CHARS = 320
+SKIP_NO_EXTRACTION = "no_extraction"
+
+
+def _after(text: str, row: tuple) -> str:
+    """Up to `AFTER_CHARS` of the clean text right after the value, inside its quote's reach."""
+    value_text, quote_start, quote_end = row
+    if not value_text or quote_start is None or quote_end is None:
+        return ""
+    spans = textnorm.locate(text[quote_start:quote_end], value_text)
+    if not spans:
+        return ""
+    end = quote_start + spans[0][1]
+    return text[end : end + AFTER_CHARS]
+
+
+def load_document(conn: psycopg.Connection, doc_id: str) -> tuple[DocFields, int] | None:
+    """The stored fields of a document and the id of the extraction run; None without them."""
+    rows = conn.execute(
+        "SELECT field, result, value_text, value_normalized, quote, quote_start, quote_end,"
+        " run_id FROM field_value WHERE document_id = %s",
+        (doc_id,),
+    ).fetchall()
+    if not rows:
+        return None
+    text_row = conn.execute(
+        "SELECT text FROM document_text WHERE document_id = %s", (doc_id,)
+    ).fetchone()
+    text = text_row[0] if text_row else ""
+    fields = {
+        name: FieldRow(
+            result, value_text, normalized, quote,
+            _after(text, (value_text, q_start, q_end)),
+        )
+        for name, result, value_text, normalized, quote, q_start, q_end, _ in rows
+    }
+    return DocFields(fields, text), max(row[7] for row in rows)
+
+
+def document_needs_review(conn: psycopg.Connection, doc_id: str) -> bool:
+    """Reading or structure of the document is marked `needs_review`."""
+    row = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM stage_status WHERE document_id = %s"
+        " AND stage = ANY(%s) AND state = %s)",
+        (doc_id, [Stage.READING, Stage.STRUCTURE], State.NEEDS_REVIEW),
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def stored_status(conn: psycopg.Connection, doc_id: str) -> StoredStatus | None:
+    """What the stored statuses were computed from; None when incomplete or inconsistent."""
+    rows = conn.execute(
+        "SELECT extraction_run_id, checks_version, settings_sha256, count(*)"
+        " FROM field_status WHERE document_id = %s"
+        " GROUP BY extraction_run_id, checks_version, settings_sha256",
+        (doc_id,),
+    ).fetchall()
+    if len(rows) != 1 or rows[0][3] != len(FIELDS):
+        return None
+    return StoredStatus(rows[0][0], rows[0][1], rows[0][2])
+
+
+@dataclass(frozen=True)
+class CheckedDocument:
+    document_id: str
+    counts: dict[str, int]  # status -> number of fields, all four statuses present
+    violated: list[str]  # sorted distinct rule codes violated in the document
+
+
+@dataclass(frozen=True)
+class SkippedCheck:
+    document_id: str
+    reason: str
+
+
+@dataclass
+class CheckReport:
+    """Result of one `check` command (contracts/cli.md «docreader check»)."""
+
+    run_id: int | None = None
+    documents: list[CheckedDocument] = dataclass_field(default_factory=list)
+    skipped: list[SkippedCheck] = dataclass_field(default_factory=list)
+
+    @property
+    def totals(self) -> dict:
+        fields = {s.value: 0 for s in FieldStatus}
+        for doc in self.documents:
+            for status, n in doc.counts.items():
+                fields[status] += n
+        return {"checked": len(self.documents), "skipped": len(self.skipped), "fields": fields}
+
+    def to_json(self) -> dict:
+        entries: list[dict] = [
+            {"document_id": d.document_id, "state": "checked", "reason": None,
+             "counts": d.counts, "violated": d.violated}
+            for d in self.documents
+        ]
+        entries += [
+            {"document_id": s.document_id, "state": "skipped", "reason": s.reason,
+             "counts": {}, "violated": []}
+            for s in self.skipped
+        ]
+        entries.sort(key=lambda e: e["document_id"])
+        return {
+            "run_id": self.run_id,
+            "checks_version": CHECKS_VERSION,
+            "documents": entries,
+            "totals": self.totals,
+        }
+
+
+def _candidates(
+    conn: psycopg.Connection,
+    settings: Settings,
+    ids: Sequence[str] | None,
+    *,
+    all_: bool,
+    again: bool,
+) -> tuple[list[str], list[SkippedCheck]]:
+    """Documents to check, in order, and the named ones that have no extraction."""
+    with_values = {
+        doc_id: run_id
+        for doc_id, run_id in conn.execute(
+            "SELECT document_id, max(run_id) FROM field_value GROUP BY document_id"
+        )
+    }
+    if ids:
+        chosen: list[str] = []
+        skipped: list[SkippedCheck] = []
+        for doc_id in dict.fromkeys(ids):
+            if not conn.execute("SELECT 1 FROM document WHERE id = %s", (doc_id,)).fetchone():
+                raise UserError(f"Документ {doc_id} не найден — список документов: docreader list")
+            if doc_id in with_values:
+                chosen.append(doc_id)
+            else:
+                skipped.append(SkippedCheck(doc_id, SKIP_NO_EXTRACTION))
+        return chosen, skipped
+    ordered = sorted(with_values, key=parse_document_id)
+    if all_ or again:
+        return ordered, []
+    return [
+        doc_id
+        for doc_id in ordered
+        if is_stale(
+            stored_status(conn, doc_id),
+            extraction_run_id=with_values[doc_id],
+            settings=settings.checks,
+        )
+    ], []
+
+
+def _store(
+    conn: psycopg.Connection,
+    settings: Settings,
+    run_id: int,
+    doc_id: str,
+    extraction_run_id: int,
+    evaluation: dict[str, FieldEvaluation],
+) -> None:
+    """Replace the checks, statuses and stage state of one document, all or nothing."""
+    fingerprint = settings_fingerprint(settings.checks)
+    check_rows = [
+        (doc_id, name, code, check.outcome, check.reason, run_id)
+        for name, ev in evaluation.items()
+        for code, check in ev.checks.items()
+    ]
+    status_rows = [
+        (doc_id, name, ev.status.status, list(ev.status.reasons), list(ev.status.flags),
+         extraction_run_id, CHECKS_VERSION, fingerprint, run_id)
+        for name, ev in evaluation.items()
+    ]
+    flagged = sum(
+        1 for ev in evaluation.values()
+        if ev.status.status in (FieldStatus.NEEDS_REVIEW, FieldStatus.REJECTED)
+    )
+    with conn.transaction():
+        stages.lock(conn, doc_id, Stage.CHECKS)
+        conn.execute("DELETE FROM field_check WHERE document_id = %s", (doc_id,))
+        conn.execute("DELETE FROM field_status WHERE document_id = %s", (doc_id,))
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO field_check (document_id, field, rule, outcome, reason, run_id)"
+                " VALUES (%s, %s, %s, %s, %s, %s)",
+                check_rows,
+            )
+            cur.executemany(
+                "INSERT INTO field_status (document_id, field, status, reasons, flags,"
+                " extraction_run_id, checks_version, settings_sha256, run_id)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                status_rows,
+            )
+        if flagged:
+            stages.set_state(
+                conn, doc_id, Stage.CHECKS, State.NEEDS_REVIEW,
+                f"полей требует просмотра: {flagged}", run_id,
+            )
+        else:
+            stages.set_state(conn, doc_id, Stage.CHECKS, State.DONE, None, run_id)
+
+
+def run_checks(
+    conn: psycopg.Connection,
+    settings: Settings,
+    ids: Sequence[str] | None,
+    *,
+    all_: bool,
+    again: bool,
+) -> CheckReport:
+    """Check the chosen documents (contracts/cli.md «docreader check»)."""
+    if all_ and ids:
+        raise UserError("Нельзя указать --all вместе с идентификаторами")
+    chosen, skipped = _candidates(conn, settings, ids, all_=all_, again=again)
+    report = CheckReport(skipped=skipped)
+    if not chosen:
+        return report
+    run_settings = {"checks": asdict(settings.checks), "checks_version": CHECKS_VERSION}
+    run_id = runs.start_run(conn, RunStage.CHECKS, run_settings, None)
+    report.run_id = run_id
+    try:
+        for doc_id in chosen:
+            loaded = load_document(conn, doc_id)
+            if loaded is None:  # the extraction vanished since the selection
+                report.skipped.append(SkippedCheck(doc_id, SKIP_NO_EXTRACTION))
+                continue
+            doc, extraction_run_id = loaded
+            evaluation = evaluate_document(
+                doc, settings.checks,
+                document_needs_review=document_needs_review(conn, doc_id),
+            )
+            _store(conn, settings, run_id, doc_id, extraction_run_id, evaluation)
+            counts = Counter(ev.status.status.value for ev in evaluation.values())
+            report.documents.append(CheckedDocument(
+                doc_id,
+                {s.value: counts.get(s.value, 0) for s in FieldStatus},
+                sorted({
+                    code for ev in evaluation.values()
+                    for code, c in ev.checks.items() if c.outcome is RuleOutcome.VIOLATED
+                }),
+            ))
+    finally:
+        runs.finish_run(conn, run_id)
+    return report

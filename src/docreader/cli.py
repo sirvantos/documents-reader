@@ -33,6 +33,7 @@ from docreader import (
     textview,
 )
 from docreader.answer_check import AnswerOutcome
+from docreader.checks import run_checks
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
 from docreader.gold import GoldFileError
@@ -46,6 +47,7 @@ from docreader.render import (
     NOTHING_TO_INDEX,
     render_answer_json,
     render_answer_text,
+    render_check_text,
     render_clause_text,
     render_document_text,
     render_eval_blind_pick_json,
@@ -175,6 +177,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--all", action="store_true", help="извлечь из всех доступных договоров")
     p.add_argument("--label", metavar="МЕТКА", help="метка запуска")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("check", help="проверить поля договоров правилами и выставить статусы")
+    p.add_argument(
+        "ids",
+        nargs="*",
+        metavar="ID",
+        help=(
+            "идентификаторы (по умолчанию — договоры без актуальных проверок); "
+            "или подкоманда: summary, queue, load, report"
+        ),
+    )
+    p.add_argument("--all", action="store_true", help="проверить все договоры с извлечением")
+    p.add_argument("--again", action="store_true", help="пересчитать и актуальные проверки")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("index", help="нарезать договоры на отрывки и построить индексы")
@@ -531,6 +547,25 @@ def _cmd_extract(args: argparse.Namespace, settings: Settings, conn: psycopg.Con
         return 130
     if result.stopped is not None:
         return 2
+    return 0
+
+
+_CHECK_SUBCOMMANDS = ("summary", "queue", "load", "report")
+
+
+def _cmd_check(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.ids and args.ids[0] in _CHECK_SUBCOMMANDS:
+        raise UserError(f"check {args.ids[0]}: пока не реализовано")
+    if args.all and args.ids:
+        raise UserError("Нельзя указать --all вместе с идентификаторами")
+    ids = [format_document_id(parse_document_id(i)) for i in args.ids] or None
+    report = run_checks(conn, settings, ids, all_=args.all, again=args.again)
+    if args.json:
+        print(json.dumps(report.to_json(), ensure_ascii=False, indent=2))
+    elif report.run_id is None and not report.skipped:
+        print("Нет договоров, которым нужна проверка: все проверки актуальны")
+    else:
+        print(render_check_text(report))
     return 0
 
 
@@ -1021,6 +1056,7 @@ _HANDLERS: dict[str, _Handler] = {
     "read": _cmd_read,
     "parse": _cmd_parse,
     "extract": _cmd_extract,
+    "check": _cmd_check,
     "index": _cmd_index,
     "recognize": _cmd_recognize,
     "text": _cmd_text,

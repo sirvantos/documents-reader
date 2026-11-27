@@ -80,7 +80,10 @@ CHECK_ANSWERS: dict[str, str] = {
         without=WITHOUT_1M,
         with_vat=field(
             "1 100 000 (один миллион сто тысяч) рублей 00 копеек",
-            "всего с учётом НДС 1 100 000 (один миллион сто тысяч) рублей 00 копеек",
+            # the quote starts at the rate, as in the working set (survey: rate in the quotes
+            # of all 56 contracts), so the rule reads 10% from it (research R-4)
+            "НДС (10%) — 100 000 (сто тысяч) рублей 00 копеек, всего с учётом НДС "
+            "1 100 000 (один миллион сто тысяч) рублей 00 копеек",
             "2.1",
         ),
     ),
