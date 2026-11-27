@@ -777,7 +777,8 @@ def _search_filter(kind: str, case: ShownCase) -> bool:
 
 
 def show_record(
-    conn: psycopg.Connection, record: int, field: str | None, outcome: str | None
+    conn: psycopg.Connection, record: int, field: str | None, outcome: str | None,
+    *, confirmed: bool = False,
 ) -> ShownRecord:
     """The metrics of a record and its cases by the filter (SC-004)."""
     row = _record(conn, record)
@@ -799,6 +800,10 @@ def show_record(
     ]
     if field is not None:
         cases = [c for c in cases if c.field == field]
+    if confirmed:
+        if row.stage != "gold_blind":
+            raise UserError("Отбор --confirmed есть только у записей слепого контроля")
+        cases = [c for c in cases if outcomes.CONFIRMED in c.flags]
     if outcome is not None:
         cases = [
             c for c in cases

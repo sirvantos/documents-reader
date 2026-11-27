@@ -16,7 +16,7 @@ from typing import Any
 
 import psycopg
 
-from docreader import catalog, evaluation, gold, values
+from docreader import catalog, evaluation, gold, outcomes, values
 from docreader.errors import UserError
 from docreader.gold import SYSTEM_CONFIRMED_PATHS, GoldPath, GoldState
 from docreader.outcomes import BlindOutcome, EvalStage, GoldValue
@@ -77,6 +77,13 @@ class BlindTotals:
         }
 
 
+def _confirmed(pair: BlindPair, outcome: BlindOutcome) -> bool:
+    """A compared pair whose reviewed value confirmed a system value (the SC-004 figure)."""
+    return outcome in (BlindOutcome.SAME, BlindOutcome.DIFFERS) and (
+        pair.path in SYSTEM_CONFIRMED_PATHS
+    )
+
+
 def blind_totals(pairs: Sequence[BlindPair]) -> BlindTotals:
     counts = dict.fromkeys(BlindOutcome, 0)
     not_reviewed = confirmed = confirmed_differs = 0
@@ -86,9 +93,7 @@ def blind_totals(pairs: Sequence[BlindPair]) -> BlindTotals:
             not_reviewed += 1
             continue
         counts[outcome] += 1
-        if outcome in (BlindOutcome.SAME, BlindOutcome.DIFFERS) and (
-            pair.path in SYSTEM_CONFIRMED_PATHS
-        ):
+        if _confirmed(pair, outcome):
             confirmed += 1
             confirmed_differs += outcome is BlindOutcome.DIFFERS
     return BlindTotals(
@@ -271,6 +276,7 @@ def blind_report(conn: psycopg.Connection, data_dir: Path, label: str) -> BlindR
             f"{pair.document_id}/{pair.field}", pair.document_id, outcome.value,
             evaluation.gold_fingerprint(GoldValue(GoldState.VALUE, (content,))),
             field=pair.field,
+            flags=(outcomes.CONFIRMED,) if _confirmed(pair, outcome) else (),
         ))
         blind_text, reviewed_text, path = shown[(pair.document_id, pair.field)]
         csv_rows.append([pair.document_id, pair.field, outcome.value, blind_text,

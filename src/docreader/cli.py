@@ -341,6 +341,8 @@ def _add_eval_results_parsers(eval_sub: argparse._SubParsersAction) -> None:
     p.add_argument("record", type=int, metavar="ЗАПИСЬ", help="номер записи")
     p.add_argument("--field", metavar="ПОЛЕ", help="только случаи этого поля")
     p.add_argument("--outcome", metavar="ИСХОД", help="только случаи с этим исходом")
+    p.add_argument("--confirmed", action="store_true",
+                   help="слепой контроль: только пары с подтверждённым значением системы")
     p.add_argument("--json", action="store_true", help=json_help)
     p = eval_sub.add_parser("compare", help="сравнить две записи одного этапа")
     p.add_argument("a", type=int, metavar="A", help="номер первой записи")
@@ -934,7 +936,9 @@ def _cmd_eval_results(
 def _cmd_eval_show(
     args: argparse.Namespace, settings: Settings, conn: psycopg.Connection
 ) -> int:
-    shown = evaluation.show_record(conn, args.record, args.field, args.outcome)
+    shown = evaluation.show_record(
+        conn, args.record, args.field, args.outcome, confirmed=args.confirmed
+    )
     print(render_eval_show_json(shown) if args.json else render_eval_show_text(shown))
     return 0
 

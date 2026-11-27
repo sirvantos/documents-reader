@@ -103,3 +103,18 @@ def test_output_holds_no_values(cli, db) -> None:  # type: ignore[no-untyped-def
         result = cli("eval", "blind", "report", *extra)
         assert result.exit_code == 0, result.stderr
         assert_no_values(result.stdout + result.stderr, secrets)
+
+
+def test_show_filters_the_cases_with_a_confirmed_system_value(cli, db) -> None:  # type: ignore[no-untyped-def]
+    # converge T047 (FR-015, SC-004): «разошлось N из M при подтверждённом значении системы»
+    setup(db)
+    got = report(cli)
+    result = cli("eval", "show", got["record"], "--confirmed", "--json")
+    assert result.exit_code == 0, result.stderr
+    cases = json.loads(result.stdout)["cases"]
+    assert [c["case_key"] for c in cases] == ["D-0001/amount_with_vat"]
+    assert "confirmed" in cases[0]["flags"]
+    both = json.loads(cli("eval", "show", got["record"], "--confirmed", "--outcome", "differs",
+                          "--json").stdout)["cases"]
+    assert len(both) == got["confirmed_differs"]
+    assert cli("eval", "show", got["record"], "--json").stdout.count("case_key") == 2

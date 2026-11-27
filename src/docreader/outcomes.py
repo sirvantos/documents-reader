@@ -199,6 +199,7 @@ def totals(cases: Sequence[FieldCase]) -> Totals:
 
 NOT_FOUND_PLACE = "не найден"
 EXCLUDED = "excluded"
+CONFIRMED = "confirmed"  # blind case: the reviewed value confirmed a system value
 _MISSING = "—"
 # A smaller rank is better (principle IV: invented is worse than missed).
 _FIELD_RANK = {Outcome.CORRECT: 0, Outcome.MISSED: 1, Outcome.WRONG: 2, Outcome.INVENTED: 3}
