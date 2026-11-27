@@ -132,8 +132,8 @@ US3 (решения аналитика, P2), US4 (польза правил, P2)
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T021 [P] [sonnet] Documentation: `README.md` and `CLAUDE.md` «Commands» — the `check` group and what may be sent to the agent (terminal output only; never the queue page, answers or report files); `docs/tech-context.md` — data model rows `field_check`, `field_status`, `field_decision` and the `field_value` row (plan deviation 1), `[checks]` settings
-- [ ] T022 [opus] Output guard across all `check` commands (`check`, `summary`, `queue`, `load`, `report`, text and `--json`) in `tests/integration/test_check_output_guard.py`; performance case: `check --all` on 56 synthetic documents (generated in the test) under 60 s (SC-004); `scripts/check.sh` passes
+- [X] T021 [P] [sonnet] Documentation: `README.md` and `CLAUDE.md` «Commands» — the `check` group and what may be sent to the agent (terminal output only; never the queue page, answers or report files); `docs/tech-context.md` — data model rows `field_check`, `field_status`, `field_decision` and the `field_value` row (plan deviation 1), `[checks]` settings
+- [X] T022 [opus] Output guard across all `check` commands (`check`, `summary`, `queue`, `load`, `report`, text and `--json`) in `tests/integration/test_check_output_guard.py`; performance case: `check --all` on 56 synthetic documents (generated in the test) under 60 s (SC-004); `scripts/check.sh` passes
 - [ ] T023 [analyst] Quickstart Б0–Б3 on the Mac: migration; `check --all` with time, `summary` twice (SC-001, SC-004, SC-005); `check report` (SC-003); `check queue`, decisions, `check load`, `summary` with the queue time (SC-006, SC-007). Send only the terminal output and times — never the page, answers or report files
 - [ ] T024 [opus] Quickstart Б4: the item «Проверки правилами (фича 06), замер …» in `docs/tech-context.md` (statuses of the working set, time, rule usefulness by the gold set, queue time); a missed target is written down, not tuned; a systematic false alarm → an abstract case in `make_check_contracts` (bump its version) and a failing test first (CLAUDE.md «Delivery»)
 
