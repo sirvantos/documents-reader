@@ -404,6 +404,39 @@ _TABLE = {LoadKind.REVIEW: "gold_field", LoadKind.TEMPLATE: "gold_field",
 
 
 @dataclass(frozen=True)
+class FieldCounts:
+    """What one field of the file's coverage got (counts only)."""
+
+    covered: int
+    accepted: int
+    absent: int
+    paths: dict[str, int]
+
+    @property
+    def skipped(self) -> int:
+        return self.covered - self.accepted
+
+    def as_json(self) -> dict[str, Any]:
+        return {"covered": self.covered, "accepted": self.accepted, "absent": self.absent,
+                "skipped": self.skipped, "paths": dict(self.paths)}
+
+
+def field_counts(parsed: ParsedGold) -> dict[str, FieldCounts]:
+    """Counts per field of one parsed file, in field-name order."""
+    result: dict[str, FieldCounts] = {}
+    for field in sorted({f for _, f in parsed.coverage}):
+        covered = sum(1 for _, f in parsed.coverage if f == field)
+        cells = [c for (_, f), c in parsed.values.items() if f == field]
+        paths: dict[str, int] = {}
+        for cell in cells:
+            paths[cell.path.value] = paths.get(cell.path.value, 0) + 1
+        result[field] = FieldCounts(
+            covered, len(cells), sum(1 for c in cells if c.state is GoldState.ABSENT), paths
+        )
+    return result
+
+
+@dataclass(frozen=True)
 class LoadReport:
     kind: LoadKind
     diff: GoldDiff
@@ -414,6 +447,7 @@ class LoadReport:
     absent: int
     unlabeled: int  # pairs of the coverage left unmarked
     errors: int
+    fields: dict[str, FieldCounts]
 
 
 def _stored(conn: psycopg.Connection, table: str) -> dict[Pair, StoredGold]:
@@ -463,11 +497,12 @@ def load(
         paths[cell.path.value] = paths.get(cell.path.value, 0) + 1
     absent = sum(1 for c in parsed.values.values() if c.state is GoldState.ABSENT)
     unlabeled = len(parsed.coverage) - len(parsed.values)
+    by_field = field_counts(parsed)
 
     def report(load_id: int | None, version: str) -> LoadReport:
         return LoadReport(
             parsed.kind, d, load_id is None and d.needs_confirmation, load_id, version, paths,
-            absent, unlabeled, len(parsed.errors),
+            absent, unlabeled, len(parsed.errors), by_field,
         )
 
     if d.needs_confirmation and not yes:
@@ -477,6 +512,7 @@ def load(
         "same": len(d.same), "other_kind": len(d.other_kind), "paths": paths,
         "absent": absent, "unlabeled": unlabeled, "errors": len(parsed.errors),
         "skipped_rows": len(parsed.skipped_rows),
+        "fields": {name: c.as_json() for name, c in by_field.items()},
     }
     docs = [doc for doc, _ in sorted(parsed.coverage)]
     fields = [f for _, f in sorted(parsed.coverage)]

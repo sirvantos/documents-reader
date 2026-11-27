@@ -86,6 +86,7 @@ def test_template_json_keys(db: psycopg.Connection, cli: CliRunner, data_dir: Pa
     assert set(data) == {
         "kind", "added", "changed", "removed", "same", "other_kind", "paths", "absent",
         "unlabeled", "errors", "skipped_rows", "needs_confirmation", "load_id", "gold_sha256",
+        "fields",
     }
     assert data["kind"] == "template"
     assert data["added"] == 3
@@ -208,3 +209,34 @@ def test_other_extension_is_refused(db: psycopg.Connection, cli: CliRunner,
 
     assert result.exit_code == 1
     assert "ожидается файл .csv (шаблон) или .json (ответы страницы проверки)" in result.stderr
+
+
+def test_template_counts_per_field(db: psycopg.Connection, cli: CliRunner,
+                                   data_dir: Path) -> None:
+    # converge T044 (FR-005, US1/AC6): counts per field in text, --json and gold_load.counts
+    insert_documents(db, 3)
+    path = _write_lines(
+        data_dir / "template.csv",
+        [HEADER, f"D-0001;{CONTRACT};{AMOUNT}", f"D-0002;отсутствует;{WRONG_AMOUNT}",
+         "D-0003;ДП-2026-003;"],
+    )
+
+    text = cli("eval", "load", path)
+    assert text.exit_code == 0, text.stderr
+    line = next(ln for ln in text.stdout.splitlines() if ln.startswith("  по полям: "))
+    assert "contract_number 3/3" in line and "отсутствует 1" in line
+    assert "amount_with_vat 1/3" in line
+
+    result = cli("eval", "load", path, "--json")
+    data = json.loads(result.stdout)
+    assert data["fields"]["contract_number"] == {
+        "covered": 3, "accepted": 3, "absent": 1, "skipped": 0, "paths": {"template": 3},
+    }
+    assert data["fields"]["amount_with_vat"]["accepted"] == 1
+    assert data["fields"]["amount_with_vat"]["skipped"] == 2
+    stored = db.execute("SELECT counts FROM gold_load ORDER BY id DESC LIMIT 1").fetchone()
+    assert stored is not None and stored[0]["fields"]["contract_number"]["accepted"] == 3
+    assert_no_values(
+        text.stdout + result.stdout,
+        synthetic_secrets(db, extra=[CONTRACT, "ДП-2026-003", AMOUNT, WRONG_AMOUNT]),
+    )

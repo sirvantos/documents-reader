@@ -1,4 +1,4 @@
-"""Which contracts would add variety to the gold set? Ids and group numbers only (feature 09).
+"""Which contracts would add variety to the gold set? Ids and group numbers only (feature 02).
 
 Run from the repository root after extraction (`docreader extract`); no model runs:
 

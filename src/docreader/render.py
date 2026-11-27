@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     )
     from docreader.extraction import ExtractedDocument, ExtractRun
     from docreader.fieldview import FieldsView, FieldView
-    from docreader.gold import LoadReport, ParsedGold
+    from docreader.gold import FieldCounts, LoadReport, ParsedGold
     from docreader.indexing import IndexedDocument, IndexRun
     from docreader.outcomes import CaseChange, FieldTotals, OutcomeCounts
     from docreader.parsing import ParsedDocument, ParseRun
@@ -1369,17 +1369,26 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
     return f"{n} {word}"
 
 
-def _accepted_parts(kind: LoadKind, report: LoadReport) -> list[str]:
+def _accepted_parts(kind: LoadKind, paths: dict[str, int], absent: int) -> list[str]:
     parts: list[str] = []
     for path, word in _ACCEPTED_WORDS:
-        n = report.paths.get(path.value, 0)
+        n = paths.get(path.value, 0)
         if path is GoldPath.TEMPLATE and kind is LoadKind.TEMPLATE:
-            n -= report.absent  # a template «отсутствует» cell is stored with path template
+            n -= absent  # a template «отсутствует» cell is stored with path template
         if n:
             parts.append(f"{word} {n}")
-    if report.absent:
-        parts.append(f"отсутствует {report.absent}")
+    if absent:
+        parts.append(f"отсутствует {absent}")
     return parts
+
+
+def _field_part(kind: LoadKind, name: str, counts: FieldCounts) -> str:
+    """«name accepted/covered» with the by-path split when it is not just «из шаблона»."""
+    head = f"{name} {counts.accepted}/{counts.covered}"
+    parts = _accepted_parts(kind, counts.paths, counts.absent)
+    if counts.absent or len(counts.paths) > 1 or kind is LoadKind.REVIEW:
+        return f"{head} ({', '.join(parts)})" if parts else head
+    return head
 
 
 def render_eval_load_text(parsed: ParsedGold, report: LoadReport) -> str:
@@ -1396,7 +1405,7 @@ def render_eval_load_text(parsed: ParsedGold, report: LoadReport) -> str:
         lines.append(f"Загрузка: шаблон ({rows}, {columns})")
 
     accepted = len(parsed.values)
-    parts = _accepted_parts(parsed.kind, report)
+    parts = _accepted_parts(parsed.kind, report.paths, report.absent)
     head = f"  принято {accepted}" + (f": {', '.join(parts)}" if parts else "")
     lines.append(f"{head}; пропущено {report.unlabeled}")
 
@@ -1414,6 +1423,9 @@ def render_eval_load_text(parsed: ParsedGold, report: LoadReport) -> str:
     )
     if diff.other_kind:
         lines.append(f"  из файла другого вида: {len(diff.other_kind)}")
+    if report.fields:
+        by_field = ", ".join(_field_part(parsed.kind, n, c) for n, c in report.fields.items())
+        lines.append(f"  по полям: {by_field}")
     lines.append(f"  версия эталона: {report.gold_sha256[:12]}")
     if report.needs_confirmation:
         removed = _plural(len(diff.removed), "значение", "значения", "значений")
@@ -1434,6 +1446,7 @@ def render_eval_load_json(parsed: ParsedGold, report: LoadReport) -> str:
         "paths": dict(report.paths),
         "absent": report.absent,
         "unlabeled": report.unlabeled,
+        "fields": {name: c.as_json() for name, c in report.fields.items()},
         "errors": [{"where": e.where, "reason": e.reason} for e in parsed.errors],
         "skipped_rows": [{"where": s.where, "reason": s.reason} for s in parsed.skipped_rows],
         "needs_confirmation": report.needs_confirmation,
