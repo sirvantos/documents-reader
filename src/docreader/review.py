@@ -304,7 +304,7 @@ def _load_rules(conn: psycopg.Connection, doc: str) -> dict[Pair, list[Shown]]:
     return {(doc, field): [_shown_of(r) for r in results] for field, results in found.items()}
 
 
-class _Images:
+class PageImages:
     """PNG files of one build: one per (document, page, marked lines), rendered once."""
 
     def __init__(self, conn: psycopg.Connection, settings: Settings, folder: Path) -> None:
@@ -346,7 +346,7 @@ class _Images:
         return [self.page(p, idx) for p, idx in sorted(lines.items())[:MAX_IMAGES]]
 
 
-def _source_json(shown: Shown, images: _Images) -> dict[str, Any]:
+def _source_json(shown: Shown, images: PageImages) -> dict[str, Any]:
     names = images.of_quote(shown)
     return {
         "value": shown.value,
@@ -404,7 +404,10 @@ class _Passages:
         return [self._pages[ordinal] for (_, ordinal), _score in ranked]
 
 
-def _new_build(settings: Settings, out_dir: Path | None) -> tuple[str, Path]:
+def new_build(
+    settings: Settings, out_dir: Path | None, *, parent: str = "eval", prefix: str = "review"
+) -> tuple[str, Path]:
+    """A build id and its folder: `--out` inside the data dir, else `<parent>/<prefix>-<build>`."""
     data = settings.data_dir.resolve()
     if out_dir is not None:
         folder = out_dir.resolve()
@@ -418,7 +421,7 @@ def _new_build(settings: Settings, out_dir: Path | None) -> tuple[str, Path]:
         return f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}", folder
     while True:
         build = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
-        default = settings.data_dir / "eval" / f"review-{build}"
+        default = settings.data_dir / parent / f"{prefix}-{build}"
         if not default.exists():
             return build, default
 
@@ -430,7 +433,7 @@ def build_review(
     out_dir: Path | None,
 ) -> ReviewBuilt:
     """Build `eval/review-<build>/` (cards.json, index.html, page images)."""
-    build, folder = _new_build(settings, out_dir)
+    build, folder = new_build(settings, out_dir)
     docs = _documents(conn, document_ids)
     waiting = sorted(
         doc
@@ -451,7 +454,7 @@ def build_review(
     cards = build_cards(docs, list(FIELD_NAMES), system, rule_values, gold_rows, set(waiting))
 
     folder.mkdir(parents=True)
-    images = _Images(conn, settings, folder)
+    images = PageImages(conn, settings, folder)
     without_places = 0
     by_key: dict[str, dict[str, Any]] = {}
     try:

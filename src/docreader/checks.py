@@ -239,6 +239,7 @@ def apply(code: str, doc: DocFields, settings: CheckSettings) -> dict[str, RuleC
 
 FIELDS = _ALL
 DOCUMENT_NEEDS_REVIEW = "document_needs_review"
+SYSTEM_CHANGED = "system_changed"
 
 
 @dataclass(frozen=True)
@@ -569,3 +570,71 @@ def run_checks(
     finally:
         runs.finish_run(conn, run_id)
     return report
+
+
+# --- the summary (research R-7, R-10) ------------------------------------------------------
+
+
+def split_fresh(
+    conn: psycopg.Connection, settings: Settings, doc_ids: Sequence[str]
+) -> tuple[list[str], list[str]]:
+    """Documents with extraction split into (checks up to date, checks stale)."""
+    fresh: list[str] = []
+    stale: list[str] = []
+    for doc in doc_ids:
+        loaded = load_document(conn, doc)
+        if loaded is None:
+            continue
+        run_id = loaded[1]
+        if is_stale(stored_status(conn, doc), extraction_run_id=run_id, settings=settings.checks):
+            stale.append(doc)
+        else:
+            fresh.append(doc)
+    return fresh, stale
+
+
+def documents_with_extraction(conn: psycopg.Connection) -> list[str]:
+    return [r[0] for r in conn.execute(
+        "SELECT DISTINCT document_id FROM field_value ORDER BY document_id")]
+
+
+@dataclass(frozen=True)
+class CheckSummary:
+    """Counts only (no values): statuses per field and in total, decisions, stale documents."""
+
+    documents: int
+    stale: int
+    fields: dict[str, dict[str, int]]
+    total: dict[str, int]
+    decisions: dict[str, int]
+    system_changed: int
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "checks_version": CHECKS_VERSION,
+            "documents": self.documents,
+            "stale": self.stale,
+            "fields": self.fields,
+            "total": self.total,
+            "decisions": self.decisions,
+            "system_changed": self.system_changed,
+        }
+
+
+def summarize(conn: psycopg.Connection, settings: Settings) -> CheckSummary:
+    """Statuses of the fields of documents with up-to-date checks; stale ones are only counted."""
+    docs = documents_with_extraction(conn)
+    fresh, stale = split_fresh(conn, settings, docs)
+    statuses = [s.value for s in FieldStatus]
+    fields = {f: dict.fromkeys(statuses, 0) for f in FIELDS}
+    changed = 0
+    for field, status, flags in conn.execute(
+        "SELECT field, status, flags FROM field_status WHERE document_id = ANY(%s)", (fresh,)
+    ):
+        fields[field][status] += 1
+        changed += SYSTEM_CHANGED in flags
+    total = {s: sum(f[s] for f in fields.values()) for s in statuses}
+    decisions = dict.fromkeys((k.value for k in DecisionKind), 0)
+    for kind, n in conn.execute("SELECT kind, count(*) FROM field_decision GROUP BY kind"):
+        decisions[kind] = n
+    return CheckSummary(len(docs), len(stale), fields, total, decisions, changed)

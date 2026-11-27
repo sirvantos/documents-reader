@@ -16,7 +16,8 @@ from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 from docreader.answer_check import AnswerOutcome, ClaimStatus
-from docreader.checks import CHECKS_VERSION, CheckReport
+from docreader.check_queue import QueueBuilt
+from docreader.checks import CHECKS_VERSION, CheckReport, CheckSummary, FieldStatus
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
 from docreader.gold import GoldPath, LoadKind
@@ -2005,3 +2006,52 @@ def render_check_text(report: CheckReport) -> str:
         f"отклонено {f['rejected']}, не найдено {f['not_found']} ({run}правила {CHECKS_VERSION})"
     )
     return "\n".join(lines)
+
+
+def render_check_summary_json(summary: CheckSummary) -> str:
+    return json.dumps(summary.to_json(), ensure_ascii=False, indent=2)
+
+
+def render_check_summary_text(summary: CheckSummary) -> str:
+    """Text of `check summary`: counts only."""
+    heads = ("принято", "требует просмотра", "отклонено", "не найдено")
+    statuses = [s.value for s in FieldStatus]
+    width = max(len(f) for f in summary.fields)
+    widths = [max(len(h), 6) for h in heads]
+
+    def row(name: str, counts: dict[str, int]) -> str:
+        cells = "  ".join(f"{counts[s]:>{w}}" for s, w in zip(statuses, widths, strict=True))
+        return f"  {name:<{width}}  {cells}"
+
+    head = "  ".join(f"{h:>{w}}" for h, w in zip(heads, widths, strict=True))
+    lines = [
+        f"Статусы полей (правила {CHECKS_VERSION}): договоров {summary.documents}, "
+        f"проверки устарели у {summary.stale}",
+        f"  {'поле':<{width}}  {head}",
+        *(row(f, c) for f, c in summary.fields.items()),
+        row("всего", summary.total),
+    ]
+    d = summary.decisions
+    lines.append(
+        f"Решения аналитика: {sum(d.values())} (подтверждено {d['confirm']}, "
+        f"исправлено {d['correct']}, в договоре нет {d['absent']}); "
+        f"значение системы изменилось у {summary.system_changed}"
+    )
+    return "\n".join(lines)
+
+
+def render_check_queue_json(built: QueueBuilt) -> str:
+    return json.dumps(built.to_json(), ensure_ascii=False, indent=2)
+
+
+def render_check_queue_text(built: QueueBuilt) -> str:
+    """Text of `check queue`: path and counts, never a value."""
+    by = built.by_status
+    return "\n".join([
+        f"Очередь: {built.path}",
+        f"  карточек {built.cards}: требует просмотра {by['needs_review']}, "
+        f"отклонено {by['rejected']}; значение системы изменилось {built.system_changed}",
+        "  по полям: " + (", ".join(f"{f} {n}" for f, n in built.by_field.items()) or "—"),
+        f"  договоров с устаревшими проверками: {built.stale}"
+        + (" (сначала docreader check)" if built.stale else ""),
+    ])

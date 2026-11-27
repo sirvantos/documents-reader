@@ -33,7 +33,8 @@ from docreader import (
     textview,
 )
 from docreader.answer_check import AnswerOutcome
-from docreader.checks import run_checks
+from docreader.check_queue import build_queue
+from docreader.checks import run_checks, summarize
 from docreader.config import Settings, load_settings
 from docreader.errors import DocreaderError, UserError
 from docreader.gold import GoldFileError
@@ -47,6 +48,10 @@ from docreader.render import (
     NOTHING_TO_INDEX,
     render_answer_json,
     render_answer_text,
+    render_check_queue_json,
+    render_check_queue_text,
+    render_check_summary_json,
+    render_check_summary_text,
     render_check_text,
     render_clause_text,
     render_document_text,
@@ -191,6 +196,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--all", action="store_true", help="проверить все договоры с извлечением")
     p.add_argument("--again", action="store_true", help="пересчитать и актуальные проверки")
+    p.add_argument("--out", metavar="ПАПКА", help="для queue: папка внутри папки данных")
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("index", help="нарезать договоры на отрывки и построить индексы")
@@ -554,6 +560,19 @@ _CHECK_SUBCOMMANDS = ("summary", "queue", "load", "report")
 
 
 def _cmd_check(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    if args.ids and args.ids[0] == "summary":
+        summary = summarize(conn, settings)
+        print(
+            render_check_summary_json(summary) if args.json
+            else render_check_summary_text(summary)
+        )
+        return 0
+    if args.ids and args.ids[0] == "queue":
+        built = build_queue(
+            conn, settings, args.ids[1:] or None, Path(args.out) if args.out else None
+        )
+        print(render_check_queue_json(built) if args.json else render_check_queue_text(built))
+        return 0
     if args.ids and args.ids[0] in _CHECK_SUBCOMMANDS:
         raise UserError(f"check {args.ids[0]}: пока не реализовано")
     if args.all and args.ids:
