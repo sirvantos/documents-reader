@@ -90,3 +90,18 @@ def test_blind_totals_split_by_confirmed_system_values() -> None:
     assert t.pairs == 5 and t.not_reviewed == 1
     assert (t.same, t.differs, t.blind_only, t.reviewed_only) == (1, 3, 1, 0)
     assert (t.confirmed_pairs, t.confirmed_differs) == (3, 2)
+
+
+def test_stored_values_are_normalized_again_by_the_current_code() -> None:
+    # analyst's measurement, record 27: the blind values were loaded before later fixes of
+    # the normalization, so their stored forms differed from the gold set's
+    from docreader.blind import current_value
+
+    name = catalog.field("contractor_name_short")
+    stale = current_value(name, "value", ["акционерное общество «Дельта»"], ["stale form"])
+    assert stale == GoldValue(GoldState.VALUE, ('акционерное общество "Дельта"',))
+    amount = catalog.field("amount_with_vat")
+    assert current_value(amount, "value", ["1 800 000,00"], ["0"]).normalized == ("1800000.00",)
+    # a text the current code cannot read keeps the stored form; «absent» stays absent
+    assert current_value(amount, "value", ["???"], ["5.00"]).normalized == ("5.00",)
+    assert current_value(amount, "absent", [], []) == GoldValue(GoldState.ABSENT, ())

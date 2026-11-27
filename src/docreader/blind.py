@@ -16,7 +16,7 @@ from typing import Any
 
 import psycopg
 
-from docreader import catalog, evaluation, gold
+from docreader import catalog, evaluation, gold, values
 from docreader.errors import UserError
 from docreader.gold import SYSTEM_CONFIRMED_PATHS, GoldPath, GoldState
 from docreader.outcomes import BlindOutcome, EvalStage, GoldValue
@@ -198,8 +198,23 @@ class BlindReport:
         return {"record": self.record, **self.totals.as_dict(), "review_file": self.review_file}
 
 
-def _gold_value(state: str, normalized: Sequence[str]) -> GoldValue:
-    return GoldValue(GoldState(state), tuple(normalized))
+def current_value(
+    field: catalog.CatalogField, state: str, texts: Sequence[str], stored: Sequence[str]
+) -> GoldValue:
+    """A stored value with its texts normalized again by the current code.
+
+    Analyst's measurement, record 27 (2026-11-27): the blind values had been loaded before
+    later fixes of the normalization, so they differed from the gold set only in form. A text
+    the current code cannot read keeps its stored form.
+    """
+    if GoldState(state) is not GoldState.VALUE or not texts:
+        return GoldValue(GoldState(state), tuple(stored))
+    try:
+        return GoldValue(
+            GoldState.VALUE, tuple(values.normalize_field(field, t) for t in texts)
+        )
+    except ValueError:
+        return GoldValue(GoldState.VALUE, tuple(stored))
 
 
 def _shown(state: str | None, texts: Sequence[str] | None) -> str:
@@ -235,8 +250,9 @@ def blind_report(conn: psycopg.Connection, data_dir: Path, label: str) -> BlindR
     for doc, field, b_state, b_norm, b_text, b_load, g_state, g_norm, g_text, g_path, g_load in (
         rows
     ):
-        blind_value = _gold_value(b_state, b_norm) if b_state else None
-        reviewed = _gold_value(g_state, g_norm) if g_state else None
+        field_spec = catalog.field(field)
+        blind_value = current_value(field_spec, b_state, b_text, b_norm) if b_state else None
+        reviewed = current_value(field_spec, g_state, g_text, g_norm) if g_state else None
         after = b_load is None or (g_load is not None and g_load > b_load)
         pairs.append(BlindPair(doc, field, blind_value, reviewed,
                                GoldPath(g_path) if g_path else None, after))
