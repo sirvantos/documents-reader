@@ -70,7 +70,7 @@ kbd{font:12px ui-monospace,monospace;border:1px solid var(--line);border-radius:
 </style></head><body>
 <header><b>Проверка полей</b><span id="count"></span><div class="bar"><i id="fill"></i></div>
 <button id="dl">Скачать ответы</button>
-<span class="muted"><kbd>1</kbd> <kbd>2</kbd> значение · <kbd>3</kbd> другое ·
+<span class="muted"><kbd>1</kbd> <kbd>2</kbd> <kbd>Q</kbd> <kbd>W</kbd> значение · <kbd>3</kbd> другое ·
 <kbd>4</kbd> отсутствует · <kbd>0</kbd> пропустить · <kbd>←</kbd> <kbd>→</kbd> карточки</span>
 </header>
 <main id="list"></main>
@@ -83,6 +83,8 @@ const KEY = 'gold-review:' + meta.build;
 const MARK = {changed: 'значение изменилось после проверки', disagree: 'разошлось',
   rules_only: 'нашли только правила', none: 'никто не нашёл', model_only: 'нашла только модель',
   agree: 'совпало'};
+// keys of the choices; «3», «4» and «0» are taken, so the third and later ones are letters
+const CHOICE_KEYS = ['1', '2', 'q', 'w', 'e', 'r'];
 const SINGLE = ['agree', 'model_only', 'rules_only'];
 let state = {};
 try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { state = {}; }
@@ -188,7 +190,7 @@ function draw() {
     const ch = el('div', 'choices');
     options(c).forEach(([ans, label], k) => {
       const on = a && a.answer === ans.answer && a.choice === ans.choice;
-      const b = el('button', on ? 'on' : '', (k + 1) + ' · ' + label);
+      const b = el('button', on ? 'on' : '', (CHOICE_KEYS[k] || '?').toUpperCase() + ' · ' + label);
       b.onclick = () => answer(n, ans); ch.append(b);
     });
     const other = el('button', a && a.answer === 'typed' ? 'on' : '', '3 · другое значение');
@@ -232,13 +234,17 @@ function draw() {
   document.getElementById('fill').style.width =
     (cards.length ? 100 * (cards.length - left) / cards.length : 100) + '%';
 }
+// a letter by its physical key, so it works in the Russian layout too
+function choiceKey(ev) {
+  return ev.code && ev.code.startsWith('Key') ? ev.code.slice(3).toLowerCase() : ev.key;
+}
 document.addEventListener('keydown', ev => {
   if (typing !== null || ev.ctrlKey || ev.metaKey || ev.altKey || !cards.length) return;
   const c = cards[cur];
   if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') { ev.preventDefault(); go(cur + 1); }
   else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') { ev.preventDefault(); go(cur - 1); }
-  else if (ev.key === '1' || ev.key === '2') {
-    const o = options(c)[Number(ev.key) - 1]; if (o) answer(cur, o[0]);
+  else if (CHOICE_KEYS.indexOf(choiceKey(ev)) >= 0) {
+    const o = options(c)[CHOICE_KEYS.indexOf(choiceKey(ev))]; if (o) answer(cur, o[0]);
   }
   else if (ev.key === '3') { ev.preventDefault(); typing = cur; typingClause = ''; draw(); }
   else if (ev.key === '4') answer(cur, {answer: 'absent'});
