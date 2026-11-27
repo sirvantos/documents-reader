@@ -184,7 +184,7 @@ def test_rules_source(cli, db, setup) -> None:  # type: ignore[no-untyped-def]
         "SELECT stage, provenance FROM eval_result WHERE id = %s", (report["record"],)
     ).fetchone()
     assert row[0] == "rules"
-    assert row[1]["rules_version"] == "02.1"
+    assert row[1]["rules_version"] == "02.2"
     got = cases(db, report["record"])
     assert got[f"{d1}/contract_number"] == ("correct", [])
     # the rules find exactly the gold prices, where feature 05 missed both

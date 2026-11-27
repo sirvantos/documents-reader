@@ -1749,7 +1749,7 @@ def make_answer_contracts(directory: str | Path) -> list[Path]:
 
 # --- rules contracts (feature 009, T003) ---------------------------------------
 
-RULES_GENERATOR_VERSION = 1  # bump when a contract's text changes (R-14)
+RULES_GENERATOR_VERSION = 2  # bump when a contract's text changes (R-14)
 
 _RULES_PARTIES_A = (
     "Общество с ограниченной ответственностью «Альфа» (ООО «Альфа»), "
@@ -1824,6 +1824,19 @@ _RULES_PRICE_C = (
     "2.2. Стоимость первого этапа составляет 300 000 рублей 00 копеек без учёта НДС.",
 )
 _RULES_PRICE_D = ("2.1. Цена Договора составляет 1 200 000 рублей 00 копеек, включая НДС.",)
+# analyst's measurement, record 24 (2026-11-27): the legal form spelled out with no short
+# name in brackets, and the rate in brackets between «с НДС» and the amount
+_RULES_PARTIES_E = (
+    "Открытое акционерное общество «Гамма», именуемое в дальнейшем «Заказчик», "
+    "и акционерное общество «Дельта», именуемое в дальнейшем «Подрядчик», "
+    "заключили настоящий договор:"
+)
+_RULES_PRICE_E = (
+    "2.1. Цена настоящего Договора составляет — 1 500 000 (Один миллион пятьсот тысяч) "
+    "рублей 00 копеек без НДС. Цена настоящего Договора увеличивается на НДС (20%) — "
+    "300 000 (Триста тысяч) рублей 00 копеек, и составляет всего с НДС (20%) — "
+    "1 800 000 (Один миллион восемьсот тысяч) рублей 00 копеек.",
+)
 
 
 def _rules_pages(
@@ -1876,22 +1889,30 @@ _RULES_PAGES: dict[str, tuple[tuple[str, ...], ...]] = {
         _RULES_NO_TERM,
         _RULES_LIABILITY_PLAIN,
     ),
+    "rules-e": _rules_pages(
+        ("ДОГОВОР ПОДРЯДА № Р-15/2026", "г. Энск"),
+        _RULES_PARTIES_E,
+        _RULES_PRICE_E,
+        _RULES_TERM_PLAIN,
+        _RULES_LIABILITY_PLAIN,
+    ),
 }
 
 
 def make_rules_contracts(directory: str | Path) -> list[Path]:
-    """Writes the four synthetic contracts of feature 009 (T003) into the folder.
+    """Writes the five synthetic contracts of feature 009 (T003) into the folder.
 
     `rules-a.pdf` (plain), `rules-b.pdf` (traps: other documents' numbers and dates,
     penalty amounts outside the price), `rules-c.pdf` (two amounts without VAT in the
-    price section), `rules-d.pdf` (no term clause, amount with VAT only). Returns the
+    price section), `rules-d.pdf` (no term clause, amount with VAT only), `rules-e.pdf`
+    (legal forms spelled out without short names, «с НДС (20%) — сумма»). Returns the
     paths in this order. Text layer only; all names and numbers fictional.
     """
     root = Path(directory)
     root.mkdir(parents=True, exist_ok=True)
     return [
         _write(root / f"{name}.pdf", _extraction_pdf(_RULES_PAGES[name]))
-        for name in ("rules-a", "rules-b", "rules-c", "rules-d")
+        for name in ("rules-a", "rules-b", "rules-c", "rules-d", "rules-e")
     ]
 
 

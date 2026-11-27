@@ -239,6 +239,7 @@ _SPELLED_FORMS: dict[str, str] = {
     "государственное унитарное предприятие": "ГУП",
     "муниципальное унитарное предприятие": "МУП",
 }
+SPELLED_FORMS: tuple[str, ...] = tuple(_SPELLED_FORMS)  # longer forms first
 _SPACES_IN_QUOTES = re.compile(r'"\s*([^"]*?)\s*"')
 # Abbreviated legal forms that open a short name.
 _SHORT_FORMS = (

@@ -18,7 +18,7 @@ from docreader import values, verify
 from docreader.fields import PROTOTYPE_FIELDS, Result, spec
 from docreader.verify import FieldResult, TextIndex
 
-RULES_VERSION = "02.1"
+RULES_VERSION = "02.2"
 
 _WS = r"\s+"
 # «ДОГОВОР ПОДРЯДА № ДП-17/2026», «ДОГОВОР\n№ Р-11/2026»; «протокол № …», «доверенность № …»
@@ -35,13 +35,28 @@ _NAME_PLAIN = re.compile(
     r"(?P<name>\b[А-ЯЁ]{2,4}\s*«[^»\n]{1,60}»)\s*,?\s*"
     r"(?:именуем\w*\s+в\s+дальнейшем|\(?далее\s*[—–-])\s*[«\"]?" + _PARTY,
 )
+# «Открытое акционерное общество «Гамма», именуемое в дальнейшем «Заказчик»»: the legal
+# form spelled out, no short name in brackets (analyst's measurement, record 24)
+_NAME_SPELLED = re.compile(
+    r"(?<![А-ЯЁа-яё])(?P<name>(?:"
+    + "|".join(r"\s+".join(form.split()) for form in values.SPELLED_FORMS)
+    + r")\s*«[^»\n]{1,60}»)\s*,?\s*(?:именуем\w*\s+в\s+дальнейшем|\(?далее\s*[—–-])"
+    r"\s*[«\"]?" + _PARTY,
+    re.IGNORECASE,
+)
 _PRICE_SECTION = re.compile(r"цен", re.IGNORECASE)
 _WITHOUT_VAT = re.compile(r"^\W*без\s+(?:учёта\s+|учета\s+)?НДС", re.IGNORECASE)
 _WITH_VAT_AFTER = re.compile(r"^\W*(?:с\s+учётом|с\s+учетом|включая)\s+НДС", re.IGNORECASE)
+# the rate may stand between «НДС» and the amount, in brackets or not: «с НДС (20%) — …»
+_RATE = r"(?:\s*\(?\s*\d+(?:[.,]\d+)?\s*%\s*\)?)"
 _WITH_VAT_BEFORE = re.compile(
-    r"(?:с\s+учётом|с\s+учетом|включая|с)\s+НДС\W{0,3}$", re.IGNORECASE
+    r"(?:с\s+учётом|с\s+учетом|включая|\bс)\s+НДС" + _RATE + r"?\W{0,3}$", re.IGNORECASE
 )
-_VAT_AMOUNT_BEFORE = re.compile(r"НДС\s*\d+(?:[.,]\d+)?\s*%\s*[—–-]?\s*$", re.IGNORECASE)
+# the VAT amount itself: «НДС 20% — …», «на НДС (20%) — …», not «с НДС (20%) — …»
+_VAT_AMOUNT_BEFORE = re.compile(
+    r"(?<!\bс\s)(?<!учётом\s)(?<!учетом\s)(?<!включая\s)НДС" + _RATE + r"\s*[—–-]?\s*$",
+    re.IGNORECASE,
+)
 _TERM = re.compile(r"срок\s+действия", re.IGNORECASE)
 _VALID_UNTIL = re.compile(r"действует\s+(?:до|по)\s+$", re.IGNORECASE)
 _CONTEXT = 60
@@ -96,7 +111,7 @@ def _names(index: TextIndex) -> dict[str, list[_Answer]]:
         if clause.kind != "preamble":
             continue
         lo, hi = _own_text(index, clause)
-        for pattern in (_NAME_IN_BRACKETS, _NAME_PLAIN):
+        for pattern in (_NAME_IN_BRACKETS, _NAME_PLAIN, _NAME_SPELLED):
             for m in pattern.finditer(index.text, lo, hi):
                 field = (
                     "customer_name_short" if m["role"] == "Заказчик" else "contractor_name_short"

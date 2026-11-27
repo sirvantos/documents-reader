@@ -92,6 +92,15 @@ def test_nothing_found_where_nothing_is_written(db, docs) -> None:  # type: igno
     assert got["amount_with_vat"] == [("1200000.00", "2.1")]
 
 
+def test_spelled_legal_forms_and_a_rate_in_brackets(db, docs) -> None:  # type: ignore[no-untyped-def]
+    # analyst's measurement, record 24: names 17/39 and amount with VAT 0/39 on such text
+    got = found(db, docs["rules-e"])
+    assert got["customer_name_short"] == [('ОАО "Гамма"', "преамбула")]
+    assert got["contractor_name_short"] == [('АО "Дельта"', "преамбула")]
+    assert got["amount_without_vat"] == [("1500000.00", "2.1")]
+    assert got["amount_with_vat"] == [("1800000.00", "2.1")]  # the VAT amount is not taken
+
+
 def test_every_result_has_a_located_quote(db, docs) -> None:  # type: ignore[no-untyped-def]
     for doc in docs.values():
         index, sections = _inputs(db, doc)
@@ -112,4 +121,4 @@ def test_nothing_outside_the_shown_part(db, docs) -> None:  # type: ignore[no-un
 def test_module_needs_no_database() -> None:
     source = Path(rules.__file__).read_text(encoding="utf-8")
     assert "psycopg" not in source and "openai" not in source
-    assert rules.RULES_VERSION == "02.1"
+    assert rules.RULES_VERSION == "02.2"
