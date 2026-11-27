@@ -42,10 +42,11 @@ PK (`document_id`, `field`, `rule`). Запуск `check` по договору 
 | `flags` | text[] | пометки (выше) |
 | `extraction_run_id` | bigint | `field_value.run_id`, по которому вычислен статус (research R-7) |
 | `checks_version` | text | `CHECKS_VERSION` |
+| `settings_sha256` | char(64) | отпечаток настроек `[checks]` (research R-7) |
 | `run_id` | bigint | FK `run(id)` — запуск проверок |
 
 PK (`document_id`, `field`). Устарел, если `extraction_run_id` ≠ текущий `field_value.run_id`
-или `checks_version` ≠ текущей.
+или `checks_version` ≠ текущей, или `settings_sha256` ≠ отпечатку текущих `[checks]`.
 
 ## `field_decision` — решение аналитика
 
