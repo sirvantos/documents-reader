@@ -118,7 +118,7 @@ llama-server -m ~/models/bge-reranker-v2-m3-Q8_0.gguf --reranking \
 
 Необязательный файл `$DOCREADER_DATA_DIR/settings.toml` переопределяет значения
 по умолчанию по разделам: `[reading]`, `[recognition]`, `[structure]`,
-`[extraction]`, `[embedding]`, `[search]`, `[reranker]`, `[answer]`. Неизвестный ключ —
+`[extraction]`, `[embedding]`, `[search]`, `[reranker]`, `[answer]`, `[checks]`. Неизвестный ключ —
 ошибка с его именем. Значения и их смысл — в планах фич (`specs/<NNN-фича>/data-model.md`)
 и в [docs/tech-context.md](docs/tech-context.md).
 

@@ -45,6 +45,16 @@ class EvalStage(StrEnum):
     SEARCH_PLAIN = "search_plain"
     SEARCH_RERANK = "search_rerank"
     GOLD_BLIND = "gold_blind"
+    CHECKS = "checks"
+
+
+class CheckOutcome(StrEnum):
+    """A pair of the rule usefulness report: in the queue or not × right or wrong (06 R-10)."""
+
+    QUEUED_WRONG = "queued_wrong"
+    QUEUED_RIGHT = "queued_right"
+    ACCEPTED_WRONG = "accepted_wrong"
+    ACCEPTED_RIGHT = "accepted_right"
 
 
 # --- the pair outcome (research R-7) -------------------------------------------------------
