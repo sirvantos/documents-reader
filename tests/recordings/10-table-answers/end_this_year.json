@@ -1,8 +1,8 @@
 {
  "variant": "end_this_year",
  "generator_version": 1,
- "prompt_version": "10.1",
- "prompt_sha256": "9b853e7966122587f0ca376c3d072f7ef426960f6414fa402481ba4dbcbe1cc9",
+ "prompt_version": "10.2",
+ "prompt_sha256": "b40904866d9756d40116d56b8226879ef01a1f1f46f41254f72c33a11e28fb71",
  "today": "2026-11-28",
  "model": "qwen3.6-27b-4bit",
  "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
@@ -19,31 +19,31 @@
    }
   }
  },
- "recorded_at": "2026-11-28T11:16:20+00:00",
+ "recorded_at": "2026-11-28T11:24:48+00:00",
  "exchanges": [
   {
-   "request_sha256": "1b20295bd822ee1eac75dd2c72b2dc32c81d4973eaf5a78b42e456621df41534",
+   "request_sha256": "a2cca15ec4f6e8d7a4c6c1711e2dc944ddea0ef67e49c0ce435b1f599f202a63",
    "attempt": 1,
    "response": {
-    "id": "chatcmpl-878edb22-fe94-4d8a-8ae3-594ff43ec890",
+    "id": "chatcmpl-a6e25926-cfb3-4355-aa6b-647d65577c7a",
     "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
     "object": "chat.completion",
     "model": "qwen3.6-27b-4bit",
-    "created": 1795864555,
+    "created": 1795865063,
     "choices": [
      {
       "index": 0,
       "finish_reason": "stop",
       "message": {
        "role": "assistant",
-       "content": "```json\n{\n  \"kind\": \"query\",\n  \"action\": \"list\",\n  \"field\": \"contract_end_date\",\n  \"op\": \"between\",\n  \"value\": \"this_year\",\n  \"value_to\": null,\n  \"reason\": null,\n  \"other\": null\n}\n```"
+       "content": "```json\n{\n  \"kind\": \"query\",\n  \"action\": \"list\",\n  \"field\": \"contract_end_date\",\n  \"op\": \"eq\",\n  \"value\": \"this_year\",\n  \"value_to\": null,\n  \"reason\": null,\n  \"other\": null\n}\n```"
       }
      }
     ],
     "usage": {
-     "prompt_tokens": 1602,
+     "prompt_tokens": 1679,
      "completion_tokens": 73,
-     "total_tokens": 1675,
+     "total_tokens": 1752,
      "prompt_tokens_details": {
       "cached_tokens": 0
      }
