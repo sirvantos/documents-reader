@@ -235,3 +235,35 @@ def test_render_holds_numbers_only() -> None:
     assert "повторов 1" in text
     assert "медиана 3,5 с" in text and "наибольшее 10,0 с" in text
     assert SECRET not in text
+
+
+# --- what the model asked, for a wrong query (no value; Б4 2026-11-28) ------------
+
+
+def test_query_detail_names_action_field_and_op_only() -> None:
+    expected = {**AMOUNT, "value": "2000000"}
+    ans = answered({**AMOUNT, "field": "amount_without_vat", "value": "2000000"})
+    got = qt.query_detail(question(expected), ans, TODAY)
+    assert got == "ожидалось list amount_with_vat gt, модель list amount_without_vat gt"
+    assert "2000000" not in got and "2 000 000" not in got
+
+
+def test_query_detail_says_when_only_the_value_differs() -> None:
+    ans = answered({**AMOUNT, "value": "150001"})
+    assert qt.query_detail(question(AMOUNT), ans, TODAY) == (
+        "ожидалось list amount_with_vat gt, модель list amount_with_vat gt; значение другое")
+
+
+def test_query_detail_names_the_chosen_side() -> None:
+    expected = {"action": "count", "field": "party", "op": "eq", "value": "Гамма"}
+    ans = answered({**expected, "action": "list"})
+    assert qt.query_detail(question(expected), ans, TODAY) == (
+        "ожидалось count party eq, модель list party→contractor_name_short eq")
+
+
+def test_summary_lists_the_details_of_wrong_queries() -> None:
+    rows = [qt.Row(1, "template", "right", "answered", False, 2.0),
+            qt.Row(2, "analyst", "wrong_query", "answered", False, 3.0,
+                   "ожидалось count a eq, модель list a eq")]
+    text = qt.render(qt.summarize(rows))
+    assert "    2: ожидалось count a eq, модель list a eq" in text

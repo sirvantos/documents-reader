@@ -20,7 +20,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-PROMPT_VERSION = "10.2"
+PROMPT_VERSION = "10.3"
 
 # field name -> allowed comparisons, in the order of contracts/model.md
 FIELD_OPS: dict[str, tuple[str, ...]] = {
@@ -86,6 +86,8 @@ before — раньше; after — позже; between — в периоде (va
 есть в вопросе;
 - номер договора записывай так, как он написан в вопросе;
 - сумму пиши числом в рублях без пробелов и без знака валюты («1 500 000 руб.» → 1500000);
+- «цена» или «сумма» без слов «с НДС» и «без НДС» — это цена с НДС, поле amount_with_vat; \
+amount_without_vat — только когда в вопросе сказано «без НДС»;
 - дату пиши как ISO ГГГГ-ММ-ДД, вычисляя её от сегодняшней даты («до 1 июня» → before \
 и 1 июня);
 - «до конца квартала», «до конца года», «до конца месяца» — это одна дата, а не код \

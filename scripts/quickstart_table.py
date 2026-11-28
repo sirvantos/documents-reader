@@ -33,6 +33,7 @@ import tomllib
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,7 @@ class Row:
     outcome: str
     retried: bool
     seconds: float
+    detail: str | None = None  # for a wrong query: action, field and op only (`query_detail`)
 
 
 @dataclass
@@ -101,6 +103,7 @@ class Summary:
     outcomes: dict[str, int]
     median_seconds: float | None
     max_seconds: float | None
+    details: dict[int, str] = dataclass_field(default_factory=dict)
 
 
 def read_env(path: Path) -> dict[str, str]:
@@ -212,6 +215,25 @@ def judge(question: Question, answer: TableAnswer, rows: Sequence[DocRow], today
     return "right" if got == wanted else "wrong_list"
 
 
+def _shape(q: TableQuery) -> str:
+    field_name = f"party→{q.field}" if q.side is not None else q.field
+    return f"{q.action} {field_name} {q.op}"
+
+
+def query_detail(question: Question, answer: TableAnswer, today: date) -> str | None:
+    """«ожидалось A F O, модель A F O[; значение другое]» — never a value (principle I)."""
+    if question.expected is None or answer.result is None:
+        return None
+    expected = validate(_reply(question.expected), today)
+    if not isinstance(expected, TableQuery):
+        return None
+    got = answer.result.query
+    text = f"ожидалось {_shape(expected)}, модель {_shape(got)}"
+    same_shape = (expected.action, expected.op) == (got.action, got.op) and (
+        expected.field == got.field or (expected.field == "party" and got.side is not None))
+    return text + "; значение другое" if same_shape else text
+
+
 def summarize(rows: Sequence[Row]) -> Summary:
     times = [r.seconds for r in rows]
     return Summary(
@@ -227,6 +249,7 @@ def summarize(rows: Sequence[Row]) -> Summary:
         outcomes=dict(Counter(r.outcome for r in rows)),
         median_seconds=statistics.median(times) if times else None,
         max_seconds=max(times) if times else None,
+        details={r.number: r.detail for r in rows if r.verdict == "wrong_query" and r.detail},
     )
 
 
@@ -258,6 +281,7 @@ def render(summary: Summary) -> list[str]:
         f"{_genitive(summary.template)}, аналитика {summary.right_analyst} из "
         f"{summary.analyst} {_genitive(summary.analyst)}",
         f"  неверный запрос: {_numbers(summary.wrong_query)}",
+        *(f"    {n}: {d}" for n, d in sorted(summary.details.items())),
         f"  неверный исход: {_numbers(summary.wrong_outcome)}",
         f"  неверный список: {_numbers(summary.wrong_list)}",
         f"  исходы: {outcomes}",
@@ -294,9 +318,10 @@ def _measure(questions: Sequence[Question]) -> tuple[Summary, list[str]]:
         for q in questions:
             answer = ask_table(conn, settings, q.text, client=client, today=today)
             verdict = judge(q, answer, rows, today)
+            detail = query_detail(q, answer, today) if verdict == "wrong_query" else None
             results.append(
                 Row(q.number, q.source, verdict, answer.outcome.value, answer.retried,
-                    answer.seconds)
+                    answer.seconds, detail)
             )
             blocks.append(
                 f"{q.number}. {q.text}\nпроверка: {verdict}\n"

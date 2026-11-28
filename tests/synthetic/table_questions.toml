@@ -76,3 +76,15 @@ name = "two_requests"
 question = "Сколько договоров у заказчика АО «Зелёный мыс»? И какие договоры заканчиваются в следующем месяце?"
 expected = {action = "count", field = "customer_name_short", op = "eq", value = "АО «Зелёный мыс»"}
 expected_other = true
+
+# Б4 findings (2026-11-28): «цена» without VAT words is the price with VAT (prompt 10.3);
+# «исполнитель» is the contractor
+[[variant]]
+name = "price_no_vat_words"
+question = "Какие договоры с ценой больше 3 миллионов?"
+expected = {action = "list", field = "amount_with_vat", op = "gt", value = "3000000"}
+
+[[variant]]
+name = "executor_count"
+question = "Сколько договоров выполняет исполнитель ООО «Речной берег»?"
+expected = {action = "count", field = "contractor_name_short", op = "eq", value = "ООО «Речной берег»"}

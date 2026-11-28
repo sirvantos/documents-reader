@@ -4,7 +4,7 @@ Written by the main session: the implementer must not edit, weaken, skip or dele
 tests (CLAUDE.md «Model routing»).
 
 Interface (contracts/model.md):
-- `PROMPT_VERSION = "10.2"`;
+- `PROMPT_VERSION = "10.3"`;
 - `FIELD_OPS: dict[str, tuple[str, ...]]` and `FIELD_LABELS: dict[str, str]` — the table of
   contracts/model.md in its order (six fields and `party`); `ACTIONS = ("count", "list")`;
   `PERIODS` — the nine period codes of research R-6; `validate` (T007) uses the same sets;
@@ -60,7 +60,7 @@ def system_text() -> str:
 
 
 def test_prompt_version() -> None:
-    assert tp.PROMPT_VERSION == "10.2"
+    assert tp.PROMPT_VERSION == "10.3"
 
 
 def test_field_table_is_the_contract_table_in_order() -> None:
@@ -275,3 +275,10 @@ def test_system_message_says_until_the_end_of_a_period_is_one_date() -> None:
     text = system_text()
     assert "«до конца квартала»" in text and "а не код" in text
     assert "первый день следующего квартала" in text
+
+
+def test_system_message_says_a_price_without_vat_words_is_with_vat() -> None:
+    # Б4 finding on prompt 10.2 (analyst's question 43): «цена больше 2 миллионов» came back
+    # as amount_without_vat; the analyst's rule (spec, 2026-11-28) is the price with VAT
+    text = system_text()
+    assert "без слов «с НДС» и «без НДС» — это цена с НДС, поле amount_with_vat" in text
