@@ -1,0 +1,54 @@
+{
+ "variant": "price_no_vat_words",
+ "generator_version": 1,
+ "prompt_version": "10.3",
+ "prompt_sha256": "c14862c85c6fc0815aa695680272f4c9ca8e3b214e01b52cc76948667000fb1e",
+ "today": "2026-11-28",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx_lm.server 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 512,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-28T13:54:46+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "d28cb0a9d3c9f12b5dad77d9a69a954c8bd41171b7e71684c2971a4d97361609",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-565fa623-d0b9-42e0-a9a2-fca64ad2991c",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795874059,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"kind\": \"query\",\n  \"action\": \"list\",\n  \"field\": \"amount_with_vat\",\n  \"op\": \"gt\",\n  \"value\": \"3000000\",\n  \"value_to\": null,\n  \"reason\": null,\n  \"other\": null\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1729,
+     "completion_tokens": 79,
+     "total_tokens": 1808,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,8 +1,8 @@
 {
  "variant": "without_vat_count",
  "generator_version": 1,
- "prompt_version": "10.2",
- "prompt_sha256": "b40904866d9756d40116d56b8226879ef01a1f1f46f41254f72c33a11e28fb71",
+ "prompt_version": "10.3",
+ "prompt_sha256": "c14862c85c6fc0815aa695680272f4c9ca8e3b214e01b52cc76948667000fb1e",
  "today": "2026-11-28",
  "model": "qwen3.6-27b-4bit",
  "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
@@ -19,17 +19,17 @@
    }
   }
  },
- "recorded_at": "2026-11-28T11:23:58+00:00",
+ "recorded_at": "2026-11-28T13:50:44+00:00",
  "exchanges": [
   {
-   "request_sha256": "bc49b3f10b3f0dc7a097f5f644b9fa16dc46009af7cda0cd03f927bdb23dab33",
+   "request_sha256": "07cccda56118766e515af904818b49f4fc924d2a0a4154c5e3075299b7c69043",
    "attempt": 1,
    "response": {
-    "id": "chatcmpl-2a0b150c-08b5-426c-9951-ded7e09fb888",
+    "id": "chatcmpl-f80aaa4b-e1de-45d0-a064-42fc1c55abc7",
     "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
     "object": "chat.completion",
     "model": "qwen3.6-27b-4bit",
-    "created": 1795865012,
+    "created": 1795873817,
     "choices": [
      {
       "index": 0,
@@ -41,9 +41,9 @@
      }
     ],
     "usage": {
-     "prompt_tokens": 1684,
+     "prompt_tokens": 1732,
      "completion_tokens": 78,
-     "total_tokens": 1762,
+     "total_tokens": 1810,
      "prompt_tokens_details": {
       "cached_tokens": 0
      }
