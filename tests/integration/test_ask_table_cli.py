@@ -25,7 +25,7 @@ from pathlib import Path
 import httpx2
 import pytest
 
-from docreader import llm
+from docreader import llm, table_answer
 from tests.fakes.llm import ScriptedModel
 from tests.integration.check_fixtures import add_check_contracts
 from tests.integration.table_fixtures import (
@@ -273,3 +273,113 @@ def test_output_guard_on_a_name_question(cli, db, use_model, ids) -> None:  # ty
                                   value="ООО «Бета»")))
     result = run_clean(cli, db, "Какие договоры с подрядчиком ООО «Бета» на 1 200 000?")
     assert result.exit_code == 0
+
+
+# --- outcomes that are not an answer (T016, US3; research R-8, R-9; contracts/cli.md) ---
+
+
+SECRET_REASON = "нет сведений о подписанте ООО «Бета» по договору К-21/2026"
+
+
+@pytest.fixture
+def no_rows(monkeypatch):  # type: ignore[no-untyped-def]
+    """The table must not be read: the outcome is decided before the query."""
+    def refuse(*args, **kwargs):
+        raise AssertionError("load_rows must not be called")
+
+    monkeypatch.setattr(table_answer, "load_rows", refuse)
+
+
+@pytest.mark.parametrize(
+    ("kind", "head"),
+    [("refuse", "отказ"), ("clarify", "нужно уточнение"), ("unsupported", "не поддерживается")],
+)
+def test_outcomes_without_a_query(cli, db, use_model, ids, no_rows, kind, head) -> None:  # type: ignore[no-untyped-def]
+    use_model(ScriptedModel(reply(kind=kind, reason=SECRET_REASON)))
+    result = run_clean(cli, db, "Кто подписал договор?", extra=[SECRET_REASON])
+    assert result.exit_code == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith(f"По таблице — {head}; повторов 0; ") and lines[0].endswith(" с")
+    assert lines[1] == "" and lines[2] == f"Причина: {SECRET_REASON}"
+    search_hint = "Поиск по тексту не подставляется (docreader ask)"
+    assert (search_hint in lines) is (kind == "refuse")
+    assert lines[-1].startswith("Получено: код ")
+    assert not any(x.startswith(("Условие:", "Договоры (", "Не учтено")) for x in lines)
+
+    use_model(ScriptedModel(reply(kind=kind, reason=SECRET_REASON)))
+    data = json.loads(run_clean(cli, db, "Кто подписал договор?", "--json").stdout)
+    expected = {"refuse": "refused", "clarify": "clarify", "unsupported": "unsupported"}[kind]
+    assert data["outcome"] == expected and data["reason"] == SECRET_REASON
+    assert data["result"] is None
+
+
+def test_party_on_both_sides_asks_to_clarify(cli, db, use_model, ids) -> None:  # type: ignore[no-untyped-def]
+    # with --include-unreviewed «Альфа» is a counted customer and, in check-same, contractor
+    use_model(ScriptedModel(reply(action="list", field="party", op="eq", value="Альфа")))
+    result = run_clean(cli, db, "Какие договоры с Альфой?", "--include-unreviewed")
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith("По таблице — нужно уточнение; повторов 0; ")
+    assert lines[2].startswith("Причина: ") and "заказчик или подрядчик" in lines[2]
+    use_model(ScriptedModel(reply(action="list", field="party", op="eq", value="Альфа")))
+    data = json.loads(run_clean(cli, db, "Какие договоры с Альфой?", "--include-unreviewed",
+                                "--json").stdout)
+    assert data["outcome"] == "clarify" and data["result"] is None
+
+
+def test_second_request_is_named_but_not_run(cli, db, use_model, ids) -> None:  # type: ignore[no-untyped-def]
+    other = "какие из договоров ООО «Бета» заканчиваются в 2027 году"
+    use_model(ScriptedModel(reply(action="count", field="contractor_name_short", op="eq",
+                                  value="ООО «Бета»", other=other)))
+    result = run_clean(cli, db, "Сколько договоров с ООО «Бета» и какие заканчиваются?",
+                       extra=[other])
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines()
+    assert lines[0].startswith("По таблице — ответ: 8 договоров; ")
+    assert f"Выполнен первый запрос; не выполнено: {other}" in lines
+    use_model(ScriptedModel(reply(action="count", field="contractor_name_short", op="eq",
+                                  value="ООО «Бета»", other=other)))
+    data = json.loads(run_clean(cli, db, "Сколько договоров?", "--json").stdout)
+    assert data["other"] == other and data["outcome"] == "answered"
+
+
+def test_retry_shown_in_the_first_line(cli, db, use_model, ids) -> None:  # type: ignore[no-untyped-def]
+    use_model(ScriptedModel(reply(action="count", field="price", op="gt", value="0"),
+                            reply(action="count", field="amount_with_vat", op="gt", value="0")))
+    result = run_clean(cli, db, "Сколько договоров дороже нуля?")
+    assert result.exit_code == 0
+    assert "; повторов 1; " in result.stdout.splitlines()[0]
+
+
+def test_rejected_after_the_retry(cli, db, use_model, ids) -> None:  # type: ignore[no-untyped-def]
+    secret = "цена договора К-21/2026"
+    model = use_model(ScriptedModel(
+        reply(action="count", field=secret, op="gt", value="0"),
+        reply(action="count", field="amount_with_vat", op="contains", value="0")))
+    result = run_clean(cli, db, "Сколько договоров дороже нуля?", extra=[secret])
+    assert result.exit_code == 1
+    assert result.stderr.startswith("Запрос модели недопустим: сравнение не допустимо для поля "
+                                    "amount_with_vat")
+    assert len(model.requests) == 2
+
+    use_model(ScriptedModel(
+        reply(action="count", field=secret, op="gt", value="0"),
+        reply(action="count", field="amount_with_vat", op="contains", value="0")))
+    result = run_clean(cli, db, "Сколько договоров дороже нуля?", "--json", extra=[secret])
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["outcome"] == "rejected" and data["retried"] is True and data["result"] is None
+
+
+def test_failed_reply_not_in_form(cli, db, use_model, ids) -> None:  # type: ignore[no-untyped-def]
+    use_model(ScriptedModel("не JSON", "не JSON", "не JSON"))
+    result = run_clean(cli, db, "Сколько договоров дороже нуля?")
+    assert result.exit_code == 1
+    assert result.stderr.startswith("Ошибка ответа модели: ")
+
+
+def test_failed_http_error(cli, db, use_model, ids) -> None:  # type: ignore[no-untyped-def]
+    use_model(ScriptedModel(httpx2.Response(400, json={"error": "too long"})))
+    result = run_clean(cli, db, "Сколько договоров дороже нуля?")
+    assert result.exit_code == 1
+    assert "Ошибка ответа модели: " in result.stderr

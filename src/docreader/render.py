@@ -2245,6 +2245,8 @@ def render_table_text(answer: TableAnswer, list_rows: int) -> str:
         lines += ["", f"Условие: {tq.describe(query)}"]
         if result.matched_names:
             lines.append(f"Совпали наименования: {', '.join(result.matched_names)}")
+        if answer.other:
+            lines.append(f"Выполнен первый запрос; не выполнено: {answer.other}")
         lines.append("")
         if result.count == 0:
             lines.append("Таких договоров нет.")
