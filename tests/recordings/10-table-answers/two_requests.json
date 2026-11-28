@@ -1,0 +1,54 @@
+{
+ "variant": "two_requests",
+ "generator_version": 1,
+ "prompt_version": "10.3",
+ "prompt_sha256": "c14862c85c6fc0815aa695680272f4c9ca8e3b214e01b52cc76948667000fb1e",
+ "today": "2026-11-28",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx_lm.server 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 512,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-28T13:54:19+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "f34c583f73a7c4fd57546f9ffa8362c463ca6abcc8971e031d9dacd11cf5f30d",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-f76d4345-a77d-4523-98b8-1bd7490c8717",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795874031,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"kind\": \"query\",\n  \"action\": \"count\",\n  \"field\": \"customer_name_short\",\n  \"op\": \"eq\",\n  \"value\": \"АО «Зелёный мыс»\",\n  \"value_to\": null,\n  \"reason\": null,\n  \"other\": \"какие договоры заканчиваются в следующем месяце\"\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1742,
+     "completion_tokens": 92,
+     "total_tokens": 1834,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}

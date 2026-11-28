@@ -161,6 +161,18 @@ class AnswerSettings:
 
 
 @dataclass(frozen=True)
+class TableSettings:
+    """Values of the [table] section (feature 10, research R-2).
+
+    The model connection is `[extraction]`; only the table answer's own values live here.
+    """
+
+    max_tokens: int = 512  # limit of the model's reply
+    max_retries: int = 2  # Instructor repeats after a reply not in form
+    list_rows: int = 20  # rows of the list printed in the terminal; full list with --json
+
+
+@dataclass(frozen=True)
 class CheckSettings:
     """Values of the [checks] section (feature 06, research R-6)."""
 
@@ -184,6 +196,7 @@ class Settings:
     search: SearchSettings = field(default_factory=SearchSettings)
     reranker: RerankerSettings = field(default_factory=RerankerSettings)
     answer: AnswerSettings = field(default_factory=AnswerSettings)
+    table: TableSettings = field(default_factory=TableSettings)
     checks: CheckSettings = field(default_factory=CheckSettings)
 
     @property
@@ -484,6 +497,12 @@ _SCHEMA["answer"] = {
     "max_tokens": ("max_tokens", int, lambda v: 64 <= v <= 32768, "целое от 64 до 32768"),
     "max_retries": ("max_retries", int, lambda v: 0 <= v <= 5, "целое от 0 до 5"),
 }
+_SCHEMA["table"] = {
+    # Keys of [table] map one-to-one to TableSettings fields (feature 10, research R-2).
+    "max_tokens": ("max_tokens", int, lambda v: 1 <= v <= 8192, "целое от 1 до 8192"),
+    "max_retries": ("max_retries", int, lambda v: 0 <= v <= 5, "целое от 0 до 5"),
+    "list_rows": ("list_rows", int, lambda v: v >= 1, "целое не меньше 1"),
+}
 _SCHEMA["checks"] = {
     # Keys of [checks] map one-to-one to CheckSettings fields (feature 06, research R-6).
     "vat_rate": ("vat_rate", float, lambda v: 0 <= v <= 100, "число от 0 до 100"),
@@ -498,6 +517,7 @@ EMBEDDING_TABLE = "embedding"
 SEARCH_TABLE = "search"
 RERANKER_TABLE = "reranker"
 ANSWER_TABLE = "answer"
+TABLE_TABLE = "table"
 CHECKS_TABLE = "checks"
 
 
@@ -536,6 +556,7 @@ def _read_settings_file(data_dir: Path) -> dict:
     search_values: dict = {}
     reranker_values: dict = {}
     answer_values: dict = {}
+    table_values: dict = {}
     checks_values: dict = {}
     for table, entries in doc.items():
         if table not in _SCHEMA:
@@ -558,6 +579,8 @@ def _read_settings_file(data_dir: Path) -> dict:
             target = reranker_values
         elif table == ANSWER_TABLE:
             target = answer_values
+        elif table == TABLE_TABLE:
+            target = table_values
         elif table == CHECKS_TABLE:
             target = checks_values
         else:
@@ -602,6 +625,8 @@ def _read_settings_file(data_dir: Path) -> dict:
                 f"search.rerank_candidates ({rerank_candidates})"
             )
         values["answer"] = answer
+    if TABLE_TABLE in doc:
+        values["table"] = TableSettings(**table_values)
     if CHECKS_TABLE in doc:
         checks = CheckSettings(**checks_values)
         # checked on the complete section, so a missing bound falls back to its default

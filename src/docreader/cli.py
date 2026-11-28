@@ -30,6 +30,7 @@ from docreader import (
     registry,
     review,
     search,
+    table_answer,
     textview,
 )
 from docreader.answer_check import AnswerOutcome
@@ -108,8 +109,11 @@ from docreader.render import (
     render_review_text,
     render_search_text,
     render_show_text,
+    render_table_json,
+    render_table_text,
     render_verify_text,
 )
+from docreader.table_answer import TableOutcome
 
 
 class _Parser(argparse.ArgumentParser):
@@ -229,6 +233,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("question", metavar="ВОПРОС", help="вопрос о договорах")
     p.add_argument("--document", metavar="ID", help="ответить по одному договору (D-0015)")
     p.add_argument("--passages", type=int, metavar="N", help="сколько отрывков дать модели")
+    p.add_argument("--json", action="store_true", help="вывод в формате JSON")
+
+    p = sub.add_parser("ask-table", help="ответить на вопрос по таблице действующих значений полей")
+    p.add_argument("question", metavar="ВОПРОС", help="вопрос о договорах")
+    p.add_argument(
+        "--include-unreviewed",
+        action="store_true",
+        help="учитывать и значения «требует просмотра» с найденным значением",
+    )
     p.add_argument("--json", action="store_true", help="вывод в формате JSON")
 
     p = sub.add_parser("recognize", help="распознать страницы-сканы")
@@ -754,6 +767,23 @@ def _cmd_ask(args: argparse.Namespace, settings: Settings, conn: psycopg.Connect
     return 1 if result.outcome == AnswerOutcome.FAILED else 0
 
 
+def _cmd_ask_table(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
+    result = table_answer.ask_table(
+        conn, settings, args.question, include_unreviewed=args.include_unreviewed
+    )
+    if args.json:
+        print(render_table_json(result))
+    elif result.outcome not in (TableOutcome.REJECTED, TableOutcome.FAILED):
+        print(render_table_text(result, settings.table.list_rows), end="")
+    if result.outcome is TableOutcome.REJECTED:
+        print(f"Запрос модели недопустим: {result.reason}", file=sys.stderr)
+        return 1
+    if result.outcome is TableOutcome.FAILED:
+        print(f"Ошибка ответа модели: {result.reason}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _cmd_search(args: argparse.Namespace, settings: Settings, conn: psycopg.Connection) -> int:
     result = search.search(
         conn,
@@ -1099,6 +1129,7 @@ _HANDLERS: dict[str, _Handler] = {
     "passage": _cmd_passage,
     "search": _cmd_search,
     "ask": _cmd_ask,
+    "ask-table": _cmd_ask_table,
     "read-report": _cmd_read_report,
     "recognize-report": _cmd_recognize_report,
     "recognize-eval": _cmd_recognize_eval,

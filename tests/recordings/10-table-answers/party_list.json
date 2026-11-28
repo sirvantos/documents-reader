@@ -1,0 +1,54 @@
+{
+ "variant": "party_list",
+ "generator_version": 1,
+ "prompt_version": "10.3",
+ "prompt_sha256": "c14862c85c6fc0815aa695680272f4c9ca8e3b214e01b52cc76948667000fb1e",
+ "today": "2026-11-28",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx_lm.server 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 512,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-28T13:50:17+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "c5c0de882ec801e58cbc3fe6e0367d487bb66cf1cd75f24fedf16c0b8d06cac2",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-3c431909-4e1c-4c2c-bb41-a3af093fe512",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795873791,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"kind\": \"query\",\n  \"action\": \"list\",\n  \"field\": \"party\",\n  \"op\": \"eq\",\n  \"value\": \"Тихая пристань\",\n  \"value_to\": null,\n  \"reason\": null,\n  \"other\": null\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1732,
+     "completion_tokens": 75,
+     "total_tokens": 1807,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}

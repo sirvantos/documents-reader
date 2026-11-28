@@ -708,7 +708,7 @@ def effective_value(conn: psycopg.Connection, doc_id: str, field: str) -> str | 
     """The value later features use (research R-8): the analyst's while their decision holds,
     else the system value of an accepted field, else none."""
     row = conn.execute(
-        "SELECT s.status, s.flags, v.value_normalized, d.value_normalized"
+        "SELECT s.status, s.flags, v.result, v.value_normalized, d.value_normalized"
         " FROM field_status s JOIN field_value v USING (document_id, field)"
         " LEFT JOIN field_decision d USING (document_id, field)"
         " WHERE s.document_id = %s AND s.field = %s",
@@ -716,11 +716,58 @@ def effective_value(conn: psycopg.Connection, doc_id: str, field: str) -> str | 
     ).fetchone()
     if row is None:
         return None
-    status, flags, system, decided = row
+    status, flags, result, system, decided = row
+    state, value = effective_cell(
+        FieldStatus(status), flags, str(result),
+        None if system is None else str(system), None if decided is None else str(decided),
+    )
+    return value if state is CellState.EFFECTIVE else None
+
+
+class CellState(StrEnum):
+    """The state of one table cell for later features (feature 10, research R-5).
+
+    The last two are set by the table loader for a whole document, never by
+    `effective_cell`.
+    """
+
+    EFFECTIVE = "effective"
+    UNREVIEWED = "unreviewed"
+    NEEDS_REVIEW = "needs_review"
+    REJECTED = "rejected"
+    NOT_FOUND = "not_found"
+    NO_EXTRACTION = "no_extraction"
+    CHECKS_STALE = "checks_stale"
+
+
+def effective_cell(
+    status: FieldStatus,
+    flags: Sequence[str],
+    system_result: str,
+    system_normalized: str | None,
+    decided: str | None,
+) -> tuple[CellState, str | None]:
+    """The state and the value of a field from its stored status (feature 10, research R-5).
+
+    A decision of the analyst is already reflected in the status and its flags
+    (`evaluate_document`): a correction that holds wins with the analyst's value,
+    «в договоре нет» is not found. A field that needs review keeps its found system value
+    as `unreviewed` (counted only on request); without a value it is `needs_review`.
+    A rejected value is never used (principle III).
+    """
     if HUMAN_FLAGS[DecisionKind.CORRECT] in flags:
-        return str(decided)
+        return CellState.EFFECTIVE, decided
     if HUMAN_FLAGS[DecisionKind.ABSENT] in flags:
-        return None
-    if status == FieldStatus.ACCEPTED:
-        return None if system is None else str(system)
-    return None
+        return CellState.NOT_FOUND, None
+    has_value = system_result == "found" and system_normalized is not None
+    if status is FieldStatus.ACCEPTED:
+        if has_value:
+            return CellState.EFFECTIVE, system_normalized
+        return CellState.NEEDS_REVIEW, None
+    if status is FieldStatus.NEEDS_REVIEW:
+        if has_value:
+            return CellState.UNREVIEWED, system_normalized
+        return CellState.NEEDS_REVIEW, None
+    if status is FieldStatus.REJECTED:
+        return CellState.REJECTED, None
+    return CellState.NOT_FOUND, None

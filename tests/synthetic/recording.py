@@ -66,6 +66,14 @@ def check_environment(
             f"Не задана {TEST_DB_ENV} — нужна локальная PostgreSQL с правом CREATEDB "
             "для временной базы записи"
         )
+    base_url, transport_factory = check_model_environment(env, transport_factory)
+    return RecordingEnvironment(database_url, base_url, transport_factory)
+
+
+def check_model_environment(
+    env: Mapping[str, str], transport_factory: TransportFactory | None
+) -> tuple[str, TransportFactory]:
+    """Checks 2–3 of the module docstring (a recording without a database, feature 10)."""
     base_url = env.get(BASE_URL_ENV, "").strip() or ExtractionSettings().base_url
     if not is_local_model_url(base_url):
         raise RecordingRefused(
@@ -79,7 +87,7 @@ def check_environment(
                 "ответы записываются на ноутбуке аналитика"
             )
         transport_factory = httpx2.HTTPTransport
-    return RecordingEnvironment(database_url, base_url, transport_factory)
+    return base_url, transport_factory
 
 
 class RecordingTransport(httpx2.BaseTransport):

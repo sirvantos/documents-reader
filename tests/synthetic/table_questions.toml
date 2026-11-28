@@ -1,0 +1,90 @@
+# Synthetic questions for the level 2 recordings of the table answer (feature 10, T018).
+# Fictional names only; the analyst's own questions live in the data folder, never here
+# (principle I). Today is fixed at 2026-11-28 for every variant (research R-11).
+#
+# `expected` — the query the model should give, written as the model would (a value as in
+# the question in the nominative, an amount as a number, a date ISO or a period code);
+# level 2 (T025) compares the queries after `table_query.validate`. `alternatives` — other
+# queries that mean the same. `expected_outcome` — refused, clarify or unsupported.
+# `expected_other = true` — the question holds a second request.
+
+[[variant]]
+name = "number_list"
+question = "Найди договор № Р-17/2025."
+expected = {action = "list", field = "contract_number", op = "eq", value = "Р-17/2025"}
+
+[[variant]]
+name = "customer_count"
+question = "Сколько договоров заключил заказчик ООО «Северный ветер»?"
+expected = {action = "count", field = "customer_name_short", op = "eq", value = "ООО «Северный ветер»"}
+
+[[variant]]
+name = "contractor_list"
+question = "Какие договоры выполняет подрядчик АО «Лесная гавань»?"
+expected = {action = "list", field = "contractor_name_short", op = "eq", value = "АО «Лесная гавань»"}
+
+[[variant]]
+name = "party_list"
+question = "Перечисли договоры с «Тихой пристанью»."
+expected = {action = "list", field = "party", op = "eq", value = "Тихая пристань"}
+
+[[variant]]
+name = "without_vat_count"
+question = "Сколько договоров дешевле 500 000 рублей без НДС?"
+expected = {action = "count", field = "amount_without_vat", op = "lt", value = "500000"}
+
+[[variant]]
+name = "with_vat_list"
+question = "Какие договоры стоят больше 2 млн рублей с НДС?"
+expected = {action = "list", field = "amount_with_vat", op = "gt", value = "2000000"}
+
+[[variant]]
+name = "end_this_year"
+question = "Какие договоры заканчиваются в этом году?"
+expected = {action = "list", field = "contract_end_date", op = "eq", value = "this_year"}
+
+[[variant]]
+name = "end_quarter"
+question = "Сколько договоров заканчивается до конца квартала?"
+expected = {action = "count", field = "contract_end_date", op = "before", value = "2027-01-01"}
+alternatives = [
+  {action = "count", field = "contract_end_date", op = "before", value = "2026-12-31"},
+]
+
+[[variant]]
+name = "end_after"
+question = "Какие договоры действуют после 1 марта 2027 года?"
+expected = {action = "list", field = "contract_end_date", op = "after", value = "2027-03-01"}
+
+[[variant]]
+name = "refuse_signer"
+question = "Какие договоры подписал генеральный директор Петров?"
+expected_outcome = "refused"
+
+[[variant]]
+name = "clarify_large"
+question = "Сколько у нас крупных договоров?"
+expected_outcome = "clarify"
+
+[[variant]]
+name = "unsupported_sum"
+question = "Какова общая сумма всех договоров с НДС?"
+expected_outcome = "unsupported"
+
+[[variant]]
+name = "two_requests"
+question = "Сколько договоров у заказчика АО «Зелёный мыс»? И какие договоры заканчиваются в следующем месяце?"
+expected = {action = "count", field = "customer_name_short", op = "eq", value = "АО «Зелёный мыс»"}
+expected_other = true
+
+# Б4 findings (2026-11-28): «цена» without VAT words is the price with VAT (prompt 10.3);
+# «исполнитель» is the contractor
+[[variant]]
+name = "price_no_vat_words"
+question = "Какие договоры с ценой больше 3 миллионов?"
+expected = {action = "list", field = "amount_with_vat", op = "gt", value = "3000000"}
+
+[[variant]]
+name = "executor_count"
+question = "Сколько договоров выполняет исполнитель ООО «Речной берег»?"
+expected = {action = "count", field = "contractor_name_short", op = "eq", value = "ООО «Речной берег»"}

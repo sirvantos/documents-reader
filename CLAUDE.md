@@ -254,6 +254,22 @@ Governing documents: `.specify/memory/constitution.md` (highest priority),
   doubtful ones by number. Recordings of model answers:
   `python -m tests.synthetic.record_answers` (synthetic files only; on the Mac, where the model
   runs); test fakes `ScriptedModel`, `RecordedModel` with `tests/recordings/09-text-answers/`.
+- `uv run docreader ask-table "…" [--include-unreviewed] [--json]` — the answer from the table of
+  current values of the six fields (feature 10): the language model translates the question into a
+  query (count, condition, list), the program validates and runs it over all contracts, and the
+  answer lists the contracts not counted by reason. It needs the language model (`[extraction]`
+  in `settings.toml`, `[table]` for its own values: `max_tokens`, `max_retries`, `list_rows`), on
+  the Mac only; stops with exit 2 here (`DOCREADER_FORBID_MODELS`). Nothing is written to the
+  database. Its output contains contract values, so on real contracts only the first line of the
+  text output (outcome, counts, retries, time) may be sent to the agent, never the rest and never
+  `--json`. `scripts/make_table_questions.py` builds the questions file (its printed counts may be
+  sent); `scripts/quickstart_table.py --questions FILE` runs the measurement on the analyst's
+  questions (a TOML file in the data folder, never in the repository): its summary
+  (`table-b4-summary-….txt`, numbers and ids only) may be sent, the questions file and
+  `table-b4-….txt` hold contract values and are never sent. Recordings of model answers:
+  `python -m tests.synthetic.record_table_answers` (synthetic questions only, no database; on the
+  Mac, where the model runs); test fakes `ScriptedModel`, `RecordedModel` with
+  `tests/recordings/10-table-answers/`.
 - `uv run docreader eval …` — evaluation set and results table (feature 02): `eval template`
   (CSV template of the gold fields); `eval review` (local review page in
   `$DOCREADER_DATA_DIR/eval/review-…/`, prefilled with the feature 05 values and the rules
