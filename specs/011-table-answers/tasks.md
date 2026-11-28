@@ -129,8 +129,8 @@ description: "Task list for feature 10 (branch 011): table answers, minimal vers
 - [X] T023 [opus] Output guard across `ask-table` (every outcome, text and `--json` error paths) in `tests/integration/test_table_output_guard.py`; a test that no `ask-table` call writes to the database; `scripts/check.sh` passes
 - [X] T024 [analyst] Quickstart Б1–Б2 on the Mac: `pytest -m real_model tests/real_model/test_table_server.py`; `record_table_answers`; commit and push `tests/recordings/10-table-answers/`
 - [X] T025 [opus] Level 2 `tests/integration/test_table_recorded.py` on the T024 recordings (as `tests/integration/test_ask_recorded.py`: `RecordedModel`, `StaleRecording`, no skip): each variant, through `table_answer.translate` (no database), gives the outcome and query of `table_questions.toml`; a variant the real model gets wrong is a finding — reported to the analyst, never edited. After T024
-- [ ] T026 [analyst] Quickstart Б3–Б4 on the Mac: three `ask-table` questions (first lines only); `make_table_questions.py`, own questions, `quickstart_table.py`; send the generator output and `table-b4-summary-….txt` only
-- [ ] T027 [opus] Quickstart Б5: the item «Ответ по таблице (фича 10), замер …» in `docs/tech-context.md` (right answers by template and by analyst, outcomes, retries, time); a missed target is written down, not tuned; a systematic translation error → an abstract synthetic question and a failing test first (CLAUDE.md «Delivery»)
+- [X] T026 [analyst] Quickstart Б3–Б4 on the Mac: three `ask-table` questions (first lines only); `make_table_questions.py`, own questions, `quickstart_table.py`; send the generator output and `table-b4-summary-….txt` only
+- [X] T027 [opus] Quickstart Б5: the item «Ответ по таблице (фича 10), замер …» in `docs/tech-context.md` (right answers by template and by analyst, outcomes, retries, time); a missed target is written down, not tuned; a systematic translation error → an abstract synthetic question and a failing test first (CLAUDE.md «Delivery»)
 
 ---
 
