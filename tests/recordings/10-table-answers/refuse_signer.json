@@ -1,0 +1,54 @@
+{
+ "variant": "refuse_signer",
+ "generator_version": 1,
+ "prompt_version": "10.1",
+ "prompt_sha256": "9b853e7966122587f0ca376c3d072f7ef426960f6414fa402481ba4dbcbe1cc9",
+ "today": "2026-11-28",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx_lm.server 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 512,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-28T10:59:42+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "1b3e66a6ccabb359053be754822a1443a4f6498200b761d84f73b2436c8f6026",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-912a9b3c-b157-4d7b-b7d5-daa6596be1dd",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795863557,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"kind\": \"refuse\",\n  \"action\": null,\n  \"field\": null,\n  \"op\": null,\n  \"value\": null,\n  \"value_to\": null,\n  \"reason\": \"В таблице нет поля с информацией о подписанте договора (генеральном директоре)\",\n  \"other\": null\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1603,
+     "completion_tokens": 85,
+     "total_tokens": 1688,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}

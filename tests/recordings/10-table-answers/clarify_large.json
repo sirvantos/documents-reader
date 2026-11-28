@@ -1,0 +1,54 @@
+{
+ "variant": "clarify_large",
+ "generator_version": 1,
+ "prompt_version": "10.1",
+ "prompt_sha256": "9b853e7966122587f0ca376c3d072f7ef426960f6414fa402481ba4dbcbe1cc9",
+ "today": "2026-11-28",
+ "model": "qwen3.6-27b-4bit",
+ "served_model": "/Users/sirvantos/models/qwen3.6-27b-4bit",
+ "quantization": "4 бита",
+ "server": "mlx_lm.server 0.32.2",
+ "settings": {
+  "mode": "md_json",
+  "temperature": 0.0,
+  "seed": 0,
+  "max_tokens": 512,
+  "extra_body": {
+   "chat_template_kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "recorded_at": "2026-11-28T11:00:07+00:00",
+ "exchanges": [
+  {
+   "request_sha256": "f1af57adb201d1c4cf795faad946add2515bfb953a45d75221baaf0870b68236",
+   "attempt": 1,
+   "response": {
+    "id": "chatcmpl-ec5d3c94-824d-44fe-ad90-45ea7989321b",
+    "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
+    "object": "chat.completion",
+    "model": "qwen3.6-27b-4bit",
+    "created": 1795863582,
+    "choices": [
+     {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+       "role": "assistant",
+       "content": "```json\n{\n  \"kind\": \"clarify\",\n  \"action\": null,\n  \"field\": null,\n  \"op\": null,\n  \"value\": null,\n  \"value_to\": null,\n  \"reason\": \"Уточните порог суммы для определения «крупных» договоров\",\n  \"other\": null\n}\n```"
+      }
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 1598,
+     "completion_tokens": 81,
+     "total_tokens": 1679,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ]
+}
