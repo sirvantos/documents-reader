@@ -4,7 +4,7 @@ Written by the main session: the implementer must not edit, weaken, skip or dele
 tests (CLAUDE.md «Model routing»).
 
 Interface (contracts/model.md):
-- `PROMPT_VERSION = "10.1"`;
+- `PROMPT_VERSION = "10.2"`;
 - `FIELD_OPS: dict[str, tuple[str, ...]]` and `FIELD_LABELS: dict[str, str]` — the table of
   contracts/model.md in its order (six fields and `party`); `ACTIONS = ("count", "list")`;
   `PERIODS` — the nine period codes of research R-6; `validate` (T007) uses the same sets;
@@ -60,7 +60,7 @@ def system_text() -> str:
 
 
 def test_prompt_version() -> None:
-    assert tp.PROMPT_VERSION == "10.1"
+    assert tp.PROMPT_VERSION == "10.2"
 
 
 def test_field_table_is_the_contract_table_in_order() -> None:
@@ -267,3 +267,11 @@ def test_system_message_asks_for_names_in_the_nominative() -> None:
     # «договоры с «Тихой пристанью»» must come back as «Тихая пристань»: the names are
     # matched by the program, not by declension (research R-7)
     assert "именительном падеже" in system_text()
+
+
+def test_system_message_says_until_the_end_of_a_period_is_one_date() -> None:
+    # level 2 finding on prompt 10.1 (variant end_quarter): «до конца квартала» came back as
+    # before + this_quarter, i.e. before the start of the quarter — the opposite meaning
+    text = system_text()
+    assert "«до конца квартала»" in text and "а не код" in text
+    assert "первый день следующего квартала" in text

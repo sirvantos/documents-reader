@@ -178,7 +178,7 @@ def test_json_holds_the_full_list_and_every_key(cli, db, use_model, ids, data_di
     assert data["question"] == "Какие договоры заканчиваются до 2030 года?"
     assert set(data["provenance"]) == {"code_version", "llm_model", "prompt_version",
                                        "prompt_sha256", "checks_version"}
-    assert data["provenance"]["prompt_version"] == "10.1"
+    assert data["provenance"]["prompt_version"] == "10.2"
     assert data["provenance"]["checks_version"] == "06.1"
     assert data["provenance"]["llm_model"] == "fake-model"
     res = data["result"]

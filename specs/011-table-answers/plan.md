@@ -16,7 +16,7 @@
 (`[extraction]`, `llm.py` без изменений), получает вопрос, сегодняшнюю дату и описание
 шести полей — без значений таблицы — и возвращает форму `TableReply`: запрос (действие
 «посчитать» или «перечислить», одно условие: поле, сравнение, значение) либо отказ,
-просьбу уточнить или «не поддерживается» (подсказка 10.1, R-3). Программа проверяет
+просьбу уточнить или «не поддерживается» (подсказка 10.2, R-3). Программа проверяет
 запрос (R-4; недопустимый — один повтор с причиной, R-9), загружает строки таблицы всех
 договоров по действующему значению фичи 06 (R-5), выполняет запрос чистой функцией
 (сравнения сумм `Decimal`, дат ISO, номеров по приведённому виду, наименований — правилом
@@ -139,7 +139,7 @@ specs/011-table-answers/
 
 ```text
 src/docreader/
-├── table_prompt.py         # новый: PROMPT_VERSION 10.1, TableReply, build_messages, build_retry, prompt_sha256
+├── table_prompt.py         # новый: PROMPT_VERSION 10.2, TableReply, build_messages, build_retry, prompt_sha256
 ├── table_query.py          # новый: TableQuery, validate (R-4), resolve_period (R-6), match_names, execute (R-7), describe (R-8) — чистые функции
 ├── table_answer.py         # новый: load_rows (R-5), translate и ask_table (R-1, R-9), TableAnswer
 ├── checks.py               # + effective_cell (правило effective_value, без изменения поведения)
