@@ -2155,8 +2155,22 @@ def render_table_json(answer: TableAnswer) -> str:
     return json.dumps(answer.to_json(), ensure_ascii=False, indent=2)
 
 
+# reasons of «Не учтено» (contracts/cli.md), in the order of the cell states
+_TABLE_REASON_WORD = {
+    CellState.UNREVIEWED: "требует просмотра",
+    CellState.NEEDS_REVIEW: "требует просмотра, значения нет",
+    CellState.REJECTED: "отклонено",
+    CellState.NOT_FOUND: "не найдено",
+    CellState.NO_EXTRACTION: "поля не извлечены",
+    CellState.CHECKS_STALE: "проверки не выполнены или устарели",
+}
+_CORRECTED_FLAG = "human_corrected"
+
+
 def _table_cell(cell: tq.Cell, shown: str | None) -> str:
     if cell.state is CellState.EFFECTIVE and shown is not None:
+        if _CORRECTED_FLAG in cell.flags:
+            return f"{shown} (исправлено аналитиком)"
         return shown
     word = _TABLE_STATE_WORD[cell.state]
     if cell.state is CellState.UNREVIEWED and shown is not None:
@@ -2189,7 +2203,22 @@ def _table_row_line(item: tq.ResultRow, query: tq.TableQuery) -> str:
     ]
     if clause is not None:
         parts.append(f"({clause})")
+    if item.unreviewed:
+        parts.append("(непроверенное)")
     return "  " + "   ".join(parts)
+
+
+def _excluded_line(result: tq.Result) -> str | None:
+    """«Не учтено (J): <reason> <n> — <ids>; …» in the order of the states, or None."""
+    parts = []
+    for state, word in _TABLE_REASON_WORD.items():
+        docs = result.excluded.get(state.value, ())
+        if docs:
+            parts.append(f"{word} {len(docs)} — {', '.join(docs)}")
+    if not parts:
+        return None
+    total = sum(len(docs) for docs in result.excluded.values())
+    return f"Не учтено ({total}): " + "; ".join(parts)
 
 
 def _table_head(answer: TableAnswer) -> str:
@@ -2198,6 +2227,8 @@ def _table_head(answer: TableAnswer) -> str:
     result = answer.result
     if answer.outcome.value == "answered" and result is not None:
         count = _plural(result.count, "договор", "договора", "договоров")
+        if result.include_unreviewed:
+            count += ", включает непроверенные значения"
         return (
             f"По таблице — ответ: {count}; учтено {result.considered} из {result.total}, "
             f"не учтено {result.total - result.considered}; {tail}"
@@ -2223,6 +2254,9 @@ def render_table_text(answer: TableAnswer, list_rows: int) -> str:
             lines += [_table_row_line(item, query) for item in result.rows[:list_rows]]
             if result.count > list_rows:
                 lines.append(f"  … ещё {result.count - list_rows} — полный список: --json")
+        excluded = _excluded_line(result)
+        if excluded is not None:
+            lines += ["", excluded]
     else:
         if answer.reason:
             lines += ["", f"Причина: {answer.reason}"]
