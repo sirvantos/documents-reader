@@ -19,17 +19,17 @@
    }
   }
  },
- "recorded_at": "2026-11-28T10:57:34+00:00",
+ "recorded_at": "2026-11-28T11:15:29+00:00",
  "exchanges": [
   {
    "request_sha256": "994ca3d0b68c032451eedff4a12b59e8b1174a4267bcf99b0dc31be648c335aa",
    "attempt": 1,
    "response": {
-    "id": "chatcmpl-662aa012-6168-4807-8617-fc3100be7c6f",
+    "id": "chatcmpl-399738b8-c5eb-4705-b486-83099ca79885",
     "system_fingerprint": "0.32.2-0.32.4-macOS-15.5-arm64-arm-64bit-applegpu_g15s",
     "object": "chat.completion",
     "model": "qwen3.6-27b-4bit",
-    "created": 1795863429,
+    "created": 1795864504,
     "choices": [
      {
       "index": 0,
