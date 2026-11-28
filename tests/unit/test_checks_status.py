@@ -18,10 +18,12 @@ from dataclasses import replace
 from docreader.checks import (
     CHECKS_VERSION,
     RULES,
+    CellState,
     FieldStatus,
     RuleCheck,
     RuleOutcome,
     StoredStatus,
+    effective_cell,
     evaluate_document,
     is_stale,
     settings_fingerprint,
@@ -181,3 +183,73 @@ def test_decision_with_document_review_keeps_both_flags() -> None:
     item = evaluate(doc(), document_needs_review=True,
                     decisions={"amount_with_vat": decision})["amount_with_vat"]
     assert item.status.flags == ("document_needs_review", "human_confirmed")
+
+
+# --- the state of a table cell (feature 10, research R-5, T002) ---------------------------
+
+EFFECTIVE, UNREVIEWED = CellState.EFFECTIVE, CellState.UNREVIEWED
+CELL_NEEDS_REVIEW, CELL_REJECTED = CellState.NEEDS_REVIEW, CellState.REJECTED
+CELL_NOT_FOUND = CellState.NOT_FOUND
+
+
+def test_accepted_field_is_effective_with_the_system_value() -> None:
+    assert effective_cell(ACCEPTED, (), "found", "1200000.00", None) == (EFFECTIVE, "1200000.00")
+
+
+def test_human_confirmed_is_effective_with_the_system_value() -> None:
+    got = effective_cell(ACCEPTED, ("human_confirmed",), "found", "2027-12-31", "2027-12-31")
+    assert got == (EFFECTIVE, "2027-12-31")
+
+
+def test_human_correction_wins_over_the_status_and_the_system_value() -> None:
+    got = effective_cell(ACCEPTED, ("human_corrected",), "found", "1250000.00", "1200000.00")
+    assert got == (EFFECTIVE, "1200000.00")
+    # a corrected field that was not found by the system
+    got = effective_cell(ACCEPTED, ("human_corrected",), "not_found", None, "2027-01-31")
+    assert got == (EFFECTIVE, "2027-01-31")
+
+
+def test_human_absent_is_not_found() -> None:
+    got = effective_cell(NOT_FOUND_STATUS, ("human_absent",), "found", "2045-12-31", None)
+    assert got == (CELL_NOT_FOUND, None)
+
+
+def test_needs_review_with_a_found_value_is_unreviewed() -> None:
+    got = effective_cell(NEEDS_REVIEW, (), "found", "1250000.00", None)
+    assert got == (UNREVIEWED, "1250000.00")
+
+
+def test_a_decision_that_no_longer_holds_is_unreviewed() -> None:
+    got = effective_cell(NEEDS_REVIEW, ("system_changed",), "found", "1250000.00", "1200000.00")
+    assert got == (UNREVIEWED, "1250000.00")  # the old decision's value is not used
+
+
+def test_needs_review_without_a_value_is_needs_review() -> None:
+    assert effective_cell(NEEDS_REVIEW, (), "failed", None, None) == (CELL_NEEDS_REVIEW, None)
+    assert effective_cell(NEEDS_REVIEW, (), "not_found", None, None) == (CELL_NEEDS_REVIEW, None)
+    assert effective_cell(NEEDS_REVIEW, ("system_changed",), "not_found", None, None) == (
+        CELL_NEEDS_REVIEW, None)
+
+
+def test_rejected_never_has_a_value() -> None:
+    assert effective_cell(REJECTED, (), "rejected", None, None) == (CELL_REJECTED, None)
+    assert effective_cell(REJECTED, (), "found", "100.00", None) == (CELL_REJECTED, None)
+
+
+def test_not_found_has_no_value() -> None:
+    assert effective_cell(NOT_FOUND_STATUS, (), "not_found", None, None) == (CELL_NOT_FOUND, None)
+
+
+def test_accepted_without_a_value_is_not_effective() -> None:
+    assert effective_cell(ACCEPTED, (), "found", None, None) == (CELL_NEEDS_REVIEW, None)
+
+
+def test_flags_given_as_list_work_too() -> None:
+    assert effective_cell(ACCEPTED, ["human_corrected"], "found", "1", "2") == (EFFECTIVE, "2")
+
+
+def test_every_cell_state_name() -> None:
+    assert [s.value for s in CellState] == [
+        "effective", "unreviewed", "needs_review", "rejected", "not_found",
+        "no_extraction", "checks_stale",
+    ]

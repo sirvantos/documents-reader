@@ -314,3 +314,58 @@ def test_bad_checks_settings_rejected(data_dir: Path, text: str, key: str) -> No
     write_settings(data_dir, text)
     with pytest.raises(EnvironmentProblem, match=rf"settings\.toml.*checks\.{key}"):
         load_settings(env_for(data_dir))
+
+
+# --- [table] (feature 10) -----------------------------------------------------
+
+
+def test_table_defaults_without_settings_file(data_dir: Path) -> None:
+    t = load_settings(env_for(data_dir)).table
+    assert (t.max_tokens, t.max_retries, t.list_rows) == (512, 2, 20)
+
+
+def test_table_values_read_from_file(data_dir: Path) -> None:
+    write_settings(data_dir, "[table]\nmax_tokens = 1024\nmax_retries = 0\nlist_rows = 5\n")
+    t = load_settings(env_for(data_dir)).table
+    assert (t.max_tokens, t.max_retries, t.list_rows) == (1024, 0, 5)
+
+
+def test_table_partial_override_keeps_other_defaults(data_dir: Path) -> None:
+    write_settings(data_dir, "[table]\nlist_rows = 50\n")
+    t = load_settings(env_for(data_dir)).table
+    assert (t.max_tokens, t.max_retries, t.list_rows) == (512, 2, 50)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[table]\nmax_tokens = 1\n",
+        "[table]\nmax_tokens = 8192\n",
+        "[table]\nmax_retries = 0\n",
+        "[table]\nmax_retries = 5\n",
+        "[table]\nlist_rows = 1\n",
+    ],
+)
+def test_table_bounds_accepted(data_dir: Path, text: str) -> None:
+    write_settings(data_dir, text)
+    load_settings(env_for(data_dir))
+
+
+@pytest.mark.parametrize(
+    ("text", "key"),
+    [
+        ("[table]\nmax_tokens = 0\n", "max_tokens"),
+        ("[table]\nmax_tokens = 8193\n", "max_tokens"),
+        ("[table]\nmax_tokens = \"512\"\n", "max_tokens"),
+        ("[table]\nmax_retries = -1\n", "max_retries"),
+        ("[table]\nmax_retries = 6\n", "max_retries"),
+        ("[table]\nmax_retries = 2.0\n", "max_retries"),
+        ("[table]\nlist_rows = 0\n", "list_rows"),
+        ("[table]\nlist_rows = true\n", "list_rows"),
+        ("[table]\nunknown_key = 1\n", "unknown_key"),
+    ],
+)
+def test_bad_table_settings_rejected(data_dir: Path, text: str, key: str) -> None:
+    write_settings(data_dir, text)
+    with pytest.raises(EnvironmentProblem, match=rf"settings\.toml.*table\.{key}"):
+        load_settings(env_for(data_dir))

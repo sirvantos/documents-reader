@@ -58,8 +58,8 @@ description: "Task list for feature 10 (branch 011): table answers, minimal vers
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] [haiku] `TableSettings` (`[table]`: `max_tokens = 512`, `max_retries = 2`, `list_rows = 20`) in `src/docreader/config.py` with validation (`max_tokens` 1–8192, `max_retries` 0–5, `list_rows` ≥ 1) and tests in `tests/unit/test_config.py`; `[table]` added to the list of sections in `README.md` («Настройки»)
-- [ ] T002 [P] [opus] `checks.effective_cell(status, flags, system_result, system_normalized, decided) -> (state, value)` in `src/docreader/checks.py` (research R-5 table: `effective`, `unreviewed`, `needs_review`, `rejected`, `not_found`), `effective_value` rewritten on it without change of behaviour; tests first in `tests/unit/test_checks_status.py` — every row of the R-5 table, «исправить» wins over the status, «в договоре нет» → `not_found`, «требует просмотра» with `found` → `unreviewed` (also a decision that no longer holds, flag `system_changed`), without a value → `needs_review`; the existing `effective_value` tests pass unchanged
+- [X] T001 [P] [haiku] `TableSettings` (`[table]`: `max_tokens = 512`, `max_retries = 2`, `list_rows = 20`) in `src/docreader/config.py` with validation (`max_tokens` 1–8192, `max_retries` 0–5, `list_rows` ≥ 1) and tests in `tests/unit/test_config.py`; `[table]` added to the list of sections in `README.md` («Настройки»)
+- [X] T002 [P] [opus] `checks.effective_cell(status, flags, system_result, system_normalized, decided) -> (state, value)` in `src/docreader/checks.py` (research R-5 table: `effective`, `unreviewed`, `needs_review`, `rejected`, `not_found`), `effective_value` rewritten on it without change of behaviour; tests first in `tests/unit/test_checks_status.py` — every row of the R-5 table, «исправить» wins over the status, «в договоре нет» → `not_found`, «требует просмотра» with `found` → `unreviewed` (also a decision that no longer holds, flag `system_changed`), without a value → `needs_review`; the existing `effective_value` tests pass unchanged
 
 ---
 
