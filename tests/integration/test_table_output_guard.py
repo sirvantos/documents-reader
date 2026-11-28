@@ -24,7 +24,6 @@ def checked(cli, use_model, tmp_path: Path) -> dict[str, str]:  # type: ignore[n
     return add_checked_contracts(cli, use_model, tmp_path / "in")
 
 
-@pytest.mark.xfail(strict=True, reason="ask-table comes with T013; remove this mark there")
 def test_help_is_clean(cli, db) -> None:  # type: ignore[no-untyped-def]
     result = run_clean(cli, db, "--help")
     assert result.exit_code == 0

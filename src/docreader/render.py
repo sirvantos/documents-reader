@@ -15,9 +15,10 @@ from datetime import datetime
 from pathlib import PurePath
 from typing import TYPE_CHECKING
 
+from docreader import table_query as tq
 from docreader.answer_check import AnswerOutcome, ClaimStatus
 from docreader.check_queue import CheckLoadReport, QueueBuilt
-from docreader.checks import CHECKS_VERSION, CheckReport, CheckSummary, FieldStatus
+from docreader.checks import CHECKS_VERSION, CellState, CheckReport, CheckSummary, FieldStatus
 from docreader.evaluation import CheckReportRecord
 from docreader.fields import Result
 from docreader.fields import spec as field_spec
@@ -54,6 +55,7 @@ if TYPE_CHECKING:
     )
     from docreader.review import ReviewBuilt
     from docreader.search import Hit, SearchResult
+    from docreader.table_answer import TableAnswer
 
 _KIND_LABELS = (
     ("text", "текст"),
@@ -2131,3 +2133,105 @@ def render_check_load_text(report: CheckLoadReport) -> str:
         lines.append(f"  не применено {report.not_applied}: договора или поля больше нет")
     lines.append(f"  статусы пересчитаны у {report.recomputed} полей")
     return "\n".join(lines)
+
+
+_TABLE_STATE_WORD = {
+    CellState.UNREVIEWED: "требует просмотра",
+    CellState.NEEDS_REVIEW: "требует просмотра",
+    CellState.REJECTED: "отклонено",
+    CellState.NOT_FOUND: "не найдено",
+    CellState.NO_EXTRACTION: "поля не извлечены",
+    CellState.CHECKS_STALE: "проверки не выполнены или устарели",
+}
+_TABLE_HEAD = {
+    "refused": "отказ",
+    "clarify": "нужно уточнение",
+    "unsupported": "не поддерживается",
+}
+
+
+def render_table_json(answer: TableAnswer) -> str:
+    """Text of `docreader ask-table --json` (contracts/cli.md «--json»)."""
+    return json.dumps(answer.to_json(), ensure_ascii=False, indent=2)
+
+
+def _table_cell(cell: tq.Cell, shown: str | None) -> str:
+    if cell.state is CellState.EFFECTIVE and shown is not None:
+        return shown
+    word = _TABLE_STATE_WORD[cell.state]
+    if cell.state is CellState.UNREVIEWED and shown is not None:
+        return f"{shown}, {word}"
+    return f"—, {word}"
+
+
+def _table_row_line(item: tq.ResultRow, query: tq.TableQuery) -> str:
+    cells = item.row.cells
+
+    def amount(field: str) -> str:
+        cell = cells[field]
+        return _table_cell(cell, None if cell.value is None else tq.format_amount(cell.value))
+
+    def plain(field: str) -> str:
+        cell = cells[field]
+        return _table_cell(cell, cell.value)
+
+    fields = ("customer_name_short", "contractor_name_short") if query.field == "party" else (
+        query.field,)
+    clause = next((cells[f].clause_id for f in fields if cells[f].clause_id), None)
+    parts = [
+        item.row.document_id,
+        f"№ {plain('contract_number')}",
+        f"заказчик {plain('customer_name_short')}",
+        f"подрядчик {plain('contractor_name_short')}",
+        f"без НДС {amount('amount_without_vat')}",
+        f"с НДС {amount('amount_with_vat')}",
+        f"окончание {plain('contract_end_date')}",
+    ]
+    if clause is not None:
+        parts.append(f"({clause})")
+    return "  " + "   ".join(parts)
+
+
+def _table_head(answer: TableAnswer) -> str:
+    seconds = f"{answer.seconds:.1f}".replace(".", ",")
+    tail = f"повторов {int(answer.retried)}; {seconds} с"
+    result = answer.result
+    if answer.outcome.value == "answered" and result is not None:
+        count = _plural(result.count, "договор", "договора", "договоров")
+        return (
+            f"По таблице — ответ: {count}; учтено {result.considered} из {result.total}, "
+            f"не учтено {result.total - result.considered}; {tail}"
+        )
+    return f"По таблице — {_TABLE_HEAD.get(answer.outcome.value, 'ошибка')}; {tail}"
+
+
+def render_table_text(answer: TableAnswer, list_rows: int) -> str:
+    """Text of `docreader ask-table` (contracts/cli.md «Текстовый вывод»)."""
+    lines = [_table_head(answer)]
+    result = answer.result
+    if answer.outcome.value == "answered" and result is not None:
+        query = result.query
+        lines += ["", f"Условие: {tq.describe(query)}"]
+        if result.matched_names:
+            lines.append(f"Совпали наименования: {', '.join(result.matched_names)}")
+        lines.append("")
+        if result.count == 0:
+            lines.append("Таких договоров нет.")
+        else:
+            heading = "Договоры" if query.action == "list" else "Из каких договоров"
+            lines.append(f"{heading} ({result.count}):")
+            lines += [_table_row_line(item, query) for item in result.rows[:list_rows]]
+            if result.count > list_rows:
+                lines.append(f"  … ещё {result.count - list_rows} — полный список: --json")
+    else:
+        if answer.reason:
+            lines += ["", f"Причина: {answer.reason}"]
+        if answer.outcome.value == "refused":
+            lines.append("Поиск по тексту не подставляется (docreader ask)")
+    p = answer.provenance
+    lines += [
+        "",
+        f"Получено: код {p.code_version}; модель {p.llm_model}, подсказка {p.prompt_version}; "
+        f"правила {p.checks_version}; сегодня {answer.today.isoformat()}",
+    ]
+    return "\n".join(lines) + "\n"

@@ -398,3 +398,43 @@ def execute(query: TableQuery, rows: Sequence[DocRow], include_unreviewed: bool)
         total=len(rows),
         include_unreviewed=include_unreviewed,
     )
+
+
+# --- describe (research R-8) ---------------------------------------------------------
+
+_FIELD_WORD = {
+    "contract_number": "номер договора",
+    "customer_name_short": "заказчик",
+    "contractor_name_short": "подрядчик",
+    "party": "заказчик или подрядчик",
+    "amount_without_vat": "цена без НДС",
+    "amount_with_vat": "цена с НДС",
+    "contract_end_date": "дата окончания",
+}
+_OP_WORD = {"eq": "равна", "gt": "больше", "ge": "не меньше", "lt": "меньше", "le": "не больше"}
+
+
+def format_amount(amount: Decimal | str) -> str:
+    """`1 000 000,00`: plain-space thousands, comma decimals, two decimals."""
+    return f"{Decimal(amount):,.2f}".replace(",", " ").replace(".", ",")
+
+
+def describe(query: TableQuery) -> str:
+    """The condition in words for the analyst, from the query's normalized value (R-8)."""
+    head = _FIELD_WORD[query.field]
+    if query.field in ("amount_without_vat", "amount_with_vat"):
+        text = f"{head} {_OP_WORD[query.op]} {format_amount(query.value)} руб."
+    elif query.field == "contract_end_date":
+        if query.op == "between":
+            text = f"{head} с {query.value} по {query.value_to}"
+        elif query.op == "before":
+            text = f"{head} раньше {query.value}"
+        elif query.op == "after":
+            text = f"{head} позже {query.value}"
+        else:
+            text = f"{head} — {query.value}"
+    else:
+        text = f"{head} — {query.value}"
+    if query.side is not None:
+        text += " (сторона выбрана по таблице)"
+    return text

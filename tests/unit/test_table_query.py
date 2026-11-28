@@ -655,3 +655,50 @@ def test_party_with_no_side_counts_contracts_with_both_names_considered() -> Non
     assert result.count == 0 and result.considered == 1 and result.total == 4
     assert result.excluded == {"unreviewed": ("D-0002",), "rejected": ("D-0003",),
                                "not_found": ("D-0004",)}
+
+
+# --- describe (T010, research R-8, contracts/cli.md) -------------------------------
+
+
+@pytest.mark.parametrize(
+    ("reply", "text"),
+    [
+        (r(field="contractor_name_short", op="eq", value="ООО «Альфа»"),
+         'подрядчик — ООО "Альфа"'),
+        (r(field="customer_name_short", op="eq", value="Бета"), "заказчик — Бета"),
+        (r(field="party", op="eq", value="Гамма"), "заказчик или подрядчик — Гамма"),
+        (r(field="contract_number", op="eq", value="№ К-21/2026"), "номер договора — К-21/2026"),
+        (r(field="amount_with_vat", op="gt", value="1000000"),
+         "цена с НДС больше 1 000 000,00 руб."),
+        (r(field="amount_with_vat", op="ge", value="1500000"),
+         "цена с НДС не меньше 1 500 000,00 руб."),
+        (r(field="amount_without_vat", op="lt", value="999,50"),
+         "цена без НДС меньше 999,50 руб."),
+        (r(field="amount_without_vat", op="le", value="0"), "цена без НДС не больше 0,00 руб."),
+        (r(field="amount_without_vat", op="eq", value="250000"),
+         "цена без НДС равна 250 000,00 руб."),
+        (r(field="contract_end_date", op="before", value="2026-06-01"),
+         "дата окончания раньше 2026-06-01"),
+        (r(field="contract_end_date", op="after", value="this_year"),
+         "дата окончания позже 2026-12-31"),
+        (r(field="contract_end_date", op="eq", value="2026-12-31"),
+         "дата окончания — 2026-12-31"),
+        (r(field="contract_end_date", op="eq", value="this_year"),
+         "дата окончания с 2026-01-01 по 2026-12-31"),
+        (r(field="contract_end_date", op="between", value="2026-01-01", value_to="2026-03-31"),
+         "дата окончания с 2026-01-01 по 2026-03-31"),
+    ],
+)
+def test_describe(reply: TableReply, text: str) -> None:
+    assert tq.describe(ok(reply)) == text
+
+
+def test_describe_names_the_side_chosen_by_the_table() -> None:
+    rows = [row("D-0001", customer_name_short=cell(EFF, 'ООО "Альфа"'))]
+    q = tq.resolve_party(party("Альфа"), rows, False)
+    assert isinstance(q, tq.TableQuery)
+    assert tq.describe(q) == "заказчик — Альфа (сторона выбрана по таблице)"
+    rows = [row("D-0001", contractor_name_short=cell(EFF, 'ООО "Альфа"'))]
+    q = tq.resolve_party(party("Альфа"), rows, False)
+    assert isinstance(q, tq.TableQuery)
+    assert tq.describe(q) == "подрядчик — Альфа (сторона выбрана по таблице)"

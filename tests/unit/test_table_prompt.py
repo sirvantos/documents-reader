@@ -261,3 +261,9 @@ def test_module_imports_no_model_or_database_library() -> None:
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
     assert not imported & {"openai", "instructor", "psycopg", "httpx"}
+
+
+def test_system_message_asks_for_names_in_the_nominative() -> None:
+    # «договоры с «Тихой пристанью»» must come back as «Тихая пристань»: the names are
+    # matched by the program, not by declension (research R-7)
+    assert "именительном падеже" in system_text()
